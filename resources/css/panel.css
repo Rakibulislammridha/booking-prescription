@@ -1,0 +1,25 @@
+/* Panel stylesheet (MUI does the heavy lifting; fonts are imported by resources/js/panel/app.tsx via fontsource). */
+:root {
+  color-scheme: light;
+  --panel-primary: #0f766e;
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", "Noto Sans Bengali", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Bangla glyphs need a little more line-height than Latin at the same size */
+:lang(bn) body {
+  line-height: 1.6;
+}
+
+@media print {
+  .ci { display: none !important; }
+}

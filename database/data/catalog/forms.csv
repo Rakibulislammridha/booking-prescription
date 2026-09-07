@@ -1,0 +1,27 @@
+code,name,name_bn,abbreviation,default_unit,default_route_code,is_liquid,pack_unit
+tab,Tablet,ট্যাবলেট,Tab,tab,po,0,pack
+cap,Capsule,ক্যাপসুল,Cap,cap,po,0,pack
+syr,Syrup,সিরাপ,Syr,ml,po,1,bottle
+susp,Suspension,সাসপেনশন,Susp,ml,po,1,bottle
+sol,Oral Solution,ওরাল সলিউশন,Sol,ml,po,1,bottle
+oral_drop,Paediatric Drops,পেডিয়াট্রিক ড্রপ,Drops,drop,po,1,bottle
+eye_drop,Eye Drops,চোখের ড্রপ,E/D,drop,be,1,bottle
+ear_drop,Ear Drops,কানের ড্রপ,Ear/D,drop,bear,1,bottle
+nasal_drop,Nasal Drops,নাকের ড্রপ,N/D,drop,nasal,1,bottle
+nasal_spray,Nasal Spray,নাকের স্প্রে,N/Spray,spray,nasal,0,bottle
+inh_mdi,Inhaler,ইনহেলার,Inh,puff,inh,0,inhaler
+inh_dpi,Dry Powder Inhaler,ড্রাই পাউডার ইনহেলার,DPI,puff,inh,0,inhaler
+neb,Nebuliser Solution,নেবুলাইজার সলিউশন,Neb,ml,neb,1,respule
+inj,Injection,ইনজেকশন,Inj,ml,im,0,vial
+insulin,Insulin,ইনসুলিন,Insulin,IU,sc,0,vial
+cream,Cream,ক্রিম,Cream,application,top,0,tube
+oint,Ointment,অয়েন্টমেন্ট,Oint,application,top,0,tube
+gel,Gel,জেল,Gel,application,top,0,tube
+lotion,Lotion,লোশন,Lotion,application,top,1,bottle
+powder,Powder,পাউডার,Powder,application,top,0,pack
+shampoo,Shampoo,শ্যাম্পু,Shampoo,application,top,1,bottle
+mouthwash,Mouthwash,মাউথওয়াশ,M/W,ml,buccal,1,bottle
+paint,Mouth Paint,মাউথ পেইন্ট,Paint,application,buccal,1,bottle
+supp,Suppository,সাপোজিটরি,Supp,unit,pr,0,pack
+pessary,Pessary,পেসারি,Pess,unit,pv,0,pack
+sachet,Sachet,স্যাশে,Sachet,sachet,po,0,pack

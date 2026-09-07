@@ -1,0 +1,38 @@
+generic_slug,egfr_below,level,advice
+ibuprofen,,avoid,Avoid in significant renal impairment.
+diclofenac,,avoid,Avoid in significant renal impairment.
+naproxen,,avoid,Avoid in significant renal impairment.
+ketorolac,,avoid,Avoid in significant renal impairment.
+aspirin,,caution,Use with caution in renal impairment; monitor renal function.
+tramadol,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+ranitidine,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+domperidone,,caution,Use with caution in renal impairment; monitor renal function.
+amoxicillin,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+amoxicillin-clavulanic-acid,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+cefixime,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+cefuroxime,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+ceftriaxone,,caution,Use with caution in renal impairment; monitor renal function.
+ciprofloxacin,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+levofloxacin,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+cotrimoxazole,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+nitrofurantoin,,avoid,Avoid in significant renal impairment.
+fluconazole,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+cetirizine,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+loratadine,,caution,Use with caution in renal impairment; monitor renal function.
+fexofenadine,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+metformin,30,avoid,Contraindicated when eGFR is below 30 ml/min (lactic acidosis).
+metformin,45,adjust_dose,Halve the dose and review when eGFR is 30-45 ml/min.
+glimepiride,,caution,Use with caution in renal impairment; monitor renal function.
+gliclazide,,caution,Use with caution in renal impairment; monitor renal function.
+sitagliptin,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+insulin-human-70-30,,caution,Use with caution in renal impairment; monitor renal function.
+losartan,,caution,Use with caution in renal impairment; monitor renal function.
+enalapril,,caution,Use with caution in renal impairment; monitor renal function.
+bisoprolol,,caution,Use with caution in renal impairment; monitor renal function.
+atenolol,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+frusemide,,caution,Use with caution in renal impairment; monitor renal function.
+spironolactone,,avoid,Avoid in significant renal impairment.
+rosuvastatin,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+warfarin,,caution,Use with caution in renal impairment; monitor renal function.
+allopurinol,,adjust_dose,Reduce the dose or extend the interval according to creatinine clearance.
+calcium-carbonate-vitamin-d3,,caution,Use with caution in renal impairment; monitor renal function.

@@ -1,0 +1,210 @@
+generic_slug,name,manufacturer,dar_number,popularity,aliases,presentations,status
+paracetamol,Napa,Beximco Pharmaceuticals,DAR-001007,990,নাপা,,active
+paracetamol,Ace,Square Pharmaceuticals,DAR-001014,700,এইস,,active
+paracetamol,Fast,ACME Laboratories,DAR-001021,500,,,active
+paracetamol,Xcel,ACI Limited,DAR-001028,350,,,active
+paracetamol,Renova,Opsonin Pharma,DAR-001035,250,,,active
+ibuprofen,Flamex,Square Pharmaceuticals,DAR-001042,900,,,active
+ibuprofen,Profen,Beximco Pharmaceuticals,DAR-001049,700,,,active
+ibuprofen,Inflam,ACI Limited,DAR-001056,500,,,active
+diclofenac,Clofenac,Beximco Pharmaceuticals,DAR-001063,900,,,active
+diclofenac,Voltalin,Square Pharmaceuticals,DAR-001070,700,,,active
+diclofenac,A-Fenac,ACME Laboratories,DAR-001077,500,,,active
+naproxen,Naprosyn,Square Pharmaceuticals,DAR-001084,900,,,active
+naproxen,Xenapro,Unimed Unihealth Pharmaceuticals,DAR-001091,700,,,active
+naproxen,Napro-A,ACME Laboratories,DAR-001098,500,,,active
+ketorolac,Etorac,Square Pharmaceuticals,DAR-001105,900,,,active
+ketorolac,Ketorol,Beximco Pharmaceuticals,DAR-001112,700,,,active
+ketorolac,Rolac,Incepta Pharmaceuticals,DAR-001119,500,,,active
+aspirin,Ecosprin,USV,DAR-001126,900,,,active
+aspirin,Carva,Square Pharmaceuticals,DAR-001133,700,,,active
+aspirin,Ascard,Opsonin Pharma,DAR-001140,500,,,active
+tramadol,Anadol,Square Pharmaceuticals,DAR-001147,900,,,active
+tramadol,Tramal,Incepta Pharmaceuticals,DAR-001154,700,,,active
+tramadol,Lodol,Opsonin Pharma,DAR-001161,500,,,active
+omeprazole,Seclo,Square Pharmaceuticals,DAR-001168,900,সেকলো,,active
+omeprazole,Losectil,Eskayef Pharmaceuticals,DAR-001175,700,,,active
+omeprazole,PPI,Aristopharma,DAR-001182,500,,,active
+omeprazole,Omenix,Incepta Pharmaceuticals,DAR-001189,350,,,active
+esomeprazole,Nexum,Square Pharmaceuticals,DAR-001196,900,,,active
+esomeprazole,Esonix,Incepta Pharmaceuticals,DAR-001203,700,,,active
+esomeprazole,Maxpro,Renata Limited,DAR-001210,500,,,active
+pantoprazole,Pantonix,Incepta Pharmaceuticals,DAR-001217,900,,,active
+pantoprazole,Pantobex,Beximco Pharmaceuticals,DAR-001224,700,,,active
+pantoprazole,Panto,ACI Limited,DAR-001231,500,,,active
+ranitidine,Neotack,Square Pharmaceuticals,DAR-001238,900,,,active
+ranitidine,Neoceptin-R,Beximco Pharmaceuticals,DAR-001245,700,,,active
+ranitidine,Ranitid,Opsonin Pharma,DAR-001252,500,,,discontinued
+domperidone,Omidon,Incepta Pharmaceuticals,DAR-001259,900,,,active
+domperidone,Motigut,Square Pharmaceuticals,DAR-001266,700,,,active
+domperidone,Domperon,Opsonin Pharma,DAR-001273,500,,,active
+ondansetron,Emistat,Aristopharma,DAR-001280,900,,,active
+ondansetron,Anset,Beximco Pharmaceuticals,DAR-001287,700,,,active
+ondansetron,Ondron,Opsonin Pharma,DAR-001294,500,,,active
+hyoscine-butylbromide,Butapan,Incepta Pharmaceuticals,DAR-001301,900,,,active
+hyoscine-butylbromide,Hyosin,Square Pharmaceuticals,DAR-001308,700,,,active
+hyoscine-butylbromide,Buscopan,Sanofi Bangladesh,DAR-001315,500,,tab:10 mg:10x10,active
+amoxicillin,Moxacil,Square Pharmaceuticals,DAR-001322,900,মক্সাসিল,,active
+amoxicillin,Fimoxyl,Beximco Pharmaceuticals,DAR-001329,700,,,active
+amoxicillin,Amoxin,Aristopharma,DAR-001336,500,,,active
+amoxicillin,Tycil,Incepta Pharmaceuticals,DAR-001343,350,,,active
+amoxicillin-clavulanic-acid,Moxaclav,Square Pharmaceuticals,DAR-001350,900,,,active
+amoxicillin-clavulanic-acid,Fimoxyclav,Beximco Pharmaceuticals,DAR-001357,700,,,active
+amoxicillin-clavulanic-acid,Augmentin,GlaxoSmithKline Bangladesh,DAR-001364,500,,,active
+cefixime,Cef-3,Square Pharmaceuticals,DAR-001371,900,সেফ-৩,,active
+cefixime,Denvar,Beximco Pharmaceuticals,DAR-001378,700,,,active
+cefixime,Rofixim,Opsonin Pharma,DAR-001385,500,,,active
+cefuroxime,Cefotil,Square Pharmaceuticals,DAR-001392,900,,,active
+cefuroxime,Kilbac,Beximco Pharmaceuticals,DAR-001399,700,,,active
+cefuroxime,Sefur,Opsonin Pharma,DAR-001406,500,,,active
+ceftriaxone,Ceftron,Square Pharmaceuticals,DAR-001413,900,,,active
+ceftriaxone,Traxon,Beximco Pharmaceuticals,DAR-001420,700,,,active
+ceftriaxone,Trizon,Opsonin Pharma,DAR-001427,500,,,active
+azithromycin,Zimax,Square Pharmaceuticals,DAR-001434,900,জিম্যাক্স,,active
+azithromycin,Azithrocin,Beximco Pharmaceuticals,DAR-001441,700,,,active
+azithromycin,Tridosil,Incepta Pharmaceuticals,DAR-001448,500,,,active
+azithromycin,Azin,Aristopharma,DAR-001455,350,,,active
+doxycycline,Doxin,Square Pharmaceuticals,DAR-001462,900,,,active
+doxycycline,Doxicap,Beximco Pharmaceuticals,DAR-001469,700,,,active
+doxycycline,Dyna,ACME Laboratories,DAR-001476,500,,,active
+ciprofloxacin,Ciprocin,Square Pharmaceuticals,DAR-001483,900,সিপ্রোসিন,,active
+ciprofloxacin,Neofloxin,Beximco Pharmaceuticals,DAR-001490,700,,,active
+ciprofloxacin,Ciprox,Opsonin Pharma,DAR-001497,500,,,active
+levofloxacin,Levoxin,Square Pharmaceuticals,DAR-001504,900,,,active
+levofloxacin,Levox,Beximco Pharmaceuticals,DAR-001511,700,,,active
+levofloxacin,Leflox,ACI Limited,DAR-001518,500,,,active
+moxifloxacin,Vigamox,Alcon,DAR-001525,900,,,active
+moxifloxacin,Moxiflox,Incepta Pharmaceuticals,DAR-001532,700,,,active
+moxifloxacin,Optimox,Popular Pharmaceuticals,DAR-001539,500,,,active
+metronidazole,Flagyl,Sanofi Bangladesh,DAR-001546,900,ফ্ল্যাজিল,,active
+metronidazole,Filmet,Square Pharmaceuticals,DAR-001553,700,,,active
+metronidazole,Amodis,Beximco Pharmaceuticals,DAR-001560,500,,,active
+metronidazole,Metryl,Opsonin Pharma,DAR-001567,350,,,active
+cotrimoxazole,Cotrim,Square Pharmaceuticals,DAR-001574,900,,,active
+cotrimoxazole,Septran,GlaxoSmithKline Bangladesh,DAR-001581,700,,,active
+cotrimoxazole,Bactrim,Roche,DAR-001588,500,,,active
+nitrofurantoin,Nitrofur,Opsonin Pharma,DAR-001595,900,,,active
+nitrofurantoin,Uritoin,Incepta Pharmaceuticals,DAR-001602,700,,,active
+fluconazole,Flugal,Square Pharmaceuticals,DAR-001609,900,,,active
+fluconazole,Lucon,Incepta Pharmaceuticals,DAR-001616,700,,,active
+fluconazole,Omastin,Beximco Pharmaceuticals,DAR-001623,500,,,active
+clotrimazole,Canesten,Bayer,DAR-001630,900,,,active
+clotrimazole,Candid,Glenmark,DAR-001637,700,,,active
+clotrimazole,Fungidal,Square Pharmaceuticals,DAR-001644,500,,,active
+albendazole,Almex,Square Pharmaceuticals,DAR-001651,900,অ্যালমেক্স,,active
+albendazole,Alben,Opsonin Pharma,DAR-001658,700,,,active
+albendazole,Sintel,Beximco Pharmaceuticals,DAR-001665,500,,,active
+cetirizine,Alatrol,Square Pharmaceuticals,DAR-001672,900,এলাট্রল,,active
+cetirizine,Artizin,Incepta Pharmaceuticals,DAR-001679,700,,,active
+cetirizine,Cetizin,Beximco Pharmaceuticals,DAR-001686,500,,,active
+loratadine,Loratin,Square Pharmaceuticals,DAR-001693,900,,,active
+loratadine,Pretin,Beximco Pharmaceuticals,DAR-001700,700,,,active
+loratadine,Oradin,ACI Limited,DAR-001707,500,,,active
+fexofenadine,Fexo,Square Pharmaceuticals,DAR-001714,900,ফেক্সো,,active
+fexofenadine,Fenadin,Beximco Pharmaceuticals,DAR-001721,700,,,active
+fexofenadine,Telfast,Sanofi Bangladesh,DAR-001728,500,,,active
+chlorpheniramine,Histacin,Jayson Pharmaceuticals,DAR-001735,900,হিস্টাসিন,,active
+chlorpheniramine,Piriton,GlaxoSmithKline Bangladesh,DAR-001742,700,,,active
+montelukast,Montene,Square Pharmaceuticals,DAR-001749,900,মন্টেন,,active
+montelukast,Monas,ACME Laboratories,DAR-001756,700,,,active
+montelukast,Provair,Unimed Unihealth Pharmaceuticals,DAR-001763,500,,,active
+montelukast,Montair,Incepta Pharmaceuticals,DAR-001770,350,,,active
+salbutamol,Ventolin,GlaxoSmithKline Bangladesh,DAR-001777,900,ভেন্টোলিন,,active
+salbutamol,Sultolin,Square Pharmaceuticals,DAR-001784,700,,,active
+salbutamol,Azmasol,Beximco Pharmaceuticals,DAR-001791,500,,,active
+salmeterol-fluticasone,Seretide,GlaxoSmithKline Bangladesh,DAR-001798,900,,,active
+salmeterol-fluticasone,Bexitrol-F,Beximco Pharmaceuticals,DAR-001805,700,,,active
+salmeterol-fluticasone,Ticamet,Square Pharmaceuticals,DAR-001812,500,,,active
+budesonide,Pulmicort,AstraZeneca,DAR-001819,900,,,active
+budesonide,Budecort,Beximco Pharmaceuticals,DAR-001826,700,,,active
+budesonide,Nebozide,Square Pharmaceuticals,DAR-001833,500,,,active
+xylometazoline,Otrivin,GlaxoSmithKline Bangladesh,DAR-001840,900,,,active
+xylometazoline,Rynex,Beximco Pharmaceuticals,DAR-001847,700,,,active
+xylometazoline,Xylonet,Square Pharmaceuticals,DAR-001854,500,,,active
+prednisolone,Cortan,Square Pharmaceuticals,DAR-001861,900,,,active
+prednisolone,Precodil,Opsonin Pharma,DAR-001868,700,,,active
+prednisolone,Deltasone,Beximco Pharmaceuticals,DAR-001875,500,,,active
+dexamethasone,Oradexon,Nuvista Pharma,DAR-001882,900,,,active
+dexamethasone,Decason,Opsonin Pharma,DAR-001889,700,,,active
+dexamethasone,Dexo,Square Pharmaceuticals,DAR-001896,500,,,active
+betamethasone,Betnovate,GlaxoSmithKline Bangladesh,DAR-001903,900,,,active
+betamethasone,Betaderm,Square Pharmaceuticals,DAR-001910,700,,,active
+betamethasone,Betasol,Opsonin Pharma,DAR-001917,500,,,active
+metformin,Comet,Square Pharmaceuticals,DAR-001924,900,কমেট,,active
+metformin,Metfor,Opsonin Pharma,DAR-001931,700,,,active
+metformin,Informet,Incepta Pharmaceuticals,DAR-001938,500,,,active
+metformin,Bigmet,Aristopharma,DAR-001945,350,,,active
+glimepiride,Amaryl,Sanofi Bangladesh,DAR-001952,900,,,active
+glimepiride,Secrin,Square Pharmaceuticals,DAR-001959,700,,,active
+glimepiride,Glimex,Opsonin Pharma,DAR-001966,500,,,active
+gliclazide,Diamicron,Servier,DAR-001973,900,,,active
+gliclazide,Glizid,Beximco Pharmaceuticals,DAR-001980,700,,,active
+gliclazide,Dimerol,Square Pharmaceuticals,DAR-001987,500,,,active
+sitagliptin,Januvia,MSD,DAR-001994,900,,,active
+sitagliptin,Zita,Square Pharmaceuticals,DAR-002001,700,,,active
+sitagliptin,Sitagen,Incepta Pharmaceuticals,DAR-002008,500,,,active
+insulin-human-70-30,Mixtard 30 HM,Novo Nordisk,DAR-002015,900,,,active
+insulin-human-70-30,Humulin 70/30,Eli Lilly,DAR-002022,700,,,active
+insulin-human-70-30,Ansulin 30/70,Square Pharmaceuticals,DAR-002029,500,,,active
+amlodipine,Amdocal,Beximco Pharmaceuticals,DAR-002036,900,অ্যামডোকাল,,active
+amlodipine,Camlodin,Square Pharmaceuticals,DAR-002043,700,,,active
+amlodipine,Amlopin,Incepta Pharmaceuticals,DAR-002050,500,,,active
+losartan,Angilock,Square Pharmaceuticals,DAR-002057,900,,,active
+losartan,Osartil,Incepta Pharmaceuticals,DAR-002064,700,,,active
+losartan,Losardil,ACI Limited,DAR-002071,500,,,active
+enalapril,Envas,Beximco Pharmaceuticals,DAR-002078,900,,,active
+enalapril,Enaril,Square Pharmaceuticals,DAR-002085,700,,,active
+bisoprolol,Concor,Merck,DAR-002092,900,,,active
+bisoprolol,Bisocor,Square Pharmaceuticals,DAR-002099,700,,,active
+bisoprolol,Bisopro,Incepta Pharmaceuticals,DAR-002106,500,,,active
+atenolol,Tenormin,AstraZeneca,DAR-002113,900,,,active
+atenolol,Tenoloc,Opsonin Pharma,DAR-002120,700,,,active
+atenolol,Atenol,Square Pharmaceuticals,DAR-002127,500,,,active
+frusemide,Lasix,Sanofi Bangladesh,DAR-002134,900,,,active
+frusemide,Fusid,Square Pharmaceuticals,DAR-002141,700,,,active
+frusemide,Frusin,Opsonin Pharma,DAR-002148,500,,,active
+spironolactone,Aldactone,Pfizer,DAR-002155,900,,,active
+spironolactone,Spirolac,Square Pharmaceuticals,DAR-002162,700,,,active
+spironolactone,Spirocard,Incepta Pharmaceuticals,DAR-002169,500,,,active
+atorvastatin,Atova,Square Pharmaceuticals,DAR-002176,900,,,active
+atorvastatin,Anzitor,Incepta Pharmaceuticals,DAR-002183,700,,,active
+atorvastatin,Tiginor,Aristopharma,DAR-002190,500,,,active
+rosuvastatin,Rosuva,Square Pharmaceuticals,DAR-002197,900,,,active
+rosuvastatin,Rovasta,Incepta Pharmaceuticals,DAR-002204,700,,,active
+rosuvastatin,Rosutin,Beximco Pharmaceuticals,DAR-002211,500,,,active
+clopidogrel,Plavix,Sanofi Bangladesh,DAR-002218,900,,,active
+clopidogrel,Clopid,Square Pharmaceuticals,DAR-002225,700,,,active
+clopidogrel,Clotin,Incepta Pharmaceuticals,DAR-002232,500,,,active
+warfarin,Warfin,Square Pharmaceuticals,DAR-002239,900,,,active
+warfarin,Coumadin,Bristol-Myers Squibb,DAR-002246,700,,,active
+warfarin,Marevan,Incepta Pharmaceuticals,DAR-002253,500,,,active
+levothyroxine,Thyrox,Square Pharmaceuticals,DAR-002260,900,,,active
+levothyroxine,Eltroxin,GlaxoSmithKline Bangladesh,DAR-002267,700,,,active
+levothyroxine,Thyrin,Incepta Pharmaceuticals,DAR-002274,500,,,active
+amitriptyline,Tryptin,Square Pharmaceuticals,DAR-002281,900,,,active
+amitriptyline,Amilin,Beximco Pharmaceuticals,DAR-002288,700,,,active
+amitriptyline,Amit,Opsonin Pharma,DAR-002295,500,,,active
+sertraline,Zoloft,Pfizer,DAR-002302,900,,,active
+sertraline,Serlift,Square Pharmaceuticals,DAR-002309,700,,,active
+sertraline,Setra,Incepta Pharmaceuticals,DAR-002316,500,,,active
+clonazepam,Rivotril,Roche,DAR-002323,900,,,active
+clonazepam,Cloron,Square Pharmaceuticals,DAR-002330,700,,,active
+clonazepam,Clonium,Beximco Pharmaceuticals,DAR-002337,500,,,active
+diazepam,Sedil,Square Pharmaceuticals,DAR-002344,900,,,active
+diazepam,Valium,Roche,DAR-002351,700,,,active
+diazepam,Diapam,Opsonin Pharma,DAR-002358,500,,,active
+allopurinol,Zyloric,GlaxoSmithKline Bangladesh,DAR-002365,900,,,active
+allopurinol,Loric,Square Pharmaceuticals,DAR-002372,700,,,active
+allopurinol,Alopurin,Opsonin Pharma,DAR-002379,500,,,active
+oral-rehydration-salts,Orsaline-N,Social Marketing Company,DAR-002386,900,ওরস্যালাইন,,active
+oral-rehydration-salts,Rice Saline,Social Marketing Company,DAR-002393,700,,,active
+oral-rehydration-salts,Glucolyte,Opsonin Pharma,DAR-002400,500,,,active
+zinc-sulfate,Zinc-B,Square Pharmaceuticals,DAR-002407,900,,,active
+zinc-sulfate,Baby Zinc,Square Pharmaceuticals,DAR-002414,700,,syr:10 mg/5 ml:100 ml; oral_drop:20 mg/ml:15 ml,active
+zinc-sulfate,Zif,Opsonin Pharma,DAR-002421,500,,,active
+calcium-carbonate-vitamin-d3,Calbo-D,Square Pharmaceuticals,DAR-002428,900,,,active
+calcium-carbonate-vitamin-d3,Coralcal-D,Radiant Pharmaceuticals,DAR-002435,700,,,active
+calcium-carbonate-vitamin-d3,Calcin-D,Opsonin Pharma,DAR-002442,500,,,active
+ferrous-sulfate,Feofol,Square Pharmaceuticals,DAR-002449,900,,,active
+ferrous-sulfate,Fefol,GlaxoSmithKline Bangladesh,DAR-002456,700,,,active
+ferrous-sulfate,Zif-CI,Opsonin Pharma,DAR-002463,500,,,active

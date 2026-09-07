@@ -1,0 +1,50 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "jsx": "react-jsx",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "target": "ES2022",
+        "lib": [
+            "ES2022",
+            "DOM",
+            "DOM.Iterable",
+            "WebWorker"
+        ],
+        "types": [
+            "vite/client",
+            "vite-plugin-pwa/client",
+            "node"
+        ],
+        "noEmit": true,
+        "isolatedModules": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "noUncheckedIndexedAccess": true,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitOverride": true,
+        "paths": {
+            "@panel/*": [
+                "./resources/js/panel/*"
+            ],
+            "@site/*": [
+                "./resources/js/site/*"
+            ],
+            "@shared/*": [
+                "./resources/js/shared/*"
+            ],
+            "@lang/*": [
+                "./resources/lang/*"
+            ]
+        }
+    },
+    "include": [
+        "resources/js/**/*",
+        "tests/js/**/*",
+        "vite.config.ts",
+        "vitest.config.ts"
+    ]
+}

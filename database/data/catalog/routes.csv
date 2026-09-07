@@ -1,0 +1,21 @@
+code,name,name_bn,abbreviation,is_systemic
+po,Oral,মুখে,PO,1
+sl,Sublingual,জিহ্বার নিচে,SL,1
+buccal,Buccal,গালের ভেতরে,Bucc,1
+pr,Rectal,পায়ুপথে,PR,1
+pv,Vaginal,যোনিপথে,PV,0
+top,Topical,ত্বকে,Top,0
+iv,Intravenous,শিরায়,IV,1
+im,Intramuscular,মাংসপেশিতে,IM,1
+sc,Subcutaneous,ত্বকের নিচে,SC,1
+id,Intradermal,ত্বকের ভেতরে,ID,1
+inh,Inhalation,শ্বাসের মাধ্যমে,Inh,0
+neb,Nebulisation,নেবুলাইজার,Neb,0
+ng,Nasogastric,নাকের নল দিয়ে,NG,1
+le,Left eye,বাম চোখে,LE,0
+re,Right eye,ডান চোখে,RE,0
+be,Both eyes,উভয় চোখে,BE,0
+lear,Left ear,বাম কানে,L.Ear,0
+rear,Right ear,ডান কানে,R.Ear,0
+bear,Both ears,উভয় কানে,B.Ear,0
+nasal,Nasal,নাকে,Nasal,0

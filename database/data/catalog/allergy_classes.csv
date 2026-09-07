@@ -1,0 +1,15 @@
+slug,name,description,cross_reacts_with
+penicillins,Penicillins,Beta-lactam antibiotics of the penicillin group,cephalosporins:10
+cephalosporins,Cephalosporins,Beta-lactam antibiotics of the cephalosporin group,penicillins:10
+sulfonamides,Sulfonamides,Sulfa antibiotics,
+nsaids,NSAIDs,Non-steroidal anti-inflammatory drugs including aspirin,
+fluoroquinolones,Fluoroquinolones,Quinolone antibiotics,
+macrolides,Macrolides,Macrolide antibiotics,
+tetracyclines,Tetracyclines,Tetracycline antibiotics,
+azoles,Azole antifungals,Imidazole and triazole antifungals,
+nitroimidazoles,Nitroimidazoles,Metronidazole group,
+benzodiazepines,Benzodiazepines,Benzodiazepine sedatives,
+opioids,Opioids,Opioid analgesics,
+statins,Statins,HMG-CoA reductase inhibitors,
+ace_inhibitors,ACE inhibitors,Angiotensin-converting-enzyme inhibitors (angioedema cross-reacts with ARBs),arbs:5
+arbs,Angiotensin receptor blockers,Angiotensin II receptor blockers,

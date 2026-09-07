@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Concurrency">
+            <directory>tests/Concurrency</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <!-- No force="true": a real environment variable (DB_DATABASE=booking_test_N …) always wins. CONVENTIONS §6.1 -->
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="DB_CONNECTION" value="pgsql"/>
+        <env name="DB_DATABASE" value="booking_test_1"/>
+        <env name="CATALOG_DB_DATABASE" value="catalog_test_1"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="BROADCAST_CONNECTION" value="log"/>
+        <env name="SCOUT_DRIVER" value="null"/>
+        <env name="SCOUT_QUEUE" value="false"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="OTP_FIXED_CODE" value="000000"/>
+        <!-- The suite runs the sync queue: without this every issued prescription would shell out to headless
+             Chrome. The tests that mean it re-enable it with config(['prescription.pdf.on_issue' => true]). -->
+        <env name="PRESCRIPTION_PDF_ON_ISSUE" value="false"/>
+        <env name="APP_CENTRAL_DOMAIN" value="bp.test"/>
+        <env name="APP_URL" value="http://bp.test"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+    </php>
+</phpunit>

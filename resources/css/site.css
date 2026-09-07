@@ -1,0 +1,33 @@
+/* Site stylesheet: Tailwind 4 utilities scoped to the site app (CONVENTIONS §7.4). Colours come from the tenant
+   CSS variables that resources/views/site.blade.php injects on :root (--tenant-primary, --tenant-accent, …). */
+@import 'tailwindcss' source(none);
+
+@source '../js/site/**/*.tsx';
+@source '../js/shared/**/*.tsx';
+@source '../views/site.blade.php';
+
+@theme {
+  --color-primary: var(--tenant-primary, #0f766e);
+  --color-accent: var(--tenant-accent, #f59e0b);
+  --color-on-primary: var(--tenant-on-primary, #ffffff);
+  --font-sans: system-ui, "Noto Sans Bengali", sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+:lang(bn) body {
+  line-height: 1.65;
+}

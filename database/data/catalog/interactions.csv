@@ -1,0 +1,53 @@
+generic_a,generic_b,severity,mechanism,effect,management,evidence_level,source
+warfarin,aspirin,major,Additive antiplatelet and anticoagulant effect,Major bleeding risk,Avoid; if unavoidable monitor INR closely,established,dev seed 2026
+warfarin,ibuprofen,major,Platelet inhibition plus gastric mucosal injury; CYP2C9 competition,GI bleeding and INR increase,Avoid NSAIDs; use paracetamol,established,dev seed 2026
+warfarin,diclofenac,major,Platelet inhibition plus gastric mucosal injury,GI bleeding and INR increase,Avoid,established,dev seed 2026
+warfarin,naproxen,major,Platelet inhibition plus gastric mucosal injury,GI bleeding and INR increase,Avoid,established,dev seed 2026
+warfarin,ketorolac,major,Platelet inhibition plus gastric mucosal injury,GI bleeding and INR increase,Avoid,established,dev seed 2026
+warfarin,azithromycin,moderate,Possible reduced warfarin metabolism,INR may rise,Monitor INR during and after the course,probable,dev seed 2026
+warfarin,ciprofloxacin,major,CYP1A2 inhibition,INR rises within days,Monitor INR; consider dose reduction,established,dev seed 2026
+warfarin,metronidazole,major,CYP2C9 inhibition of S-warfarin,Marked INR rise and bleeding,Reduce warfarin dose; monitor INR,established,dev seed 2026
+warfarin,fluconazole,major,CYP2C9 inhibition,INR rises; bleeding,Reduce dose; monitor INR,established,dev seed 2026
+warfarin,cotrimoxazole,major,CYP2C9 inhibition and protein binding displacement,INR rises; bleeding,Avoid or reduce dose; monitor INR,established,dev seed 2026
+warfarin,levothyroxine,moderate,Increased catabolism of clotting factors,Enhanced anticoagulant effect,Monitor INR when starting or adjusting thyroxine,established,dev seed 2026
+warfarin,omeprazole,minor,Weak CYP2C19 inhibition,Small INR increase,Monitor INR,probable,dev seed 2026
+clopidogrel,omeprazole,moderate,CYP2C19 inhibition reduces clopidogrel activation,Reduced antiplatelet effect,Prefer pantoprazole,established,dev seed 2026
+clopidogrel,esomeprazole,moderate,CYP2C19 inhibition reduces clopidogrel activation,Reduced antiplatelet effect,Prefer pantoprazole,established,dev seed 2026
+aspirin,ibuprofen,moderate,Ibuprofen blocks aspirin access to COX-1,Loss of cardioprotective antiplatelet effect,Take aspirin at least 30 min before ibuprofen or separate by 8 h,established,dev seed 2026
+ketorolac,ibuprofen,contraindicated,Duplicate NSAID,"GI bleeding, renal failure",Label contraindication; never combine,established,dev seed 2026
+ketorolac,diclofenac,contraindicated,Duplicate NSAID,"GI bleeding, renal failure",Label contraindication; never combine,established,dev seed 2026
+ketorolac,naproxen,contraindicated,Duplicate NSAID,"GI bleeding, renal failure",Label contraindication; never combine,established,dev seed 2026
+ketorolac,aspirin,contraindicated,Duplicate NSAID,"GI bleeding, renal failure",Label contraindication; never combine,established,dev seed 2026
+ibuprofen,diclofenac,major,Duplicate NSAID,GI and renal toxicity without extra benefit,Use one NSAID only,established,dev seed 2026
+losartan,spironolactone,major,Both raise serum potassium,Hyperkalaemia,Monitor potassium and renal function,established,dev seed 2026
+enalapril,spironolactone,major,Both raise serum potassium,Hyperkalaemia,Monitor potassium and renal function,established,dev seed 2026
+cotrimoxazole,spironolactone,major,Trimethoprim blocks distal potassium secretion,"Hyperkalaemia, sudden death reported in elderly",Avoid; monitor potassium,established,dev seed 2026
+losartan,ibuprofen,moderate,NSAID reduces renal prostaglandins,Renal impairment; reduced antihypertensive effect,Short courses only; monitor creatinine,established,dev seed 2026
+enalapril,ibuprofen,moderate,NSAID reduces renal prostaglandins,Renal impairment; reduced antihypertensive effect,Short courses only; monitor creatinine,established,dev seed 2026
+frusemide,ibuprofen,moderate,NSAID reduces renal prostaglandins,Reduced diuretic effect; renal risk,Monitor weight and renal function,established,dev seed 2026
+metformin,ciprofloxacin,moderate,Fluoroquinolone-related dysglycaemia,Hypo- or hyperglycaemia,Monitor glucose,probable,dev seed 2026
+glimepiride,ciprofloxacin,moderate,Enhanced insulin release,Hypoglycaemia,Monitor glucose; warn patient,probable,dev seed 2026
+glimepiride,fluconazole,moderate,CYP2C9 inhibition,Hypoglycaemia,Monitor glucose; reduce dose if needed,established,dev seed 2026
+metformin,prednisolone,moderate,Corticosteroid raises glucose,Hyperglycaemia,Monitor glucose; adjust antidiabetics,established,dev seed 2026
+ciprofloxacin,prednisolone,moderate,Additive tendon toxicity,Tendon rupture risk,Avoid in elderly; stop at first tendon pain,established,dev seed 2026
+levofloxacin,prednisolone,moderate,Additive tendon toxicity,Tendon rupture risk,Avoid in elderly; stop at first tendon pain,established,dev seed 2026
+ciprofloxacin,calcium-carbonate-vitamin-d3,moderate,Chelation in the gut,Reduced ciprofloxacin absorption,Separate doses by at least 2 hours,established,dev seed 2026
+doxycycline,calcium-carbonate-vitamin-d3,moderate,Chelation in the gut,Reduced doxycycline absorption,Separate doses by 2-3 hours,established,dev seed 2026
+doxycycline,ferrous-sulfate,moderate,Chelation in the gut,Reduced doxycycline absorption,Separate doses by 2-3 hours,established,dev seed 2026
+levothyroxine,calcium-carbonate-vitamin-d3,moderate,Adsorption of thyroxine,Reduced thyroxine absorption,Separate by 4 hours,established,dev seed 2026
+levothyroxine,ferrous-sulfate,moderate,Iron binds thyroxine,Reduced thyroxine absorption,Separate by 4 hours,established,dev seed 2026
+levothyroxine,omeprazole,minor,Reduced gastric acidity,Slightly reduced thyroxine absorption,Monitor TSH,probable,dev seed 2026
+tramadol,sertraline,major,Additive serotonergic activity; CYP2D6 inhibition,Serotonin syndrome; seizures,Avoid; use alternative analgesic,established,dev seed 2026
+tramadol,amitriptyline,major,Additive serotonergic activity; lowered seizure threshold,Serotonin syndrome; seizures,Avoid or use lowest doses,established,dev seed 2026
+sertraline,amitriptyline,major,Additive serotonergic activity; CYP2D6 inhibition,Serotonin syndrome; TCA toxicity,Avoid combination,established,dev seed 2026
+tramadol,clonazepam,major,Additive CNS depression,"Respiratory depression, sedation",Avoid; if needed lowest doses and monitor,established,dev seed 2026
+tramadol,diazepam,major,Additive CNS depression,"Respiratory depression, sedation",Avoid; if needed lowest doses and monitor,established,dev seed 2026
+azithromycin,ondansetron,major,Additive QT prolongation,Torsades de pointes,Avoid in patients with QT risk; ECG monitoring,probable,dev seed 2026
+levofloxacin,ondansetron,major,Additive QT prolongation,Torsades de pointes,Avoid in patients with QT risk,probable,dev seed 2026
+domperidone,fluconazole,major,CYP3A4 inhibition raises domperidone levels; additive QT effect,"QT prolongation, arrhythmia",Avoid,established,dev seed 2026
+domperidone,azithromycin,major,Additive QT prolongation,"QT prolongation, arrhythmia",Avoid,probable,dev seed 2026
+atorvastatin,fluconazole,moderate,CYP3A4 inhibition,Increased statin exposure; myopathy risk,Consider pausing statin during the course,established,dev seed 2026
+bisoprolol,salbutamol,moderate,Pharmacological antagonism,Reduced bronchodilation; bronchospasm,Prefer cardioselective agents at low dose; monitor,established,dev seed 2026
+atenolol,salbutamol,moderate,Pharmacological antagonism,Reduced bronchodilation; bronchospasm,Monitor respiratory status,established,dev seed 2026
+allopurinol,amoxicillin,moderate,Unknown,Increased incidence of rash,Warn patient; stop if rash appears,probable,dev seed 2026
+amlodipine,atorvastatin,minor,CYP3A4 competition,Slightly increased statin exposure,No action usually needed,probable,dev seed 2026

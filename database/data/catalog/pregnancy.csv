@@ -1,0 +1,75 @@
+generic_slug,trimester,category,lactation,notes
+paracetamol,,B,L1,
+ibuprofen,,C,L1,
+ibuprofen,3,D,L1,Third trimester: premature closure of the ductus arteriosus; avoid.
+diclofenac,,C,L2,
+diclofenac,3,D,L2,Third trimester: premature closure of the ductus arteriosus; avoid.
+naproxen,,C,L3,
+ketorolac,,C,L2,
+ketorolac,3,D,L2,Third trimester: premature closure of the ductus arteriosus; avoid.
+aspirin,,C,L2,
+aspirin,3,D,L2,Third trimester: premature closure of the ductus arteriosus; avoid.
+tramadol,,C,L3,
+omeprazole,,C,L2,
+esomeprazole,,B,L2,
+pantoprazole,,B,L2,
+ranitidine,,B,L2,
+domperidone,,C,L1,
+ondansetron,,B,L2,
+hyoscine-butylbromide,,C,L3,
+amoxicillin,,B,L1,
+amoxicillin-clavulanic-acid,,B,L1,
+cefixime,,B,L2,
+cefuroxime,,B,L1,
+ceftriaxone,,B,L1,
+azithromycin,,B,L2,
+doxycycline,,D,L3,Positive evidence of fetal risk; use only if no safer alternative.
+ciprofloxacin,,C,L3,
+levofloxacin,,C,L3,
+moxifloxacin,,C,L3,
+metronidazole,,B,L2,
+cotrimoxazole,,C,L3,
+cotrimoxazole,3,D,L3,Third trimester: premature closure of the ductus arteriosus; avoid.
+nitrofurantoin,,B,L2,
+nitrofurantoin,3,D,L2,Avoid at term: neonatal haemolysis.
+fluconazole,,C,L2,
+clotrimazole,,B,L1,
+albendazole,,C,L3,
+cetirizine,,B,L2,
+loratadine,,B,L1,
+fexofenadine,,C,L2,
+chlorpheniramine,,B,L3,
+montelukast,,B,L3,
+salbutamol,,C,L1,
+salmeterol-fluticasone,,C,L2,
+budesonide,,B,L1,
+xylometazoline,,C,L3,
+prednisolone,,C,L2,
+dexamethasone,,C,L3,
+betamethasone,,C,L3,
+metformin,,B,L1,
+glimepiride,,C,L4,
+gliclazide,,C,L4,
+sitagliptin,,B,L3,
+insulin-human-70-30,,B,L1,
+amlodipine,,C,L3,
+losartan,,D,L3,Positive evidence of fetal risk; use only if no safer alternative.
+enalapril,,D,L2,Positive evidence of fetal risk; use only if no safer alternative.
+bisoprolol,,C,L3,
+atenolol,,D,L3,Positive evidence of fetal risk; use only if no safer alternative.
+frusemide,,C,L3,
+spironolactone,,C,L2,
+atorvastatin,,X,L3,Contraindicated in pregnancy.
+rosuvastatin,,X,L3,Contraindicated in pregnancy.
+clopidogrel,,B,L3,
+warfarin,,X,L2,Contraindicated in pregnancy.
+levothyroxine,,A,L1,
+amitriptyline,,C,L2,
+sertraline,,C,L2,
+clonazepam,,D,L3,Positive evidence of fetal risk; use only if no safer alternative.
+diazepam,,D,L3,Positive evidence of fetal risk; use only if no safer alternative.
+allopurinol,,C,L2,
+oral-rehydration-salts,,A,L1,
+zinc-sulfate,,A,L1,
+calcium-carbonate-vitamin-d3,,A,L1,
+ferrous-sulfate,,A,L1,

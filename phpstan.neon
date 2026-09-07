@@ -1,0 +1,13 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 6
+    paths:
+        - app
+        - database
+        - routes
+        - tests
+    excludePaths:
+        - database/migrations/catalog
+    # Custom rules under app/Support/PhpStan are registered here as modules deliver them (NoCatalogModelsInRendering, …).

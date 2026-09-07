@@ -1,0 +1,47 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Domain\Clinic;
+
+use App\Domain\Clinic\Policies\BranchPolicy;
+use App\Domain\Clinic\Policies\DepartmentPolicy;
+use App\Domain\Clinic\Policies\DoctorLeavePolicy;
+use App\Domain\Clinic\Policies\DoctorPolicy;
+use App\Domain\Clinic\Policies\HolidayPolicy;
+use App\Domain\Clinic\Policies\SettingPolicy;
+use App\Domain\Clinic\Policies\SpecialtyPolicy;
+use App\Domain\Clinic\Policies\UserPolicy;
+use App\Domain\Clinic\Services\ActiveBranch;
+use App\Domain\Clinic\Services\Settings;
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\Department;
+use App\Models\Tenant\Doctor;
+use App\Models\Tenant\DoctorLeave;
+use App\Models\Tenant\Holiday;
+use App\Models\Tenant\Setting;
+use App\Models\Tenant\Specialty;
+use App\Models\Tenant\User;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\ServiceProvider;
+
+final class ClinicServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        $this->app->singleton(ActiveBranch::class);
+        $this->app->singleton(Settings::class);
+    }
+
+    public function boot(): void
+    {
+        Gate::policy(Branch::class, BranchPolicy::class);
+        Gate::policy(Department::class, DepartmentPolicy::class);
+        Gate::policy(Specialty::class, SpecialtyPolicy::class);
+        Gate::policy(User::class, UserPolicy::class);
+        Gate::policy(Doctor::class, DoctorPolicy::class);
+        Gate::policy(Holiday::class, HolidayPolicy::class);
+        Gate::policy(DoctorLeave::class, DoctorLeavePolicy::class);
+        Gate::policy(Setting::class, SettingPolicy::class);
+    }
+}

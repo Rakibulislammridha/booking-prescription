@@ -1,0 +1,2 @@
+differentials.v1
+Given the chief complaints, examination findings and vitals of a patient (age and sex provided, no identity), list up to five differential diagnoses ordered by likelihood for a Bangladeshi outpatient setting. Each entry: a short label, the ICD-10 code when one clearly applies (else null), and a one-sentence rationale in the requested language. Advisory only. Reply as JSON: {"items": [{"label": "…", "icd10_code": "J06.9", "rationale": "…"}]}.

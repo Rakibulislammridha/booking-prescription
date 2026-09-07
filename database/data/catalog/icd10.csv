@@ -1,0 +1,75 @@
+code,title,title_bn,chapter,block,parent_code,aliases,is_billable
+A01.0,Typhoid fever,টাইফয়েড জ্বর,I,A00-A09,A01,typhoid|টাইফয়েড,1
+A01,Typhoid and paratyphoid fevers,টাইফয়েড ও প্যারাটাইফয়েড জ্বর,I,A00-A09,,,0
+A09,Infectious gastroenteritis and colitis,সংক্রামক গ্যাস্ট্রোএন্টেরাইটিস,I,A00-A09,,diarrhoea|diarrhea|loose motion|ডায়রিয়া|পাতলা পায়খানা,1
+A90,Dengue fever,ডেঙ্গু জ্বর,I,A90-A99,,dengue|ডেঙ্গু,1
+B01.9,Varicella without complication,জলবসন্ত,I,B00-B09,,chicken pox|জলবসন্ত,1
+B18.1,Chronic viral hepatitis B,দীর্ঘস্থায়ী হেপাটাইটিস বি,I,B15-B19,,hep b|hbv|হেপাটাইটিস বি,1
+B35.4,Tinea corporis,দাদ,I,B35-B49,,ringworm|দাদ,1
+B86,Scabies,খোস পাঁচড়া,I,B85-B89,,scabies|খোস পাঁচড়া|চুলকানি,1
+D50.9,Iron deficiency anaemia,আয়রন ঘাটতিজনিত রক্তশূন্যতা,III,D50-D53,,anemia|anaemia|রক্তশূন্যতা,1
+E03.9,Hypothyroidism,হাইপোথাইরয়েডিজম,IV,E00-E07,,hypothyroid|thyroid low|থাইরয়েড,1
+E05.9,Thyrotoxicosis,থাইরোটক্সিকোসিস,IV,E00-E07,,hyperthyroid,1
+E11,Type 2 diabetes mellitus,টাইপ ২ ডায়াবেটিস,IV,E10-E14,,diabetes,0
+E11.9,Type 2 diabetes mellitus without complications,জটিলতাবিহীন টাইপ ২ ডায়াবেটিস,IV,E10-E14,E11,sugar|diabetes|dm|t2dm|ডায়াবেটিস|সুগার,1
+E11.2,Type 2 diabetes mellitus with renal complications,কিডনি জটিলতাসহ টাইপ ২ ডায়াবেটিস,IV,E10-E14,E11,diabetic nephropathy,1
+E11.4,Type 2 diabetes mellitus with neurological complications,স্নায়ু জটিলতাসহ টাইপ ২ ডায়াবেটিস,IV,E10-E14,E11,diabetic neuropathy,1
+E66.9,Obesity,স্থূলতা,IV,E65-E68,,obese|overweight|মোটা,1
+E78.5,Hyperlipidaemia,হাইপারলিপিডেমিয়া,IV,E70-E90,,cholesterol|lipid|লিপিড,1
+F32.9,Depressive episode,বিষণ্ণতা,V,F30-F39,,depression|বিষণ্ণতা,1
+F41.1,Generalised anxiety disorder,দুশ্চিন্তা রোগ,V,F40-F48,,anxiety|tension|দুশ্চিন্তা,1
+F51.0,Insomnia,অনিদ্রা,V,F50-F59,,sleep problem|ঘুম হয় না,1
+G43.9,Migraine,মাইগ্রেন,VI,G40-G47,,migraine|মাইগ্রেন,1
+G44.2,Tension-type headache,টেনশন মাথাব্যথা,VI,G40-G47,,tension headache,1
+H10.9,Conjunctivitis,চোখ ওঠা,VII,H10-H13,,red eye|eye infection|চোখ ওঠা,1
+H66.9,Otitis media,মধ্যকর্ণের প্রদাহ,VIII,H65-H75,,ear infection|কানে ব্যথা,1
+I10,Essential hypertension,উচ্চ রক্তচাপ,IX,I10-I15,,bp|high pressure|htn|hypertension|প্রেসার|উচ্চ রক্তচাপ,1
+I20.9,Angina pectoris,অ্যানজাইনা,IX,I20-I25,,angina|chest pain|বুকে ব্যথা,1
+I25,Chronic ischaemic heart disease,দীর্ঘস্থায়ী ইসকেমিক হৃদরোগ,IX,I20-I25,,,0
+I25.9,"Chronic ischaemic heart disease, unspecified",ইসকেমিক হৃদরোগ,IX,I20-I25,I25,ihd|heart disease|হার্টের অসুখ,1
+I50.9,Heart failure,হার্ট ফেইলিউর,IX,I30-I52,,hf|chf,1
+I63.9,Cerebral infarction,স্ট্রোক,IX,I60-I69,,stroke|স্ট্রোক,1
+J00,Acute nasopharyngitis,সর্দি,X,J00-J06,,common cold|cold|সর্দি,1
+J02.9,Acute pharyngitis,গলা ব্যথা,X,J00-J06,,sore throat|গলা ব্যথা,1
+J03.9,Acute tonsillitis,টনসিলের প্রদাহ,X,J00-J06,,tonsil|টনসিল,1
+J06,Acute upper respiratory infections of multiple and unspecified sites,উর্ধ্ব শ্বাসনালীর সংক্রমণ,X,J00-J06,,,0
+J06.9,Acute upper respiratory infection,উর্ধ্ব শ্বাসনালীর সংক্রমণ,X,J00-J06,J06,urti|cold cough|সর্দি কাশি,1
+J18.9,Pneumonia,নিউমোনিয়া,X,J09-J18,,pneumonia|নিউমোনিয়া,1
+J20.9,Acute bronchitis,ব্রঙ্কাইটিস,X,J20-J22,,bronchitis,1
+J30.4,Allergic rhinitis,অ্যালার্জিক রাইনাইটিস,X,J30-J39,,allergy|hay fever|sneezing|হাঁচি,1
+J44.9,Chronic obstructive pulmonary disease,সিওপিডি,X,J40-J47,,copd,1
+J45.9,Asthma,হাঁপানি,X,J40-J47,,asthma|হাঁপানি|শ্বাসকষ্ট,1
+K02.9,Dental caries,দাঁতের ক্ষয়,XI,K00-K14,,cavity|দাঁতের পোকা,1
+K04.7,Periapical abscess,দাঁতের গোড়ায় পুঁজ,XI,K00-K14,,tooth abscess|দাঁতে পুঁজ,1
+K05.1,Chronic gingivitis,মাড়ির প্রদাহ,XI,K00-K14,,gum disease|মাড়ি,1
+K21.9,Gastro-oesophageal reflux disease,গ্যাস্ট্রো-ইসোফেজিয়াল রিফ্লাক্স,XI,K20-K31,,gerd|acidity|reflux|heartburn|বুক জ্বালা,1
+K25.9,Gastric ulcer,পাকস্থলীর আলসার,XI,K20-K31,,ulcer|আলসার,1
+K29.7,Gastritis,গ্যাস্ট্রাইটিস,XI,K20-K31,,gastric|gastritis|গ্যাস্ট্রিক,1
+K30,Functional dyspepsia,বদহজম,XI,K20-K31,,indigestion|বদহজম,1
+K59.0,Constipation,কোষ্ঠকাঠিন্য,XI,K55-K64,,constipation|কোষ্ঠকাঠিন্য,1
+K64.9,Haemorrhoids,পাইলস,XI,K55-K64,,piles|পাইলস,1
+K76.9,"Liver disease, unspecified",লিভারের রোগ,XI,K70-K77,,liver|লিভার,1
+K80.2,Calculus of gallbladder,পিত্তথলির পাথর,XI,K80-K87,,gall stone|পিত্তথলির পাথর,1
+L20.9,Atopic dermatitis,একজিমা,XII,L20-L30,,eczema|একজিমা,1
+L50.9,Urticaria,আর্টিকেরিয়া,XII,L50-L54,,hives|allergy rash|চাকা চাকা,1
+L70.0,Acne vulgaris,ব্রণ,XII,L60-L75,,acne|pimple|ব্রণ,1
+M10.9,Gout,গাউট,XIII,M05-M14,,gout|uric acid|বাত,1
+M17.9,Gonarthrosis,হাঁটুর অস্টিওআর্থ্রাইটিস,XIII,M15-M19,,knee oa|knee pain|হাঁটু ব্যথা,1
+M54.5,Low back pain,কোমর ব্যথা,XIII,M50-M54,,back pain|lbp|কোমর ব্যথা,1
+M79.1,Myalgia,পেশির ব্যথা,XIII,M70-M79,,body ache|গায়ে ব্যথা,1
+N10,Acute pyelonephritis,কিডনির সংক্রমণ,XIV,N10-N16,,kidney infection,1
+N18.9,Chronic kidney disease,দীর্ঘস্থায়ী কিডনি রোগ,XIV,N17-N19,,ckd|kidney disease|কিডনি,1
+N20.0,Calculus of kidney,কিডনির পাথর,XIV,N20-N23,,kidney stone|পাথর,1
+N39.0,Urinary tract infection,প্রস্রাবের সংক্রমণ,XIV,N30-N39,,uti|urine infection|প্রস্রাবে জ্বালা,1
+N92.0,Excessive menstruation,অতিরিক্ত মাসিক,XIV,N80-N98,,heavy period|মাসিক বেশি,1
+N94.6,Dysmenorrhoea,মাসিকের ব্যথা,XIV,N80-N98,,period pain|মাসিকে ব্যথা,1
+O21.0,Mild hyperemesis gravidarum,গর্ভাবস্থার বমি,XV,O20-O29,,pregnancy vomiting,1
+R05,Cough,কাশি,XVIII,R00-R09,,cough|কাশি,1
+R10.4,Abdominal pain,পেট ব্যথা,XVIII,R10-R19,,stomach pain|পেট ব্যথা,1
+R11,Nausea and vomiting,বমি,XVIII,R10-R19,,vomiting|বমি,1
+R42,Dizziness,মাথা ঘোরা,XVIII,R40-R46,,vertigo|মাথা ঘোরা,1
+R50.9,"Fever, unspecified",জ্বর,XVIII,R50-R69,,fever|জ্বর,1
+R51,Headache,মাথা ব্যথা,XVIII,R50-R69,,headache|মাথা ব্যথা,1
+R53,Malaise and fatigue,দুর্বলতা,XVIII,R50-R69,,weakness|দুর্বলতা,1
+Z33.1,"Pregnant state, incidental",গর্ভবতী,XXI,Z30-Z39,,pregnant|গর্ভবতী,1
+Z39.1,Care of lactating mother,স্তন্যদানকারী মা,XXI,Z30-Z39,,lactating|breastfeeding|বুকের দুধ,1
