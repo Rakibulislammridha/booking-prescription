@@ -1,0 +1,7 @@
+# Container for the RuleTestCase suites. NoWhereOnEncryptedCasts needs PHPStan's rich parser injected by name (see
+# phpstan.neon), so the rule is built by the test container instead of by hand.
+services:
+    -
+        class: App\Support\PhpStan\NoWhereOnEncryptedCasts
+        arguments:
+            parser: @currentPhpVersionRichParser

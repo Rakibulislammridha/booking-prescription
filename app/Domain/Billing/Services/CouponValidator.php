@@ -13,15 +13,26 @@ use App\Models\Tenant\Invoice;
 
 /**
  * Coupon validity and the paisa it is worth on one invoice (BRIEF §5.I). Every check throws `CouponInvalid` with a
- * translated reason; the caller shows it verbatim. The redemption LIMIT is checked here but enforced by the
- * database (`coupon_redemptions` UNIQUE (invoice_id)) — the check is the message, the index is the guarantee.
+ * translated reason; the caller shows it verbatim.
+ *
+ * The usage CAPS (`max_uses`, `max_uses_per_patient`) are decided here by counting `coupon_redemptions` rows, and
+ * that count is only meaningful while every competing redemption of the same coupon is serialised: the caller
+ * MUST already hold `FOR UPDATE` on the `coupons` row (`ApplyCoupon::lockCoupon()`) — the same invariant the
+ * serial engine calls I-OWNER (SERIAL_ENGINE §4). `coupon_redemptions_invoice_id_uniq` guarantees only that one
+ * invoice carries one coupon; it says nothing about the caps. The caps are backstopped by the unique ordinals
+ * this method returns (`coupon_redemptions_coupon_use_seq_uniq`, `coupon_redemptions_patient_use_seq_uniq`).
  */
 final class CouponValidator
 {
     public function __construct(private readonly InvoiceCalculator $calculator) {}
 
-    /** @throws CouponInvalid|CouponAlreadyApplied */
-    public function assertUsable(Coupon $coupon, Invoice $invoice, int $reduciblePaisa): void
+    /**
+     * @return array{coupon_use_seq: int, patient_use_seq: int} the 1-based ordinals this redemption would take,
+     *                                                          to be written on the `coupon_redemptions` row
+     *
+     * @throws CouponInvalid|CouponAlreadyApplied
+     */
+    public function assertUsable(Coupon $coupon, Invoice $invoice, int $reduciblePaisa): array
     {
         if (! $coupon->is_active) {
             throw new CouponInvalid(['reason' => __('billing.coupon.reason.inactive')]);
@@ -49,7 +60,8 @@ final class CouponValidator
             throw new CouponAlreadyApplied;
         }
 
-        // The authoritative usage count is the redemption rows, not the cached uses_count column.
+        // The authoritative usage count is the redemption rows, not the cached uses_count column. Read under the
+        // caller's FOR UPDATE on the coupon, so no other transaction can be between its count and its insert.
         $used = CouponRedemption::query()->where('coupon_id', $coupon->id)->count();
 
         if ($coupon->max_uses !== null && $used >= $coupon->max_uses) {
@@ -63,6 +75,8 @@ final class CouponValidator
         }
 
         $this->assertInScope($coupon, $invoice);
+
+        return ['coupon_use_seq' => $used + 1, 'patient_use_seq' => $usedByPatient + 1];
     }
 
     /** Percentage coupons are capped by `max_discount_paisa` and then by what is left to reduce. */

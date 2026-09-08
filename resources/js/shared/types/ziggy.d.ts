@@ -554,6 +554,7 @@ declare module 'ziggy-js' {
             "binding": "public_id"
         }
     ],
+    "api.telemedicine.webhook": [],
     "api.tenancy.ping": [],
     "panel.login": [],
     "panel.login.store": [],
@@ -817,6 +818,31 @@ declare module 'ziggy-js' {
             "name": "user",
             "required": true,
             "binding": "public_id"
+        }
+    ],
+    "panel.clinic.staff.sessions.index": [
+        {
+            "name": "user",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "panel.clinic.staff.sessions.destroy_others": [
+        {
+            "name": "user",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "panel.clinic.staff.sessions.destroy": [
+        {
+            "name": "user",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "ref",
+            "required": true
         }
     ],
     "panel.clinic.doctors.index": [],
@@ -1783,6 +1809,63 @@ declare module 'ziggy-js' {
             "binding": "public_id"
         }
     ],
+    "panel.telemedicine.index": [],
+    "panel.telemedicine.console": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "panel.telemedicine.start": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "panel.telemedicine.end": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "panel.telemedicine.token": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "panel.telemedicine.leave": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "panel.telemedicine.recording": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "panel.telemedicine.state": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "panel.telemedicine.quality": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
     "site.billing.checkout": [
         {
             "name": "appointment",
@@ -1885,6 +1968,57 @@ declare module 'ziggy-js' {
         {
             "name": "doctorSlug",
             "required": true
+        }
+    ],
+    "site.telemedicine.book": [],
+    "site.telemedicine.book.store": [],
+    "site.telemedicine.booked": [
+        {
+            "name": "appointment",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "site.telemedicine.join": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "site.telemedicine.room": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "site.telemedicine.room.state": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "site.telemedicine.room.token": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "site.telemedicine.room.leave": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
+        }
+    ],
+    "site.telemedicine.room.quality": [
+        {
+            "name": "room",
+            "required": true,
+            "binding": "room_name"
         }
     ]
 }

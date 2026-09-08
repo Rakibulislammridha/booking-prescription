@@ -6,7 +6,6 @@ namespace App\Models\Catalog;
 
 use App\Domain\Catalog\Enums\EvidenceLevel;
 use App\Domain\Catalog\Enums\InteractionSeverity;
-use App\Models\Catalog\Concerns\EnforcesCatalogReadOnly;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -26,8 +25,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class DrugInteraction extends CatalogModel
 {
-    use EnforcesCatalogReadOnly;
-
     /** @return array<string, string> */
     protected function casts(): array
     {

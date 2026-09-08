@@ -130,6 +130,7 @@ export default function Index({ users, filters, roles, current_user_id, can }: P
                       {can.manage ? (
                         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
                           <Button size="small" startIcon={<KeyIcon />} onClick={() => sendReset(user)}>{t('clinic.staff.send_reset')}</Button>
+                          <Button size="small" component={RouterLink} href={route('panel.clinic.staff.sessions.index', { user: user.public_id })}>{t('clinic.staff.sessions')}</Button>
                           <Button size="small" component={RouterLink} href={route('panel.clinic.staff.edit', { user: user.public_id })}>{t('common.actions.edit')}</Button>
                         </Stack>
                       ) : null}

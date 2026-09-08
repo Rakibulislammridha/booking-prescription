@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domain\Shared\Exceptions\DomainException;
 use App\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use App\Http\Middleware\AssignRequestId;
+use App\Http\Middleware\EnforceIdleTimeout;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SetActiveBranch;
 use App\Http\Middleware\TrustProxies;
@@ -37,7 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // 1. super — host-constrained, registered FIRST so it wins over unconstrained site routes.
             foreach (glob(base_path('routes/super/*.php')) ?: [] as $file) {
                 Route::domain('super.'.$central)
-                    ->middleware(['web', 'central', 'auth:super'])
+                    ->middleware(['web', 'central', 'auth:super', 'idle:super'])
                     ->name('super.')
                     ->group($file);
             }
@@ -56,7 +57,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // 4. panel — tenant host, staff session guard.
             foreach (glob(base_path('routes/panel/*.php')) ?: [] as $file) {
-                Route::middleware(['web', 'tenant', 'auth:web', SetActiveBranch::class])
+                // `idle:web` (BRIEF §5.N) sits after auth:web and before the screens: it is what makes
+                // users.session_timeout_minutes / settings.security.session_timeout_minutes mean something.
+                Route::middleware(['web', 'tenant', 'auth:web', 'idle:web', SetActiveBranch::class])
                     ->prefix('panel')->name('panel.')->group($file);
             }
 
@@ -102,6 +105,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
+            'idle' => EnforceIdleTimeout::class,
             'tenant.require' => RequireTenant::class,
             'central.require' => RequireCentral::class,
             'role' => RoleMiddleware::class,

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models\Catalog;
 
-use App\Models\Catalog\Concerns\EnforcesCatalogReadOnly;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,8 +26,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class DrugInformation extends CatalogModel
 {
-    use EnforcesCatalogReadOnly;
-
     protected $table = 'drug_information';
 
     /** @return array<string, string> */

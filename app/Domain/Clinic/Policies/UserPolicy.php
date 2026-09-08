@@ -33,4 +33,14 @@ final class UserPolicy
     {
         return ! $user->is($model) && $user->can(Permission::ClinicUsersManage->value);
     }
+
+    /**
+     * Staff device management (BRIEF §5.N): anyone may see and end their OWN sessions — that is the control a
+     * person needs when they realise they left themselves signed in somewhere — and a user manager may do it for
+     * anyone else.
+     */
+    public function manageSessions(User $user, User $model): bool
+    {
+        return $user->is($model) || $user->can(Permission::ClinicUsersManage->value);
+    }
 }

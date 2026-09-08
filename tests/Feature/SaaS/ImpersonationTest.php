@@ -41,7 +41,10 @@ final class ImpersonationTest extends TestCase
         $this->assertStringContainsString('://test-a.bp.test/panel/impersonate/', $ticket->url);
         $this->assertSame(hash('sha256', $plain), $row->token_hash, 'only the hash may be stored');
         $this->assertNotSame($plain, $row->token_hash);
-        $this->assertSame(IssueImpersonationToken::TTL_SECONDS, (int) round($row->expires_at->diffInSeconds(CarbonImmutable::now(), true)));
+        // `expires_at` is timestamp(0), so the stored value truncates sub-second precision and the
+        // elapsed test time shifts the diff: an exact comparison reads 59 about half the time. The
+        // property worth asserting is that the token is short-lived, not that it is 60.000s.
+        $this->assertEqualsWithDelta(IssueImpersonationToken::TTL_SECONDS, $row->expires_at->diffInSeconds(CarbonImmutable::now(), true), 2, 'the token must expire about TTL seconds out');
         $this->assertTrue($row->isUsable());
 
         $this->assertTrue(AuditLogCentral::query()

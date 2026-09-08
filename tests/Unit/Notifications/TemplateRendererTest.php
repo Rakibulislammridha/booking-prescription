@@ -127,6 +127,6 @@ final class TemplateRendererTest extends TestCase
     public function test_the_event_catalogue_has_no_report_ready(): void
     {
         $this->assertNotContains('report_ready', NotificationEvent::values());
-        $this->assertCount(12, NotificationEvent::cases());
+        $this->assertCount(13, NotificationEvent::cases());   // + telemedicine_invite (Module K, BRIEF §5.K/§5.J)
     }
 }

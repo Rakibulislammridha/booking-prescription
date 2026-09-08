@@ -6,7 +6,6 @@ namespace App\Models\Catalog;
 
 use App\Domain\Catalog\Enums\LactationRisk;
 use App\Domain\Catalog\Enums\PregnancyCategory as Category;
-use App\Models\Catalog\Concerns\EnforcesCatalogReadOnly;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -20,8 +19,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class PregnancyCategory extends CatalogModel
 {
-    use EnforcesCatalogReadOnly;
-
     /** @return array<string, string> */
     protected function casts(): array
     {

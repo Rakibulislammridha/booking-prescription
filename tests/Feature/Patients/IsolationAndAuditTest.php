@@ -7,6 +7,10 @@ namespace Tests\Feature\Patients;
 use App\Domain\Audit\Enums\AuditAction;
 use App\Domain\Audit\Enums\AuditActorType;
 use App\Domain\Clinic\Enums\Role;
+use App\Domain\Patients\Actions\MergePatients;
+use App\Domain\Patients\Actions\UpdatePatient;
+use App\Domain\Patients\Data\PatientData;
+use App\Domain\Shared\Actor;
 use App\Models\Tenant\AuditLog;
 use App\Models\Tenant\Patient;
 use App\Models\Tenant\PatientAllergy;
@@ -83,5 +87,66 @@ final class IsolationAndAuditTest extends TestCase
         $this->assertSame($patient->id, $view->patient_id);
         $this->assertSame('panel.patients.show', $view->context['route']);
         $this->assertCount(1, AuditLog::query()->where('auditable_id', $patient->id)->where('action', 'view')->get());
+    }
+
+    /**
+     * A family link is what grants a guardian portal access to a dependant's clinical records, so it must be as
+     * auditable to leave a household as to join one. Both actions used to drop the link through the query builder,
+     * which fires no model event: the trail recorded households being joined and never left.
+     */
+    public function test_leaving_a_household_is_audited_exactly_like_joining_one(): void
+    {
+        $this->asTenant('a');
+        $staff = $this->actingAsStaff(Role::HospitalAdmin);
+
+        $primary = Patient::factory()->create(['mobile' => '+8801710000501', 'is_mobile_owner' => true]);
+        $dependent = Patient::factory()->dependentOf($primary)->create(['name' => 'Dependant']);
+        $link = PatientRelation::query()->where('dependent_patient_id', $dependent->id)->firstOrFail();
+
+        $this->assertAudited(AuditAction::Create, $link);
+
+        // Moving the dependant to their own number takes them out of the household.
+        app(UpdatePatient::class)->handle(
+            $dependent,
+            new PatientData(name: 'Dependant', mobile: '+8801710000502'),
+            Actor::user($staff->id),
+        );
+
+        $this->assertFalse(PatientRelation::query()->whereKey($link->id)->exists());
+
+        $deleted = $this->assertAudited(AuditAction::Delete, $link);
+        $this->assertSame(AuditActorType::User, $deleted->actor_type);
+        $this->assertSame($staff->id, $deleted->actor_id, 'the trail names the staff member who broke the link');
+        $this->assertSame($dependent->id, $deleted->patient_id, 'and files it under the dependant whose records it guarded');
+        $this->assertSame($primary->id, $deleted->before['primary_patient_id'] ?? null);
+        $this->assertSame($dependent->id, $deleted->before['dependent_patient_id'] ?? null);
+    }
+
+    public function test_a_merge_audits_every_family_link_it_dissolves_or_moves(): void
+    {
+        $this->asTenant('a');
+        $staff = $this->actingAsStaff(Role::HospitalAdmin);
+
+        $winner = Patient::factory()->create(['mobile' => '+8801710000601', 'is_mobile_owner' => true]);
+        $loser = Patient::factory()->create(['mobile' => '+8801710000602', 'is_mobile_owner' => true]);
+        $childOfLoser = Patient::factory()->dependentOf($loser)->create(['name' => 'Child of loser']);
+
+        $movedLink = PatientRelation::query()->where('dependent_patient_id', $childOfLoser->id)->firstOrFail();
+
+        app(MergePatients::class)->handle($winner, $loser, Actor::user($staff->id), 'duplicate registration');
+
+        // The child now hangs off the winner, and the move left a row naming who did it.
+        $this->assertSame($winner->id, PatientRelation::query()->whereKey($movedLink->id)->value('primary_patient_id'));
+
+        $updated = $this->assertAudited(AuditAction::Update, $movedLink);
+        $this->assertSame($staff->id, $updated->actor_id);
+        $this->assertSame($loser->id, $updated->before['primary_patient_id'] ?? null);
+        $this->assertSame($winner->id, $updated->after['primary_patient_id'] ?? null);
+
+        // And the summarising row for the bulk repoint says enough to reconstruct the merge.
+        $summary = $this->assertAudited(AuditAction::Update, $winner, ['loser_id' => $loser->id]);
+        $this->assertSame('duplicate registration', $summary->context['reason']);
+        $this->assertSame(1, $summary->context['family_links_moved']);
+        $this->assertSame($loser->public_id, $summary->after['merged_from'] ?? null);
     }
 }

@@ -46,7 +46,7 @@ final class PanelTest extends TestCase
             ->has('notifications.data', 4)
             ->where('stats.failed', 1)
             ->has('options.channels', 5)
-            ->has('options.events', 12),
+            ->has('options.events', 13),        // + telemedicine_invite (Module K)
         );
 
         $this->get('/panel/notifications?channel=email')
@@ -102,7 +102,7 @@ final class PanelTest extends TestCase
 
         $this->get('/panel/notifications/templates')->assertInertia(fn (AssertableInertia $p) => $p
             ->component('Notifications/Templates')
-            ->has('defaults', 12 * 5 * 2)
+            ->has('defaults', 13 * 5 * 2)       // + telemedicine_invite (Module K)
             ->has('catalogue.three_ahead')
             ->has('templates', 0),
         );

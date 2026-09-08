@@ -29,6 +29,15 @@ export const SITE_KEY_PREFIXES: readonly string[] = [
   'queue.',
   'site.',
   'tenancy.',
+  // Only the patient-facing half of the module: the doctor console's and the board's strings (`telemedicine.
+  // console.*`, `.board.*`, `.errors.*`, `.flash.*`) are staff copy and never reach a phone.
+  'telemedicine.book.',
+  'telemedicine.booked.',
+  'telemedicine.call.',
+  'telemedicine.join.',
+  'telemedicine.preflight.',
+  'telemedicine.room.',
+  'telemedicine.unavailable.',
 ];
 
 /** `null` = the whole file (the panel is a staff app on desks; it keeps every key, one locale at a time). */

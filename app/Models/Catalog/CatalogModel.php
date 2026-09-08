@@ -19,7 +19,11 @@ abstract class CatalogModel extends Model
 
     protected $guarded = [];
 
-    /** Only boot<Trait>() methods are called automatically: the base class must register its own guards. */
+    /**
+     * Eloquent auto-invokes boot<Trait>() but not a base class' own hook, so CatalogModel registers its guards here.
+     * Every subclass inherits them without opting in — see CatalogModelBaseGuardTest, which saves an anonymous
+     * CatalogModel that uses no concern at all and still gets CatalogIsReadOnly.
+     */
     protected static function boot(): void
     {
         parent::boot();

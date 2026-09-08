@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadIndexedDb, uniqueDevice, fakeTimers } from './setup';
+import { uniqueDevice, fakeTimers } from './setup';
 import { ReceptionDB } from '../db';
 import { EventLog } from '../eventLog';
 import { BlockIssuer } from '../blocks';
@@ -8,13 +8,12 @@ import { listConflicts, useConflicts } from '../conflicts';
 import { resetConnectionForTests, useConnection } from '../../connection/store';
 import type { SyncRequest, SyncResponse, SyncEventResult } from '../types';
 
-const hasIdb = await loadIndexedDb();
 
 function accepted(id: string, extra: Record<string, unknown> = {}): SyncEventResult {
   return { client_event_id: id, status: 'accepted', server_result: extra };
 }
 
-describe.skipIf(!hasIdb)('sync engine (OFFLINE §7.3)', () => {
+describe('sync engine (OFFLINE §7.3)', () => {
   let db: ReceptionDB;
   let log: EventLog;
   let issuer: BlockIssuer;

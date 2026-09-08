@@ -52,7 +52,10 @@ final class DataController extends Controller
 
         $audit->record(CentralAuditAction::Export, $tenant, $backup, null, ['downloaded' => $backup->storage_path]);
 
-        $name = $tenant->slug.'-'.$backup->type->value.'-'.$backup->id.($backup->type === BackupType::Export ? '.zip' : '.dump');
+        // The suffix has to tell the truth: a `.dump` an operator cannot feed to pg_restore because it is
+        // ciphertext is worse than no download at all (App\Domain\SaaS\Services\BackupCipher).
+        $name = $tenant->slug.'-'.$backup->type->value.'-'.$backup->id
+            .($backup->type === BackupType::Export ? '.zip' : '.dump'.$backup->encryption->fileSuffix());
 
         return Storage::disk($backup->storage_disk)->download($backup->storage_path, $name);
     }

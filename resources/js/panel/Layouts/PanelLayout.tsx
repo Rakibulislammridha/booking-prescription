@@ -36,6 +36,7 @@ import PrescriptionIcon from '@mui/icons-material/Description';
 import BillingIcon from '@mui/icons-material/Payments';
 import NotificationsIcon from '@mui/icons-material/NotificationsActive';
 import ReportsIcon from '@mui/icons-material/BarChart';
+import TelemedicineIcon from '@mui/icons-material/VideoCall';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SetupIcon from '@mui/icons-material/Tune';
 import BranchIcon from '@mui/icons-material/Business';
@@ -65,6 +66,7 @@ interface NavItem {
   icon: ReactNode;
   pattern: string;        // isRoute() pattern for the selected state
   permission?: string;    // App\Domain\Clinic\Enums\Permission value; the entry is hidden without it
+  feature?: string;       // SharedProps.features key; an add-on module's entry is hidden without the plan (BRIEF §5.M)
 }
 
 /**
@@ -94,6 +96,7 @@ const NAV: NavItem[] = [
   { key: 'billing', routeName: 'panel.billing.index', icon: <BillingIcon />, pattern: 'panel.billing.*', permission: 'billing.invoices.view' },
   { key: 'notifications', routeName: 'panel.notifications.index', icon: <NotificationsIcon />, pattern: 'panel.notifications.*', permission: 'notifications.templates.manage' },
   { key: 'reports', routeName: 'panel.reports.index', icon: <ReportsIcon />, pattern: 'panel.reports.*', permission: 'reports.view' },
+  { key: 'telemedicine', routeName: 'panel.telemedicine.index', icon: <TelemedicineIcon />, pattern: 'panel.telemedicine.*', feature: 'telemedicine' },
 ];
 
 export interface PanelLayoutProps {
@@ -115,7 +118,9 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
   const pageTitle = title ? t(title) : undefined;
   const user = shared.auth.user;
   // Entries a user lacks the permission for are hidden; entries whose module has not shipped its route stay visible but disabled.
-  const allowed = (item: NavItem): boolean => !item.permission || (user?.permissions.includes(item.permission) ?? false);
+  const allowed = (item: NavItem): boolean =>
+    (!item.permission || (user?.permissions.includes(item.permission) ?? false))
+    && (!item.feature || shared.features[item.feature] === true);
   const nav = NAV.filter(allowed);
   const setup = SETUP.filter(allowed);
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Billing;
 
 use App\Domain\Billing\Console\CollectHammerCommand;
+use App\Domain\Billing\Console\CouponHammerCommand;
 use App\Domain\Billing\Gateways\GatewayManager;
 use App\Domain\Billing\Listeners\CreateInvoiceForBooking;
 use App\Domain\Billing\Listeners\DecideRefundOnCancellation;
@@ -63,7 +64,7 @@ final class BillingServiceProvider extends ServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([CollectHammerCommand::class]);
+            $this->commands([CollectHammerCommand::class, CouponHammerCommand::class]);
         }
 
         Gate::policy(Invoice::class, InvoicePolicy::class);

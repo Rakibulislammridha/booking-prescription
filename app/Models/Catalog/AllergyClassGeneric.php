@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models\Catalog;
 
-use App\Models\Catalog\Concerns\EnforcesCatalogReadOnly;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -17,8 +16,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class AllergyClassGeneric extends CatalogModel
 {
-    use EnforcesCatalogReadOnly;
-
     public const UPDATED_AT = null;
 
     /** @return array<string, string> */

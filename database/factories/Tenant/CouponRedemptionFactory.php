@@ -22,6 +22,10 @@ final class CouponRedemptionFactory extends Factory
             'invoice_id' => Invoice::factory(),
             'patient_id' => fn (array $a) => (int) Invoice::query()->whereKey($a['invoice_id'])->value('patient_id'),
             'amount_paisa' => 5000,
+            // The ordinals ApplyCoupon assigns under the coupons row lock; a factory row is the first use of its
+            // coupon unless a state says otherwise (the unique indexes will say so loudly if it is not).
+            'coupon_use_seq' => 1,
+            'patient_use_seq' => 1,
         ];
     }
 }

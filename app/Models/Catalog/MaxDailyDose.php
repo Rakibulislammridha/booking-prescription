@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Models\Catalog;
 
 use App\Domain\Catalog\Enums\DosePopulation;
-use App\Models\Catalog\Concerns\EnforcesCatalogReadOnly;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -23,8 +22,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class MaxDailyDose extends CatalogModel
 {
-    use EnforcesCatalogReadOnly;
-
     /** @return array<string, string> */
     protected function casts(): array
     {

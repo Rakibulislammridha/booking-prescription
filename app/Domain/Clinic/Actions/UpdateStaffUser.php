@@ -8,6 +8,7 @@ use App\Domain\Clinic\Data\StaffUserData;
 use App\Domain\Clinic\Enums\Role;
 use App\Domain\Clinic\Exceptions\CannotDeactivateSelf;
 use App\Domain\Clinic\Exceptions\CannotDemoteSelf;
+use App\Domain\Clinic\Services\StaffSessionIndex;
 use App\Domain\Shared\Actor;
 use App\Models\Tenant\User;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,8 @@ use Illuminate\Support\Facades\DB;
  */
 final class UpdateStaffUser
 {
+    public function __construct(private readonly StaffSessionIndex $sessions) {}
+
     public function handle(User $user, StaffUserData $data, Actor $actor): User
     {
         if (! $data->isActive && $actor->userId === $user->id) {
@@ -28,7 +31,9 @@ final class UpdateStaffUser
             throw new CannotDemoteSelf;
         }
 
-        return DB::transaction(function () use ($user, $data): User {
+        $wasActive = $user->is_active;
+
+        $updated = DB::transaction(function () use ($user, $data): User {
             $user->fill([
                 'name' => $data->name,
                 'email' => $data->email,
@@ -49,5 +54,12 @@ final class UpdateStaffUser
 
             return $user;
         });
+
+        // An account that can no longer log in must not stay logged in on a desk somewhere (BRIEF §5.N).
+        if ($wasActive && ! $data->isActive) {
+            $this->sessions->revokeAll($updated);
+        }
+
+        return $updated;
     }
 }

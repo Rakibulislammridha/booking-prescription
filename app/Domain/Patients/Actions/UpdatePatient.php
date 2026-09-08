@@ -29,7 +29,12 @@ final class UpdatePatient
                 $owner = Patient::query()->where('mobile', $attributes['mobile'])->where('is_mobile_owner', true)->whereKeyNot($patient->id)->first();
                 $attributes['is_mobile_owner'] = $owner === null;
 
-                PatientRelation::query()->where('dependent_patient_id', $patient->id)->delete();
+                // Eloquent, one row at a time, never Builder::delete(): only model events are audited
+                // (CONVENTIONS §4, ARCHITECTURE §8.1) and this link is what grants a guardian portal access to a
+                // dependant's clinical records — leaving the household must leave a trail exactly as joining does.
+                foreach (PatientRelation::query()->where('dependent_patient_id', $patient->id)->get() as $link) {
+                    $link->delete();
+                }
 
                 if ($owner !== null) {
                     PatientRelation::query()->create(['primary_patient_id' => $owner->id, 'dependent_patient_id' => $patient->id, 'relation' => $data->relation]);

@@ -68,7 +68,10 @@ Models (all `final`, all extend `CatalogModel`, names exactly SCHEMA.md §4's `*
 `MaxDailyDose`, `DrugInformation`, `CatalogVersion`, `CatalogImportIssue`.
 No `SoftDeletes`; `is_active` scopes (`scopeActive`); every row
 carries `catalog_version_id` (SCHEMA §4). Query-builder writes on the `catalog` connection are
-forbidden and caught by the PHPStan rule `NoCatalogQueryBuilderWrites` (ARCHITECTURE.md §5.1).
+forbidden and caught by the PHPStan rule `NoCatalogQueryBuilderWrites` (ARCHITECTURE.md §5.1, identifier
+`bp.catalogQueryBuilderWrite`); writes belong on `catalog_admin` inside `CatalogWriteContext::run()`, which the rule
+never matches. It does not cover raw connection SQL (`->statement()`) or the `Tests\` namespace, where
+`CatalogModelBaseGuardTest` deliberately performs such a write to prove the SELECT-only grant refuses it.
 
 ### 1.3 `CatalogWriteContext`
 

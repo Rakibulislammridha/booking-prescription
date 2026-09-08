@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadIndexedDb, uniqueDevice } from './setup';
+import { uniqueDevice } from './setup';
 import { ReceptionDB, META_KEYS } from '../db';
 import { EventLog } from '../eventLog';
 import { BlockIssuer, BlockExhausted } from '../blocks';
 import { isUlid } from '../../ulid';
 
-const hasIdb = await loadIndexedDb();
 
-describe.skipIf(!hasIdb)('event log (OFFLINE §6)', () => {
+describe('event log (OFFLINE §6)', () => {
   let db: ReceptionDB;
   let log: EventLog;
 

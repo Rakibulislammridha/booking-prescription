@@ -268,6 +268,17 @@ export interface UserSummary {
   name: string;
   roles: string[];
 }
+
+/** One live staff session (BRIEF §5.N). `ref` is a hash of the session id — the id itself never leaves the server. */
+export interface StaffSession {
+  ref: string;
+  ip: string | null;
+  device: string;
+  user_agent: string | null;
+  login_at: string;
+  last_seen_at: string;
+  is_current: boolean;
+}
 // clinic:end
 
 // audit:start
@@ -1876,3 +1887,49 @@ export interface DrugSearchHit extends DrugRef { id: string; source: 'master' | 
 export interface AiSummaryResponse { available: boolean; suggestion_id?: number; type?: 'history_summary'; lines?: string[]; model?: string; generated_at?: string | null }
 export interface AiDifferentialsResponse { available: boolean; suggestion_id?: number; type?: 'differential'; items?: { label: string; icd10_code: string | null; rationale: string }[]; model?: string; generated_at?: string | null }
 // prescription:end
+
+// telemedicine:start
+/** The call document (`App\Domain\Telemedicine\Services\RoomStateBuilder`): the Inertia prop AND the state poll body. */
+export interface TelemedicineRoomState {
+  room: string;
+  status: 'scheduled' | 'open' | 'ended' | 'cancelled';
+  provider: 'agora' | 'livekit' | 'jitsi';
+  scheduled_at: string;
+  opened_at: string | null;
+  ended_at: string | null;
+  max_minutes: number;
+  recording: { allowed: boolean; active: boolean };
+  can_join: boolean;
+  presence: { doctor: boolean; patient: boolean };
+  call: { started_at: string; ended_at: string | null; duration_seconds: number; end_reason: string | null } | null;
+  serial: { public_id: string; code: string; status: string; is_being_seen: boolean } | null;
+  doctor: { public_id: string; slug: string; name: string; name_bn: string | null };
+  /** How the waiting room reaches the Queue module's existing live state — no second realtime system. */
+  queue: { tenant_public_id: string | null; session_public_id: string; doctor_slug: string } | null;
+  viewer: 'doctor' | 'patient' | null;
+  server_time: string;
+}
+/** One row of the doctor's telemedicine board. */
+export interface TelemedicineRoomSummary {
+  room: string;
+  status: TelemedicineRoomState['status'];
+  scheduled_at: string;
+  opened_at: string | null;
+  patient: { public_id: string; name: string; code: string };
+  doctor: { public_id: string; name: string };
+  serial: { code: string; status: string } | null;
+  fee_paisa: number;
+  payment_status: string | null;
+}
+/** A doctor bookable over video (site.telemedicine.book). */
+export interface TelemedicineDoctor {
+  public_id: string;
+  slug: string;
+  name: string;
+  name_bn: string | null;
+  degrees: string | null;
+  designation: string | null;
+  fee_paisa: number;
+  weekdays: number[];
+}
+// telemedicine:end

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models\Central;
 
+use App\Domain\SaaS\Enums\BackupEncryption;
 use App\Domain\SaaS\Enums\BackupStatus;
 use App\Domain\SaaS\Enums\BackupType;
 use Database\Factories\Central\TenantBackupFactory;
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property BackupStatus $status
  * @property string $storage_disk
  * @property string|null $storage_path
+ * @property BackupEncryption $encryption
  */
 final class TenantBackup extends CentralModel
 {
@@ -28,7 +30,7 @@ final class TenantBackup extends CentralModel
     protected $table = 'public.tenant_backups';
 
     protected $fillable = [
-        'tenant_id', 'type', 'status', 'storage_disk', 'storage_path', 'size_bytes', 'checksum_sha256', 'started_at',
+        'tenant_id', 'type', 'status', 'storage_disk', 'storage_path', 'encryption', 'size_bytes', 'checksum_sha256', 'started_at',
         'completed_at', 'expires_at', 'error', 'requested_by_super_admin_id',
     ];
 
@@ -38,6 +40,7 @@ final class TenantBackup extends CentralModel
         return [
             'type' => BackupType::class,
             'status' => BackupStatus::class,
+            'encryption' => BackupEncryption::class,
             'size_bytes' => 'integer',
             'started_at' => 'immutable_datetime',
             'completed_at' => 'immutable_datetime',

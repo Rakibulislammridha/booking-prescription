@@ -15,6 +15,7 @@ use App\Domain\Reports\ReportsServiceProvider;
 use App\Domain\SaaS\SaaSServiceProvider;
 use App\Domain\Scheduling\SchedulingServiceProvider;
 use App\Domain\Serials\SerialsServiceProvider;
+use App\Domain\Telemedicine\TelemedicineServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\AuthServiceProvider;
 use App\Providers\HorizonServiceProvider;
@@ -39,4 +40,5 @@ return [
     NotificationsServiceProvider::class,
     ReportsServiceProvider::class,
     SaaSServiceProvider::class,
+    TelemedicineServiceProvider::class,
 ];

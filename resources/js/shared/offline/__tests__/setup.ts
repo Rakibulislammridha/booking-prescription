@@ -1,24 +1,15 @@
-// jsdom has no IndexedDB. `fake-indexeddb` (a devDependency request to the foundation) provides one; when it is not
-// installed the Dexie-backed suites are skipped rather than failing the whole run. It schedules with setImmediate,
-// so fake timers in these suites must leave setImmediate real (see fakeTimers()).
+// jsdom has no IndexedDB. `fake-indexeddb` (a devDependency) provides one, and it is imported **statically and
+// unconditionally**: these suites hold the LOCKED §5.F.1 client guarantees, so a missing shim must break the run
+// rather than skip it — the previous dynamic import silently turned ten tests into no-ops. It schedules with
+// setImmediate, so fake timers in these suites must leave setImmediate real (see fakeTimers()).
+import 'fake-indexeddb/auto';
 import { vi } from 'vitest';
 import Dexie from 'dexie';
 
-export async function loadIndexedDb(): Promise<boolean> {
-  if (typeof globalThis.indexedDB === 'undefined') {
-    try {
-      const name = 'fake-indexeddb/auto';
-      await import(/* @vite-ignore */ name);
-    } catch {
-      return false;
-    }
-  }
-  if (typeof globalThis.indexedDB === 'undefined') return false;
-  // Dexie captured `indexedDB` when it was imported (before the shim): point it at the shim explicitly.
-  Dexie.dependencies.indexedDB = globalThis.indexedDB;
-  Dexie.dependencies.IDBKeyRange = globalThis.IDBKeyRange;
-  return true;
-}
+// Dexie captures `indexedDB` when its own module is evaluated; point it at the shim explicitly so that import
+// order between this file and `dexie` can never decide whether the suite runs against a real store.
+Dexie.dependencies.indexedDB = globalThis.indexedDB;
+Dexie.dependencies.IDBKeyRange = globalThis.IDBKeyRange;
 
 let counter = 0;
 

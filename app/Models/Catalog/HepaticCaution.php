@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Models\Catalog;
 
 use App\Domain\Catalog\Enums\CautionLevel;
-use App\Models\Catalog\Concerns\EnforcesCatalogReadOnly;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -18,8 +17,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class HepaticCaution extends CatalogModel
 {
-    use EnforcesCatalogReadOnly;
-
     /** @return array<string, string> */
     protected function casts(): array
     {

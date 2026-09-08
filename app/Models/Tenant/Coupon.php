@@ -13,8 +13,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * A promotional code (SCHEMA §3.5). `uses_count` is a cached counter; the authoritative record is
- * `coupon_redemptions`, which is UNIQUE per invoice.
+ * A promotional code (SCHEMA §3.5). This row is the OWNER row of its redemption budget: `ApplyCoupon` takes
+ * FOR UPDATE on it before deciding whether `max_uses` / `max_uses_per_patient` still allow a redemption, exactly
+ * as `AllocateSerial` locks `serial_pools` before taking a number (SERIAL_ENGINE §4). `uses_count` is a cached
+ * mirror of the number of `coupon_redemptions` rows, written from the ordinal assigned inside that lock, so it
+ * cannot drift; the authoritative record is always `coupon_redemptions`.
  *
  * @property int $id
  * @property string $code

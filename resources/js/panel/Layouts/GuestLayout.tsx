@@ -24,6 +24,9 @@ export function GuestLayout({ title, children }: GuestLayoutProps) {
   const nextLocale = shared.locale === 'bn' ? 'en' : 'bn';
   const canSwitch = hasRoute('panel.locale');
   const domainError = shared.errors.domain; // DomainException → back()->withErrors(['domain' => …]) (ARCHITECTURE §2)
+  // Flash survives the redirect that brought the person here, which is how "you were signed out after N minutes"
+  // (EnforceIdleTimeout, BRIEF §5.N) reaches them: an idle timeout nobody is told about is the same as none.
+  const flash = (['error', 'warning', 'success', 'info'] as const).map((k) => ({ severity: k, message: shared.flash[k] })).find((f) => f.message);
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'grey.100' }}>
@@ -43,6 +46,7 @@ export function GuestLayout({ title, children }: GuestLayoutProps) {
             </Box>
           </Box>
           {domainError ? <Alert severity="error" sx={{ mb: 2 }}>{domainError}</Alert> : null}
+          {flash ? <Alert severity={flash.severity} sx={{ mb: 2 }}>{flash.message}</Alert> : null}
           {children}
           {canSwitch ? (
             <Box sx={{ mt: 3, textAlign: 'center' }}>

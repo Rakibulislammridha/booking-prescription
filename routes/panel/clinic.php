@@ -11,6 +11,7 @@ use App\Http\Controllers\Panel\Clinic\HolidayController;
 use App\Http\Controllers\Panel\Clinic\PadDesignerController;
 use App\Http\Controllers\Panel\Clinic\SettingsController;
 use App\Http\Controllers\Panel\Clinic\SpecialtyController;
+use App\Http\Controllers\Panel\Clinic\StaffSessionController;
 use App\Http\Controllers\Panel\Clinic\StaffUserController;
 use Illuminate\Support\Facades\Route;
 
@@ -51,6 +52,11 @@ Route::prefix('clinic')->name('clinic.')->group(function (): void {
         Route::put('{user:public_id}', [StaffUserController::class, 'update'])->name('update');
         Route::patch('{user:public_id}/status', [StaffUserController::class, 'status'])->name('status');
         Route::post('{user:public_id}/password-reset', [StaffUserController::class, 'sendPasswordReset'])->name('password_reset');
+
+        // Device management (BRIEF §5.N). A session is addressed by an opaque ref, never by its id.
+        Route::get('{user:public_id}/sessions', [StaffSessionController::class, 'index'])->name('sessions.index');
+        Route::delete('{user:public_id}/sessions', [StaffSessionController::class, 'destroyOthers'])->name('sessions.destroy_others');
+        Route::delete('{user:public_id}/sessions/{ref}', [StaffSessionController::class, 'destroy'])->whereAlphaNumeric('ref')->name('sessions.destroy');
     });
 
     Route::prefix('doctors')->name('doctors.')->group(function (): void {

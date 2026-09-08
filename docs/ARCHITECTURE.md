@@ -885,8 +885,16 @@ abstract class CatalogModel extends Model
 closure (inside a `catalog_admin` transaction), `isOpen(): bool` reports it. It is used only by
 `catalog:migrate`, `catalog:seed`, `catalog:import` and `App\Domain\Catalog\Actions\PromoteCustomBrand`
 (super admin, guard `super`). Writes outside it throw `App\Domain\Catalog\Exceptions\CatalogIsReadOnly`.
-Query-builder writes (`DB::connection('catalog')->table()->update()`) are forbidden by convention
-and caught by PHPStan rule `App\Support\PhpStan\NoCatalogQueryBuilderWrites`.
+Query-builder writes (`DB::connection('catalog')->table()->update()`) are forbidden and caught by PHPStan rule
+`App\Support\PhpStan\NoCatalogQueryBuilderWrites` (identifier `bp.catalogQueryBuilderWrite`, registered in
+`phpstan.neon`). It walks the fluent chain back from `insert`/`update`/`upsert`/`delete`/`truncate`/`increment` and
+their variants to whatever produced the builder, following an alias (`$catalog = DB::connection('catalog')`) when the
+name is bound to nothing else. It keys on the literal connection name, so the sanctioned `catalog_admin` path
+(`CatalogWriteContext`, `Import\Upserter`, `catalog:migrate`) needs no exemption and a non-literal
+`DB::connection($name)` is left alone. Two deliberate limits: raw connection SQL (`->statement()`, `->unprepared()`)
+is not a query-builder write, and files in the `Tests\` namespace are skipped — `CatalogModelBaseGuardTest` proves the
+runtime net by performing exactly this write and asserting `CatalogIsReadOnly`, and no static check can tell that call
+apart from a real one. Both of those remain covered at runtime by the SELECT-only grant on the `catalog` role.
 
 Third-party models that live in the tenant schema subclass the vendor model and add the trait:
 `App\Models\Tenant\Role extends \Spatie\Permission\Models\Role { use RequiresTenancy; }`,
@@ -1042,8 +1050,23 @@ on first use) and invalidated when presented on any other tenant or central host
 but they answer `null` without an active tenant, so a stray `login_web_*` marker on `super.{central}` is
 "not authenticated", never a `TenancyNotInitialized` 500. The `api` rate limiter is keyed
 `{tenant_id|central}:{user id|ip}` so clinics never share a bucket. Session lifetime 120 min with
-`authenticateSessions()` **not** enabled (it would force re-login on password change across
-devices; device management is done via the `sessions_by_user` Redis index in the Clinic module).
+`authenticateSessions()` **not** enabled (it would force re-login on password change across devices).
+
+**Idle timeout and device management (BRIEF §5.N).** `App\Http\Middleware\EnforceIdleTimeout` (alias `idle`) runs
+on the `panel` group as `idle:web` and the `super` group as `idle:super`. It stamps `idle_last_activity_at` on the
+session and, past the effective limit, logs the guard out, invalidates the session and returns the person to their
+login screen with `auth.idle_timeout` (401 JSON for an XHR). The limit is `users.session_timeout_minutes` falling
+back to the tenant setting `security.session_timeout_minutes`; the super console has no tenant to ask and uses
+`config('session.idle_timeout_minutes')`. It is deliberately **not** on the `api` group: the panel's background
+traffic (`/api/ping`, the dashboard refresh poll, queue state) lives there, and a timer an open tab silently resets
+is not an idle timeout. Device management is the `sessions_by_user` Redis index,
+`App\Domain\Clinic\Services\StaffSessionIndex` (`bp:sessions_by_user:{tenant}:{user}` → session id ⇒ ip, user
+agent, login_at, last_seen_at, TTL = the session lifetime). The entry is created by the middleware on the first
+authenticated request rather than by the `Login` listener, because the login controller regenerates the session id
+right after `Login` fires; `last_seen_at` is refreshed at most once a minute. `panel.clinic.staff.sessions.*`
+lists and revokes them (a session is addressed by an opaque `ref`, a hash of its id — the id itself never leaves
+the server), revoking destroys the session payload through the configured session handler, and deactivating a
+staff account revokes every session it still holds.
 
 ### 6.2 Staff (`web`) — spatie/laravel-permission inside the tenant schema
 
@@ -1399,7 +1422,20 @@ for super-admin actions. Append-only: the app role has no UPDATE/DELETE and `Aud
 ### 8.2 Encryption at rest
 
 Two layers. Layer 1 (infrastructure): full-volume encryption on the Postgres host, encrypted S3
-buckets for uploads/handwriting/drawings, `age`-encrypted `pg_dump`s. Layer 2 (application): Eloquent
+buckets for uploads/handwriting/drawings, and `pg_dump`s encrypted by
+`App\Domain\SaaS\Services\BackupCipher` before they leave the host. This section used to specify `age`; there
+is no `age` binary on the platform host and no way to build one, so the dumps were in fact being uploaded in the
+clear. What runs is libsodium's `crypto_secretstream_xchacha20poly1305` (ships with PHP): a self-describing
+`"BPBACKUP"` + version prefix, the 24-byte stream header, then 1 MiB plaintext chunks each carrying a Poly1305
+tag, the last one tagged FINAL so a truncated object is a decryption error rather than half a clinic. Nothing is
+ever held whole — encrypt, upload, download and decrypt all stream. The key is
+`config('saas.backups.encryption_key')` (`BP_BACKUP_KEY`, base64 of 32 raw bytes), one per platform, stored beside
+`APP_KEY`; lose it and the objects written with it are unrecoverable. With no key `local`/`testing` log a warning
+and write plaintext, every other environment refuses the backup outright and records `status = failed` on the
+`tenant_backups` row, and every row carries `encryption` (`none` | `xchacha20poly1305`) so "which of these objects
+is in the clear" has an answer. Restores detect the format from the object's own magic, so plaintext dumps taken
+before this existed still restore. **Not** encrypted this way: the churn export zip (`type = export`), which is
+handed to a departing clinic and must open without us. Layer 2 (application): Eloquent
 `encrypted`, `encrypted:array`, `encrypted:json` casts (all verified in `HasAttributes`) on the columns
 marked **ENC** in SCHEMA.md — the authoritative list is SCHEMA.md §5.5; in short: `patients.national_id`,
 `patients.notes`, the `notes` columns of `patient_allergies/conditions/medications`, `visits.private_notes`,
@@ -1410,8 +1446,13 @@ Deliberately **plain**: `patients.mobile/name/dob` (identity and lookup; no `mob
 fields (`generic_id`, `icd10_code`) needed by safety checks and reports, and `prescriptions.snapshot`
 (the legal document, verifiable without a session). ENC columns are `text`, never indexed, never in a
 `WHERE`, never in Meilisearch, logged as `"[encrypted]"` in audit rows. Key rotation via `APP_PREVIOUS_KEYS`.
-A PHPStan rule (`App\Support\PhpStan\NoWhereOnEncryptedCasts`) flags `where('<enc column>', …)` on models
-whose `$casts` mark the column encrypted.
+A PHPStan rule (`App\Support\PhpStan\NoWhereOnEncryptedCasts`, identifier `bp.whereOnEncryptedCast`, registered in
+`phpstan.neon`) flags `where`/`orWhere`/`whereIn`/`whereNot`/`whereLike`/`whereBetween`/`firstWhere` (and their
+`or`/`not` variants) whose first argument is a constant string naming a column the model casts `encrypted`,
+`encrypted:array|json|object|collection` or `AsEncrypted*`. The model comes from the call receiver — a `Model`
+subclass, the `TModel` of an Eloquent `Builder`, or the `TRelatedModel` of a `Relation` — and its cast list is read
+from its own source (`protected function casts()` or a `$casts` property, ancestors merged). `whereNull()` /
+`whereNotNull()` are not flagged (NULL survives the cast) and a raw `DB::table()` query has no model to check.
 
 ### 8.3 Soft references to `catalog`
 
@@ -1425,8 +1466,15 @@ whose `$casts` mark the column encrypted.
 * Snapshot on write: `prescription_items` stores `generic_name, brand_name, strength, form, route` as text
   (BRIEF §3.3) and `prescriptions.snapshot` (PRESCRIPTION.md §6.2, with `snapshot_sha256` and `pad_snapshot`)
   is the only render source. Rendering never joins `catalog` (`App\Domain\Prescription\Render\PrescriptionRenderer`
-  receives only the `PrescriptionSnapshot` DTO; a PHPStan rule forbids `App\Models\Catalog\*` imports under
-  `App\Domain\Prescription\Render`).
+  receives only the `PrescriptionSnapshot` DTO; the PHPStan rule `App\Support\PhpStan\NoCatalogModelsInRendering`
+  (identifier `bp.catalogInRendering`, registered in `phpstan.neon`) fails the build on any reference to an
+  `App\Models\Catalog\*` class — import, `new`, static call, `::class`, `instanceof`, parameter/return/property type —
+  or on naming the `catalog`/`catalog_admin` connection (`DB::connection('catalog')`, `->connection('catalog')`,
+  `Model::on('catalog')`, `$connection = 'catalog'`, `config('database.connections.catalog…')`) anywhere under
+  `App\Domain\Prescription\Render`). The rule stops at that namespace on purpose:
+  `App\Domain\Prescription\Services\SnapshotBuilder` runs at issue time and may read the catalog to build the snapshot;
+  only *rendering* is forbidden to. Blade print views are not analysed by PHPStan, but they only ever receive the array
+  `PrescriptionRenderer::data()` derives from the snapshot, so guarding the renderer classes guards them too.
 * `catalog:reconcile` (nightly at 02:00, central context) — dispatches one `App\Domain\Catalog\Jobs\ReconcileCatalogReferences`
   (queue `default`, `TenantAware`, `WithoutOverlapping`) per active tenant, which scans the soft-reference
   columns listed in CATALOG.md §2/§6 against the catalog with `whereIntegerInRaw` chunks of 1000, writes rows to
@@ -1511,14 +1559,23 @@ back to `local` when `AWS_BUCKET` is empty (`FILESYSTEM_S3_FALLBACK=true`).
 
 ### 8.8 Backups and export
 
-`tenants:backup`: registers a `public.tenant_backups` row (`type daily|manual`, status `running`), runs
-`pg_dump --format=custom -n "tenant_<id>" --no-owner --no-acl booking` via `Symfony\Component\Process\Process`
-(env `PGPASSWORD`), `age`-encrypts the dump, uploads it to the `backups` disk under `tenants/<id>/`,
-records `storage_path`, `size_bytes`, `checksum_sha256`, status `completed`, deletes the local copy;
-30 daily copies kept.
-`tenants:restore {tenant} {file} --force` restores into a scratch schema `tenant_<id>_restore`,
-verifies row counts, then swaps schemas (`ALTER SCHEMA ... RENAME`). `tenants:export` writes JSON
-(one file per table) + CSV zip + all uploads for churn.
+`tenants:backup`: registers a `public.tenant_backups` row (`type daily|manual`, status `running`), resolves the
+encryption mode FIRST (a host with no `BP_BACKUP_KEY` fails here, before spending ten minutes on a dump it is not
+allowed to upload), runs `pg_dump --format=custom -n "tenant_<id>" --no-owner --no-acl booking` via
+`Symfony\Component\Process\Process` (env `PGPASSWORD`), streams the archive through `BackupCipher` (§8.2),
+`writeStream`s it to the `backups` disk under `tenants/<id>/…​.dump[.enc]`, records `storage_path`, `encryption`,
+`size_bytes` (of the stored OBJECT), `checksum_sha256` (of the PLAINTEXT archive — what `pg_restore` eats, and
+what the restore verifies after decrypting), status `completed`, deletes the local copies; 30 daily copies kept.
+`tenants:restore {backup} --force` streams the object back, decrypts it if its magic says so, verifies the
+checksum, restores into a scratch schema `tenant_<id>_restore`, checks it has tables, then swaps the two schemas
+inside one transaction (`ALTER SCHEMA … RENAME`), keeping the displaced one as `tenant_<id>_replaced_<ts>`.
+`pg_restore --schema=X` is a FILTER, not a rename — pointed at the live database it recreates `tenant_<id>`
+objects in `tenant_<id>` and calls every collision an ignorable "already exists" — and PostgreSQL has no
+restore-under-another-name switch, so `TenantSchemaDumper` converts the archive to SQL (`pg_restore --file=-`),
+rewrites the schema identifier on the way past (outside `COPY … FROM stdin` data blocks only) and feeds the
+result to `psql --single-transaction -v ON_ERROR_STOP=1`; a failure therefore leaves neither a scratch schema nor
+a displaced one, and the live clinic is never the restore target. `tenants:export` writes JSON (one file per
+table) + CSV zip + all uploads for churn (unencrypted, by design — see §8.2).
 
 ---
 

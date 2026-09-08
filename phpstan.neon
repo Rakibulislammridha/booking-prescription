@@ -10,4 +10,23 @@ parameters:
         - tests
     excludePaths:
         - database/migrations/catalog
-    # Custom rules under app/Support/PhpStan are registered here as modules deliver them (NoCatalogModelsInRendering, …).
+
+# Project invariants the type system cannot express (CONVENTIONS §4 "custom rules under app/Support/PhpStan").
+# BRIEF §8 / ARCHITECTURE §8.3 — no prescription rendering path joins live to the `catalog` database.
+# ARCHITECTURE §5.1 / CATALOG.md §1.2 — no query-builder writes on the SELECT-only `catalog` connection.
+rules:
+    - App\Support\PhpStan\NoCatalogModelsInRendering
+    - App\Support\PhpStan\NoCatalogQueryBuilderWrites
+
+services:
+    # ARCHITECTURE §8.2 — an ENC column is never in a WHERE: per-row IVs make the comparison always miss.
+    # Registered by hand rather than under `rules:` because it needs PHPStan's own file parser to read a model's
+    # cast list, and `Parser` has several implementations in the container. It must be the *rich* parser:
+    # `defaultAnalysisParser` routes any file outside `parameters.paths` through `CleaningParser`, which strips
+    # method bodies — and `casts()` is a method body.
+    -
+        class: App\Support\PhpStan\NoWhereOnEncryptedCasts
+        arguments:
+            parser: @currentPhpVersionRichParser
+        tags:
+            - phpstan.rules.rule

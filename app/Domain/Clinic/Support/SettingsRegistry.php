@@ -46,6 +46,16 @@ final class SettingsRegistry
             'notifications.quiet_hours_start' => ['type' => 'string', 'default' => '21:00', 'pattern' => '/^([01]\d|2[0-3]):[0-5]\d$/'],
             'notifications.quiet_hours_end' => ['type' => 'string', 'default' => '08:00', 'pattern' => '/^([01]\d|2[0-3]):[0-5]\d$/'],
             'security.session_timeout_minutes' => ['type' => 'int', 'default' => 120, 'min' => 5],
+            // Telemedicine (BRIEF §5.K). `provider` = 'default' follows config('telemedicine.default'); the rest
+            // override config/telemedicine.php per clinic. `api_secret` holds a Laravel-ENCRYPTED string written
+            // by App\Domain\Telemedicine\Services\TelemedicineSettings::storeSecret() — `settings.value` is plain
+            // jsonb and a video API secret does not belong there in clear text.
+            'telemedicine.provider' => ['type' => 'string', 'default' => 'default', 'options' => ['default', 'livekit', 'jitsi', 'null']],
+            'telemedicine.host' => ['type' => 'string', 'default' => ''],
+            'telemedicine.api_key' => ['type' => 'string', 'default' => ''],
+            'telemedicine.api_secret' => ['type' => 'string', 'default' => ''],
+            'telemedicine.recording_enabled' => ['type' => 'bool', 'default' => false],
+            'telemedicine.max_minutes' => ['type' => 'int', 'default' => 45, 'min' => 5, 'max' => 240],
         ];
     }
 

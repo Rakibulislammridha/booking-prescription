@@ -6,7 +6,7 @@ namespace App\Domain\Notifications\Enums;
 
 /**
  * `notifications.event_key` / `notification_templates.event_key` (SCHEMA §3.6) — the closed catalogue of
- * BRIEF §5.J plus the three the other modules raise (`otp`, `payment_receipt`, `serial_*`). "Report ready" is
+ * BRIEF §5.J plus the ones the other modules raise (`otp`, `payment_receipt`, `serial_*`, `telemedicine_invite`). "Report ready" is
  * deliberately absent: BRIEF §6 removed it with the lab module.
  *
  * `variables()` is the documented placeholder catalogue a template author may use for the event; the renderer
@@ -29,6 +29,7 @@ enum NotificationEvent: string
     case PaymentReceipt = 'payment_receipt';
     case SerialTransferred = 'serial_transferred';
     case SerialPostponed = 'serial_postponed';
+    case TelemedicineInvite = 'telemedicine_invite';
 
     /** @return array<int, string> */
     public static function values(): array
@@ -56,6 +57,7 @@ enum NotificationEvent: string
             self::Otp => ['code', 'minutes'],
             self::PaymentReceipt => ['amount', 'invoice_no', 'date'],
             self::SerialTransferred, self::SerialPostponed => ['serial', 'doctor', 'new_serial', 'new_doctor', 'date', 'time', 'branch'],
+            self::TelemedicineInvite => ['serial', 'doctor', 'date', 'time'],
         };
     }
 
@@ -71,7 +73,7 @@ enum NotificationEvent: string
      */
     public function isUrgent(): bool
     {
-        return in_array($this, [self::ThreeAhead, self::DoctorDelayed, self::DoctorCancelled, self::Otp, self::PaymentReceipt, self::SerialTransferred, self::SerialPostponed], true);
+        return in_array($this, [self::ThreeAhead, self::DoctorDelayed, self::DoctorCancelled, self::Otp, self::PaymentReceipt, self::SerialTransferred, self::SerialPostponed, self::TelemedicineInvite], true);
     }
 
     /** Marketing-adjacent events honour a revoked channel consent; an OTP the patient just asked for does not. */

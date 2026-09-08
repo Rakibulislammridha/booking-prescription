@@ -36,6 +36,20 @@ return [
 
     'lifetime' => (int) env('SESSION_LIFETIME', 120),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Idle timeout (super console)
+    |--------------------------------------------------------------------------
+    |
+    | `App\Http\Middleware\EnforceIdleTimeout` expires a session that has seen no human navigation for this many
+    | minutes. TENANT STAFF do not use this value: their limit is `users.session_timeout_minutes` falling back to
+    | the tenant setting `security.session_timeout_minutes` (BRIEF §5.N). This key is the super console's limit,
+    | which has no tenant to ask. 0 disables the idle timeout for the super console only.
+    |
+    */
+
+    'idle_timeout_minutes' => (int) env('SESSION_IDLE_TIMEOUT_MINUTES', 120),
+
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 
     /*

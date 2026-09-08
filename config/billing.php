@@ -60,4 +60,19 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Coupon owner-row lock (testing only)
+    |--------------------------------------------------------------------------
+    |
+    | `ApplyCoupon` takes FOR UPDATE on the `coupons` row before deciding whether `max_uses` /
+    | `max_uses_per_patient` still allow a redemption (SERIAL_ENGINE §4, invariant I-OWNER). This flag drops that
+    | lock so a concurrency test can prove the unique ordinals on `coupon_redemptions` hold the caps on their own
+    | (CONVENTIONS §6.5, the same shape as `serials.testing_skip_owner_lock`). It is honoured ONLY when
+    | `app()->environment('testing')`; there is no way to switch it off in production. Never set it in an .env.
+    |
+    */
+
+    'testing_skip_coupon_lock' => false,
+
 ];

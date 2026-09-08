@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models\Catalog;
 
-use App\Models\Catalog\Concerns\EnforcesCatalogReadOnly;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -30,8 +29,6 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 final class Generic extends CatalogModel
 {
-    use EnforcesCatalogReadOnly;
-
     /** @return array<string, string> */
     protected function casts(): array
     {

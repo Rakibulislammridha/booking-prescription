@@ -16,8 +16,13 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Duplicate merge (SCHEMA §5.4): repoints every FK from the loser to the winner and soft-deletes the loser.
- * Hospital Admin / Super Admin action (patients.merge); never automatic. Tables of modules that are not
- * installed yet are skipped (Schema::hasTable), so the list can be complete today.
+ * Hospital Admin / Super Admin action (patients.merge); never automatic.
+ *
+ * A table of a module that is not installed yet is skipped, so the list can be complete today — but the skip is
+ * recorded in the audit row rather than swallowed: rows left pointing at a soft-deleted loser are a data loss the
+ * trail has to show. The guard checks the COLUMN, not just the table: `telemedicine_sessions` exists and has no
+ * `patient_id` (SCHEMA §3.9 reaches the patient through `telemedicine_rooms.appointment_id`, which is repointed
+ * here), and a table that merely exists is not proof that the column does.
  */
 final class MergePatients
 {
@@ -28,7 +33,6 @@ final class MergePatients
         ['audit_logs', 'patient_id'],
         ['serials', 'patient_id'], ['appointments', 'patient_id'], ['visits', 'patient_id'], ['vitals', 'patient_id'],
         ['prescriptions', 'patient_id'], ['invoices', 'patient_id'], ['payments', 'patient_id'], ['notifications', 'patient_id'],
-        ['telemedicine_sessions', 'patient_id'],
     ];
 
     public function __construct(private readonly AuditRecorder $audit) {}
@@ -41,9 +45,12 @@ final class MergePatients
 
         return DB::transaction(function () use ($winner, $loser, $reason): Patient {
             $repointed = [];
+            $skipped = [];
 
             foreach (self::REPOINTED as [$table, $column]) {
-                if (! Schema::connection('pgsql')->hasTable($table)) {
+                if (! Schema::connection('pgsql')->hasColumn($table, $column)) {
+                    $skipped[] = $table.'.'.$column;
+
                     continue;
                 }
 
@@ -55,12 +62,27 @@ final class MergePatients
             }
 
             // Family links: the loser's dependents move under the winner's owner; the loser's own link goes away.
+            // Each link is touched through Eloquent — Builder::update()/delete() fires no model event and would
+            // leave the household change unaudited, and this link is what grants a guardian portal access to a
+            // dependant's clinical records (CONVENTIONS §4, ARCHITECTURE §8.1).
             $owner = $winner->primaryRelation->primary ?? $winner;
-            PatientRelation::query()->where('dependent_patient_id', $loser->id)->delete();
-            PatientRelation::query()->where('primary_patient_id', $loser->id)
-                ->whereNot('dependent_patient_id', $owner->id)
-                ->update(['primary_patient_id' => $owner->id]);
-            PatientRelation::query()->where('primary_patient_id', $loser->id)->delete();
+
+            foreach (PatientRelation::query()->where('dependent_patient_id', $loser->id)->get() as $link) {
+                $link->delete();
+            }
+
+            $moved = 0;
+
+            foreach (PatientRelation::query()->where('primary_patient_id', $loser->id)->get() as $link) {
+                if ($link->dependent_patient_id === $owner->id) {
+                    $link->delete();            // the winner cannot be their own dependent
+
+                    continue;
+                }
+
+                $link->forceFill(['primary_patient_id' => $owner->id])->save();
+                $moved++;
+            }
 
             $winner->forceFill([
                 'visit_count' => $winner->visit_count + $loser->visit_count,
@@ -71,7 +93,16 @@ final class MergePatients
             $loser->forceFill(['is_active' => false])->save();
             $loser->delete();
 
-            $this->audit->record(AuditAction::Update, $winner, null, ['merged_from' => $loser->public_id], ['reason' => $reason, 'repointed' => $repointed, 'loser_id' => $loser->id]);
+            // One summarising row for the bulk repoint above (CONVENTIONS §4 allows it for a justified bulk write):
+            // it names every table touched and how many rows moved, the loser by id and public id, and the winner
+            // as the auditable — the family-link changes have their own rows from the loop above.
+            $this->audit->record(AuditAction::Update, $winner, null, ['merged_from' => $loser->public_id], [
+                'reason' => $reason,
+                'repointed' => $repointed,
+                'loser_id' => $loser->id,
+                'family_links_moved' => $moved,
+                'skipped' => $skipped,
+            ]);
 
             DB::afterCommit(fn () => event(new PatientMerged($winner, $loser)));
 

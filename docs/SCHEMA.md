@@ -333,16 +333,17 @@ All models extend `App\Models\Central\CentralModel` with `$table = 'public.<name
 | type | varchar(16) | no | | `daily`, `manual`, `export` |
 | status | varchar(16) | no | `'pending'` | `pending`, `running`, `completed`, `failed` |
 | storage_disk | varchar(32) | no | `'backups'` | Laravel disk name |
-| storage_path | varchar(255) | yes | | Object key of the `.dump` (pg_dump custom format, `-n tenant_{id}`) |
-| size_bytes | bigint | yes | | |
-| checksum_sha256 | char(64) | yes | | |
+| storage_path | varchar(255) | yes | | Object key of the `.dump` (pg_dump custom format, `-n tenant_{id}`); `.dump.enc` when encrypted, `.zip` for `type = export` |
+| encryption | varchar(32) | no | `'none'` | `none`, `xchacha20poly1305` — how the object at `storage_path` is protected at rest (ARCHITECTURE §8.2). `none` is only ever written in local/testing, and is the honest backfill for rows taken before encryption existed |
+| size_bytes | bigint | yes | | Size of the stored OBJECT (ciphertext when encrypted) — the bytes in the bucket |
+| checksum_sha256 | char(64) | yes | | SHA-256 of the PLAINTEXT archive, i.e. what `pg_restore` consumes; `RestoreTenantBackup` verifies it after decrypting |
 | started_at | timestamptz | yes | | |
 | completed_at | timestamptz | yes | | |
 | expires_at | timestamptz | yes | | Retention cut-off (daily: 30 days) |
 | error | text | yes | | |
 | requested_by_super_admin_id | bigint | yes | | |
 
-**PK** id. **FK** tenant_id → public.tenants(id) ON DELETE CASCADE; requested_by_super_admin_id → public.super_admins(id) ON DELETE SET NULL. **Indexes** (tenant_id, completed_at DESC); (expires_at) WHERE status='completed' `_p`. **Checks** type, status lists.
+**PK** id. **FK** tenant_id → public.tenants(id) ON DELETE CASCADE; requested_by_super_admin_id → public.super_admins(id) ON DELETE SET NULL. **Indexes** (tenant_id, completed_at DESC); (expires_at) WHERE status='completed' `_p`. **Checks** type, status, encryption lists.
 **Model** `App\Models\Central\TenantBackup`.
 
 ### 2.12 `catalog_reconciliation_reports`
@@ -1604,8 +1605,12 @@ Same columns as `prescription_items` **minus** `prescription_id`, `info_url_slug
 | invoice_id | bigint | no | | |
 | patient_id | bigint | no | | |
 | amount_paisa | bigint | no | | |
+| coupon_use_seq | integer | no | | 1-based ordinal of this redemption within the coupon |
+| patient_use_seq | integer | no | | 1-based ordinal within (coupon, patient) |
 
-**PK** id. **FK** coupon_id → coupons(id) RESTRICT; invoice_id → invoices(id) CASCADE; patient_id → patients(id) CASCADE. **Unique** invoice_id. **Indexes** (coupon_id, patient_id). **timestamps: created_at only.** **Model** `App\Models\Tenant\CouponRedemption`.
+**PK** id. **FK** coupon_id → coupons(id) RESTRICT; invoice_id → invoices(id) CASCADE; patient_id → patients(id) CASCADE. **Unique** invoice_id; (coupon_id, coupon_use_seq); (coupon_id, patient_id, patient_use_seq). **Indexes** (coupon_id, patient_id). **Checks** `coupon_use_seq >= 1`; `patient_use_seq >= 1`. **timestamps: created_at only.** **Model** `App\Models\Tenant\CouponRedemption`.
+
+The two ordinal uniques are what actually enforce `coupons.max_uses` and `max_uses_per_patient`. `ApplyCoupon` locks the `coupons` row `FOR UPDATE` (the owner row, SERIAL_ENGINE §4 invariant I-OWNER), counts the existing rows inside that lock, and writes `count + 1` — only when it is still within the cap. Unique ordinals therefore bound the row count by the cap even if the lock were lost, and `coupons.uses_count` is assigned the ordinal rather than incremented, so the cached counter cannot lose an update. `coupon_redemptions_invoice_id_uniq` guarantees one coupon per bill and nothing about the caps.
 
 #### `doctor_revenue_shares`
 **Purpose.** Commission rules; the applicable rule is snapshotted onto `invoice_items` at issue.
@@ -1650,7 +1655,7 @@ Same columns as `prescription_items` **minus** `prescription_id`, `info_url_slug
 #### `notification_templates`
 | Column | Type | Null | Default | Meaning |
 |---|---|---|---|---|
-| event_key | varchar(32) | no | | `booking_confirmed`, `reminder_day_before`, `reminder_morning`, `three_ahead`, `doctor_delayed`, `doctor_cancelled`, `prescription_ready`, `followup_due`, `otp`, `payment_receipt`, `serial_transferred`, `serial_postponed` |
+| event_key | varchar(32) | no | | `booking_confirmed`, `reminder_day_before`, `reminder_morning`, `three_ahead`, `doctor_delayed`, `doctor_cancelled`, `prescription_ready`, `followup_due`, `otp`, `payment_receipt`, `serial_transferred`, `serial_postponed`, `telemedicine_invite` |
 | channel | varchar(10) | no | | `sms`, `whatsapp`, `push`, `email`, `ivr` |
 | locale | varchar(5) | no | | `bn`, `en` |
 | subject | varchar(160) | yes | | email/push title |
@@ -1672,7 +1677,7 @@ Same columns as `prescription_items` **minus** `prescription_id`, `info_url_slug
 | user_id | bigint | yes | | Staff recipient (e.g. doctor delay ack) |
 | notifiable_type | varchar(160) | yes | | Morph: Appointment / Prescription / SessionInstance / Invoice |
 | notifiable_id | bigint | yes | | |
-| serial_id | bigint | yes | | Serial the message concerns (`three_ahead`, `doctor_delayed`, `serial_transferred`, `serial_postponed`); drives per-serial dedupe |
+| serial_id | bigint | yes | | Serial the message concerns (`three_ahead`, `doctor_delayed`, `serial_transferred`, `serial_postponed`, `telemedicine_invite`); drives per-serial dedupe |
 | notification_template_id | bigint | yes | | |
 | recipient | varchar(255) | no | | E.164 / email / push endpoint id |
 | locale | varchar(5) | no | | |
@@ -2130,7 +2135,7 @@ Post-issue columns that **may** change: `status` (per lifecycle), `pdf_path`, `p
 - **Patient portal**: OTP to `mobile` signs in the owner, who then picks the family member (`patient_relations`) to act for. `patients` is the authenticatable model for guard `patient`; there is no `users` row.
 
 ### 5.5 Encryption at rest — what is encrypted and what stays plain
-Layer 1 (mandatory): full-volume encryption on the Postgres host and encrypted backups (`tenant_backups` dumps are `age`-encrypted before upload). Layer 2 (this section): Laravel `encrypted` casts on columns marked **ENC**. ENC columns are `text`, never indexed, never used in `WHERE`, never returned by Meilisearch, logged as `"[encrypted]"` in `audit_logs`. Key rotation uses `APP_PREVIOUS_KEYS`.
+Layer 1 (mandatory): full-volume encryption on the Postgres host and encrypted backups (`tenant_backups` dumps are encrypted with libsodium `crypto_secretstream_xchacha20poly1305` before upload — `App\Domain\SaaS\Services\BackupCipher`, key `BP_BACKUP_KEY`; the mode is recorded per row in `tenant_backups.encryption`, ARCHITECTURE §8.2). Layer 2 (this section): Laravel `encrypted` casts on columns marked **ENC**. ENC columns are `text`, never indexed, never used in `WHERE`, never returned by Meilisearch, logged as `"[encrypted]"` in `audit_logs`. Key rotation uses `APP_PREVIOUS_KEYS`.
 
 | Encrypted (ENC) | Plain — and why |
 |---|---|
@@ -2201,7 +2206,7 @@ PHP string-backed enums live in **`App\Domain\<Module>\Enums`** (CONVENTIONS.md 
 | `App\Domain\Prescription\Enums` | `VisitType`, `VisitStatus`, `PrescriptionStatus`, `PrescriptionLanguage` (prescriptions.language, doctor_pad_settings.default_language), `DoseTiming` (prescription_items.timing), `ReferralType`, `InvestigationCategory`, `AdviceCategory` (advice_snippets.category), `AiSuggestionType`; code-only, no column: `SafetyStage`, `SafetySeverity` (PRESCRIPTION.md §5.1) |
 | `App\Domain\Billing\Enums` | `InvoiceStatus`, `InvoiceItemType`, `PaymentMethod` (payments/refunds.method), `PaymentGateway`, `PaymentTxnStatus` (payments.status), `RefundStatus`, `RefundReason`, `DiscountType` (discounts/coupons.type), `DiscountReason`, `RevenueShareType`, `RevenueShareItemType`, `CashShiftStatus` |
 | `App\Domain\Notifications\Enums` | `NotificationEvent` (event_key), `NotificationChannel`, `NotificationStatus`, `NotificationLogStatus`, `GatewayProvider` (sms_gateway_settings.provider) |
-| `App\Domain\Telemedicine\Enums` | `TelemedicineProvider`, `RoomStatus`, `SessionEndReason` |
+| `App\Domain\Telemedicine\Enums` | `TelemedicineProvider`, `RoomStatus`, `SessionEndReason`; code-only, no column: `ParticipantRole` (the `role` key of `telemedicine_sessions.participants`) |
 
 JSON-only vocabularies (no CHECK; validated in code): `ParsedLine.unit`, `timing_code`, `schedule.type`, `duration.type`, `issues[].code` (PRESCRIPTION.md §2.11); `safety_overrides[].kind/severity` (§3.4); `drawing_json.canvas.template` (§3.4); `settings` keys and value types (Appendix B).
 
@@ -2238,6 +2243,12 @@ The closed list of dotted keys stored in `settings` (§3.1). `value` is jsonb of
 | `notifications.quiet_hours_start` | string `HH:MM` | `"21:00"` | Start of the quiet window, clinic-local (`tenants.timezone`). Validated against `/^([01]\d\|2[0-3]):[0-5]\d$/` | BRIEF §5.J |
 | `notifications.quiet_hours_end` | string `HH:MM` | `"08:00"` | End of the quiet window; a window that wraps past midnight is normal. A message produced inside the window is stored `scheduled` for this time, never dropped | BRIEF §5.J |
 | `security.session_timeout_minutes` | int | `120` | Staff session lifetime; `users.session_timeout_minutes` overrides per user | §3.1, ARCHITECTURE.md §6.1 |
+| `telemedicine.provider` | string: `default`, `livekit`, `jitsi`, `null` | `"default"` | Which video driver this clinic uses; `default` follows `config('telemedicine.default')` | BRIEF §5.K |
+| `telemedicine.host` | string | `""` | LiveKit URL (`wss://…`) or Jitsi domain; empty falls back to `config/telemedicine.php` | BRIEF §5.K |
+| `telemedicine.api_key` | string | `""` | Provider API key / Jitsi app id | BRIEF §5.K |
+| `telemedicine.api_secret` | string | `""` | Provider API secret, stored as a **Laravel-encrypted string** (`TelemedicineSettings::storeSecret()`) — `settings.value` is plain jsonb, so the ciphertext is what is written | BRIEF §5.K |
+| `telemedicine.recording_enabled` | bool | `false` | Allow consultation recording (a granted `telemedicine` patient consent is ALSO required per call) | BRIEF §5.K |
+| `telemedicine.max_minutes` | int (5–240) | `45` | Cap on one consultation, snapshotted onto `telemedicine_rooms.settings` | BRIEF §5.K |
 
 ---
 

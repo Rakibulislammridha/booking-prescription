@@ -12,10 +12,9 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * Foundation guarantee: CatalogModel::boot() registers the read-only hooks itself (only boot<Trait>() methods are
- * invoked automatically), so a catalog model is refused outside CatalogWriteContext even WITHOUT the
- * EnforcesCatalogReadOnly concern — and the non-production SELECT-only net on the `catalog` connection refuses
- * a raw write too (CATALOG.md §1.3).
+ * Foundation guarantee: CatalogModel::boot() registers the read-only hooks itself (Eloquent only auto-invokes
+ * boot<Trait>() methods), so a catalog model is refused outside CatalogWriteContext without opting into any concern
+ * — and the non-production SELECT-only net on the `catalog` connection refuses a raw write too (CATALOG.md §1.3).
  */
 final class CatalogModelBaseGuardTest extends TestCase
 {

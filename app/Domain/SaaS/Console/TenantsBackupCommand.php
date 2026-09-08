@@ -53,7 +53,12 @@ final class TenantsBackupCommand extends Command
         foreach ($tenants as $tenant) {
             try {
                 $row = $backup->handle($tenant, $type);
-                $this->components->twoColumnDetail($tenant->slug, number_format((int) $row->getAttribute('size_bytes')).' bytes');
+                // The mode is printed, not just stored: an operator watching the daily run must be able to see the
+                // moment a deployment starts writing clinics' records to the bucket in the clear.
+                $this->components->twoColumnDetail(
+                    $tenant->slug,
+                    number_format((int) $row->getAttribute('size_bytes')).' bytes · '.$row->encryption->value,
+                );
                 $ok++;
             } catch (Throwable $e) {
                 $this->components->error($tenant->slug.': '.$e->getMessage());

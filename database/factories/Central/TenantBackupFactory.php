@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories\Central;
 
+use App\Domain\SaaS\Enums\BackupEncryption;
 use App\Domain\SaaS\Enums\BackupStatus;
 use App\Domain\SaaS\Enums\BackupType;
 use App\Models\Central\Tenant;
@@ -30,7 +31,8 @@ final class TenantBackupFactory extends Factory
     {
         return $this->state(fn () => [
             'status' => BackupStatus::Completed,
-            'storage_path' => 'tenants/1/'.now()->format('Ymd').'.dump.age',
+            'storage_path' => 'tenants/1/'.now()->format('Ymd').'.dump.enc',
+            'encryption' => BackupEncryption::XChaCha20Poly1305,
             'size_bytes' => 1024,
             'checksum_sha256' => hash('sha256', 'x'),
             'started_at' => now()->subMinute(),
