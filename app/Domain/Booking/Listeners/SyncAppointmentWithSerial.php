@@ -14,6 +14,11 @@ use App\Models\Tenant\Serial;
 /**
  * appointments.status mirrors the serial state machine (AppointmentStatus::fromSerial). A transfer's cancellation
  * (reason `transferred`) is skipped — RepointAppointmentOnTransfer moves the appointment to the new serial instead.
+ *
+ * A booking HELD for advance payment (BRIEF §5.C) is skipped too while its serial is merely `booked`: `booked` maps
+ * to Confirmed, which would silently confirm the hold the moment anything re-stamped the serial. Only money
+ * (InvoiceLedger) or a real desk transition — check-in, call, a receptionist taking the cash at the counter — moves
+ * a `pending` appointment forward, and those arrive here as `checked_in`/`in_consultation` and still apply.
  */
 final class SyncAppointmentWithSerial
 {
@@ -29,6 +34,10 @@ final class SyncAppointmentWithSerial
         $appointment = Appointment::query()->find($appointmentId);
 
         if ($to === null || $appointment === null || $appointment->status === AppointmentStatus::Draft) {
+            return;
+        }
+
+        if ($to === SerialStatus::Booked && $appointment->status === AppointmentStatus::Pending) {
             return;
         }
 

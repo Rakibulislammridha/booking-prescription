@@ -44,6 +44,7 @@ final class BoardController extends Controller
                 'collect' => $user?->can('billing.payments.collect') ?? false,
                 'register_device' => $user?->can('register', ReceptionDevice::class) ?? false,
                 'revoke' => $user?->can('reception.blocks.revoke') ?? false,
+                'record_vitals' => $user?->can('prescriptions.vitals.record') ?? false,
             ],
             'actor_public_id' => $user?->public_id,
         ]);

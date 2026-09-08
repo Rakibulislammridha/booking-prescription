@@ -13,8 +13,6 @@ import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { I18nextProvider } from 'react-i18next';
 import { bootShared, syncSharedOnNavigate } from '@shared/inertia';
 import { ensureMessages, i18n, registerMessageLoader } from '@shared/i18n';
@@ -34,14 +32,17 @@ const appName = import.meta.env.VITE_APP_NAME ?? 'Clinic';
 registerMessageLoader(loadPanelMessages);
 const messagesReady = ensureMessages(documentLocale());
 
-function Providers({ locale, children }: { locale: Locale; children: ReactNode }) {
+// No LocalizationProvider here on purpose: @mui/x-date-pickers is ~12 KB gzip of the panel's shared first load
+// (ARCHITECTURE §7.6) and NOT ONE page mounts a picker — every date on the panel is a plain field or a server
+// choice. A page that needs a picker wraps itself in `<LocalizationProvider dateAdapter={AdapterDayjs}
+// adapterLocale={locale}>` from its own lazily loaded chunk, so the cost lands on that page and nowhere else.
+// `@shared/format/date` below still registers the dayjs utc/timezone plugins and the bn locale for whoever does.
+function Providers({ children }: { locale: Locale; children: ReactNode }) {
   return (
     <I18nextProvider i18n={i18n}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={locale}>
-          {children}
-        </LocalizationProvider>
+        {children}
       </ThemeProvider>
     </I18nextProvider>
   );

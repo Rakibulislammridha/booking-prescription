@@ -443,7 +443,7 @@ clinic-wide by construction, so billing can ingest it without renumbering.
 | Cancel any serial (except void of own unsynced) | may trigger refund; server owns status |
 | Online-pool and buffer-pool serials, priority insert, reorder, call-next, transfer, postpone, session start/pause/close/delay | server-owned locks/positions; the doctor's screen is server-driven |
 | Card/bKash/Nagad payments | gateway |
-| Prescriptions, vitals, clinical history bodies | clinical data must not sit in a tablet's IndexedDB (brief N) |
+| Prescriptions, vitals, clinical history bodies | clinical data must not sit in a tablet's IndexedDB (brief N). This is why the desk's own vitals screen (`/panel/reception/visits/{visit}/vitals`, BRIEF §5.G.2) is online-only: the board's vitals button is disabled offline with the `reception.offline.reason.clinical` reason, and the service worker refuses to cache the page (§11) |
 | Editing existing patient records, merging | reconciliation risk |
 
 ### 6.3 Server-side counterpart: `AllocateFromBlock`
@@ -684,12 +684,13 @@ worker itself.
 | Route | Strategy | Notes |
 |---|---|---|
 | Precache manifest (hashed `build/*`, fonts, icons) | `precacheAndRoute(self.__WB_MANIFEST)` | app shell assets |
-| Navigation `GET /panel/reception*` (Inertia HTML) | `NetworkFirst`, `networkTimeoutSeconds: 3`, cache `shell-v1`, `cacheableResponse {statuses:[200]}` | cold offline boot serves the last HTML; the page then hydrates from Dexie (`bootstrap` in props is treated as stale) |
+| Navigation `GET /panel/reception*` **except `/panel/reception/visits/*`** (Inertia HTML) | `NetworkFirst`, `networkTimeoutSeconds: 3`, cache `shell-v1`, `cacheableResponse {statuses:[200]}` | cold offline boot serves the last HTML; the page then hydrates from Dexie (`bootstrap` in props is treated as stale) |
+| `GET /panel/reception/visits/*` — the compounder's vitals screen (BRIEF §5.G.2) | `NetworkOnly` (in the guard list, so it is matched **first**) | vitals are a clinical body: §6.2 keeps them off the device, so an offline desk gets a failed navigation rather than yesterday's blood pressure on screen |
 | `GET /api/reception/bootstrap*` | `NetworkFirst`, timeout 4, cache `api-bootstrap`, `expiration {maxEntries: 4, maxAgeSeconds: 259200}` | belt-and-braces; Dexie is the real store |
 | `GET /api/reception/patients*`, `/history*` | `NetworkFirst`, timeout 4, `maxEntries: 500` | |
 | `GET /api/reception/print-templates` | `StaleWhileRevalidate` | |
 | `GET /build/*`, `/fonts/*` | `CacheFirst`, 1 year | hashed |
-| **Any non-GET**, `/api/reception/sync*`, `/api/reception/blocks*`, `/api/ping`, `/broadcasting/*`, `/api/device/broadcasting/*`, `/sanctum/*`, `/queue/*` (the public state/sessions endpoints, REALTIME.md §5) | `NetworkOnly` (explicit `registerRoute` placed **first**) | mutations and liveness must never be served from cache |
+| **Any non-GET**, `/api/reception/sync*`, `/api/reception/blocks*`, `/api/ping`, `/broadcasting/*`, `/api/device/broadcasting/*`, `/sanctum/*`, `/queue/*` (the public state/sessions endpoints, REALTIME.md §5), `/panel/reception/visits/*` | `NetworkOnly` (explicit `registerRoute` placed **first**) | mutations, liveness and clinical bodies must never be served from cache |
 | Everything else (other panel routes, Inertia JSON with `X-Inertia`) | `NetworkOnly` | the desk is the only offline surface |
 
 `navigateFallback` is **not** used (an Inertia app must not get a generic

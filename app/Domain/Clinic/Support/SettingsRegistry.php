@@ -36,6 +36,9 @@ final class SettingsRegistry
             'kiosk.self_checkin_enabled' => ['type' => 'bool', 'default' => false],
             'reception.pin_idle_minutes' => ['type' => 'int', 'default' => 15, 'min' => 1],
             'reception.sound_on_offline' => ['type' => 'bool', 'default' => true],
+            // How long a self-service booking held for advance payment keeps its serial before
+            // `booking:expire-holds` cancels it and the number goes back to the pool (BRIEF §5.C).
+            'booking.advance_payment_hold_minutes' => ['type' => 'int', 'default' => 30, 'min' => 5, 'max' => 1440],
             'booking.online_payment_enabled' => ['type' => 'bool', 'default' => false],
             'billing.vat_percent' => ['type' => 'number', 'default' => 0, 'min' => 0, 'max' => 100],
             'billing.discount_approval_threshold_paisa' => ['type' => 'int', 'default' => 50000, 'min' => 0],
@@ -56,6 +59,13 @@ final class SettingsRegistry
             'telemedicine.api_secret' => ['type' => 'string', 'default' => ''],
             'telemedicine.recording_enabled' => ['type' => 'bool', 'default' => false],
             'telemedicine.max_minutes' => ['type' => 'int', 'default' => 45, 'min' => 5, 'max' => 240],
+            // OCR naming of uploaded reports (PRESCRIPTION.md §8). `ocr_driver` = 'default' follows
+            // config('patients.ocr.driver'), which ships as 'null' — no cloud engine, no request leaves the
+            // clinic, and PDFs that carry a text layer are still read locally. `ocr_api_key` holds a Laravel-
+            // ENCRYPTED string written by App\Domain\Patients\Services\OcrSettings::storeApiKey(): `settings.value`
+            // is plain jsonb and a billable API key does not belong there in clear text.
+            'patients.ocr_driver' => ['type' => 'string', 'default' => 'default', 'options' => ['default', 'null', 'google']],
+            'patients.ocr_api_key' => ['type' => 'string', 'default' => ''],
         ];
     }
 

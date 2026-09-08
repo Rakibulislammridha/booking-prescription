@@ -39,12 +39,16 @@ final class PatientResource extends JsonResource
                 ...(new PatientSummaryResource($this->primaryRelation->primary))->toArray($request),
                 'relation' => $this->primaryRelation->relation->value,
             ]),
-            'dependents' => FamilyMemberResource::collection($this->whenLoaded('dependents')),
-            'allergies' => AllergyResource::collection($this->whenLoaded('allergies')),
-            'conditions' => ConditionResource::collection($this->whenLoaded('conditions')),
-            'medications' => MedicationResource::collection($this->whenLoaded('medications')),
-            'documents' => DocumentResource::collection($this->whenLoaded('documents')),
-            'consents' => ConsentResource::collection($this->whenLoaded('consents')),
+            // `->resolve()`, not a bare collection: Inertia's PropsResolver walks the prop tree and turns any
+            // nested Responsable into its RESPONSE body, so an un-resolved resource collection reaches the page
+            // as `{data: [...]}` instead of the array every consumer (and models.d.ts) declares. Resolving here
+            // keeps the JSON API output byte-identical and stops the page from crashing on `.filter`.
+            'dependents' => $this->whenLoaded('dependents', fn () => FamilyMemberResource::collection($this->dependents)->resolve($request)),
+            'allergies' => $this->whenLoaded('allergies', fn () => AllergyResource::collection($this->allergies)->resolve($request)),
+            'conditions' => $this->whenLoaded('conditions', fn () => ConditionResource::collection($this->conditions)->resolve($request)),
+            'medications' => $this->whenLoaded('medications', fn () => MedicationResource::collection($this->medications)->resolve($request)),
+            'documents' => $this->whenLoaded('documents', fn () => DocumentResource::collection($this->documents)->resolve($request)),
+            'consents' => $this->whenLoaded('consents', fn () => ConsentResource::collection($this->consents)->resolve($request)),
         ];
     }
 }

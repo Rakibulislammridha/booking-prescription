@@ -55,7 +55,8 @@ final class SessionInstanceResource extends JsonResource
             'doctor' => $this->whenLoaded('doctor', fn () => ['public_id' => $this->doctor->public_id, 'slug' => $this->doctor->slug, 'name' => $this->doctor->name, 'name_bn' => $this->doctor->name_bn, 'room' => $this->doctor->room_label]),
             'branch' => $this->whenLoaded('branch', fn () => ['public_id' => $this->branch->public_id, 'name' => $this->branch->name, 'code' => $this->branch->code, 'slug' => $this->branch->slug]),
             'remaining' => $this->when($this->resource->getAttribute('remaining') !== null, fn () => $this->resource->getAttribute('remaining')),
-            'serials' => SerialResource::collection($this->whenLoaded('serials')),
+            // Resolved: a nested resource collection reaches an Inertia page as `{data: [...]}` (see PatientResource).
+            'serials' => $this->whenLoaded('serials', fn () => SerialResource::collection($this->serials)->resolve($request)),
         ];
     }
 }

@@ -21,6 +21,7 @@ import CheckIcon from '@mui/icons-material/HowToReg';
 import PrintIcon from '@mui/icons-material/Print';
 import CashIcon from '@mui/icons-material/Payments';
 import CancelIcon from '@mui/icons-material/EventBusy';
+import VitalsIcon from '@mui/icons-material/MonitorHeart';
 import AddIcon from '@mui/icons-material/PersonAdd';
 import { formatBn } from '@shared/format/number';
 import { formatTimeDhaka } from '@shared/format/date';
@@ -34,7 +35,7 @@ export interface SessionTileProps {
   session: BoardSession;
   mode: ConnectionMode;
   blockRemaining: number;
-  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean };
+  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; record_vitals: boolean };
   busy: boolean;
   onBook(session: BoardSession, channel: 'counter' | 'walkin'): void;
   onCallNext(session: BoardSession): void;
@@ -42,13 +43,14 @@ export interface SessionTileProps {
   onCollect(session: BoardSession, serial: DeskSerial): void;
   onPrint(session: BoardSession, serial: DeskSerial): void;
   onCancel(session: BoardSession, serial: DeskSerial): void;
+  onVitals(session: BoardSession, serial: DeskSerial): void;
   onKiosk(session: BoardSession): void;
 }
 
 const STATUS_COLOR: Record<SessionStatus, 'default' | 'success' | 'warning' | 'error' | 'info'> = { scheduled: 'default', running: 'success', paused: 'warning', closed: 'info', cancelled: 'error' };
 const ACTIVE = new Set(['booked', 'checked_in', 'in_consultation']);
 
-export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, onCallNext, onCheckIn, onCollect, onPrint, onCancel, onKiosk }: SessionTileProps) {
+export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, onCallNext, onCheckIn, onCollect, onPrint, onCancel, onVitals, onKiosk }: SessionTileProps) {
   const { t } = useTranslation();
   const locale = getLocale();
   const [showAll, setShowAll] = useState(false);
@@ -124,6 +126,7 @@ export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, 
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       {s.status === 'booked' && open ? <Tooltip title={t('serials.actions.check_in')}><IconButton size="small" disabled={busy} onClick={() => onCheckIn(session, s)} aria-label={t('serials.actions.check_in')}><CheckIcon fontSize="small" /></IconButton></Tooltip> : null}
                       {can.collect && s.appointment && s.appointment.payment_status !== 'paid' && ACTIVE.has(s.status) ? <Tooltip title={t('reception.board.collect_fee')}><IconButton size="small" disabled={busy} onClick={() => onCollect(session, s)} aria-label={t('reception.board.collect_fee')}><CashIcon fontSize="small" /></IconButton></Tooltip> : null}
+                      {can.record_vitals && (s.status === 'checked_in' || s.status === 'in_consultation') ? <Tooltip title={t(isAllowedOffline('prescription', mode) ? 'reception.vitals.record' : offlineReason('prescription'))}><span><IconButton size="small" disabled={busy || offline || s.public_id.startsWith('local:')} onClick={() => onVitals(session, s)} aria-label={t('reception.vitals.record')}><VitalsIcon fontSize="small" /></IconButton></span></Tooltip> : null}
                       <Tooltip title={t('reception.board.print_slip')}><IconButton size="small" disabled={busy} onClick={() => onPrint(session, s)} aria-label={t('reception.board.print_slip')}><PrintIcon fontSize="small" /></IconButton></Tooltip>
                       {can.cancel && ACTIVE.has(s.status) ? guard('cancel', true, <IconButton size="small" disabled={busy || offline || !s.appointment} onClick={() => onCancel(session, s)} aria-label={t('reception.cancel.title')}><CancelIcon fontSize="small" /></IconButton>) : null}
                     </TableCell>

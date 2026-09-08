@@ -15,7 +15,8 @@ final class SettingsRegistryTest extends TestCase
     {
         $keys = array_keys(SettingsRegistry::all());
 
-        $this->assertCount(31, $keys);          // + the six telemedicine.* keys (Module K, BRIEF §5.K)
+        $this->assertCount(34, $keys);          // + the six telemedicine.* keys (Module K, BRIEF §5.K),
+        // booking.advance_payment_hold_minutes (§5.C advance payment) and the two patients.ocr_* keys (§5.H)
         $this->assertSame(60, SettingsRegistry::default('serial.cancel_cutoff_minutes'));
         $this->assertSame('both', SettingsRegistry::default('queue.display_voice'));
         $this->assertSame(120, SettingsRegistry::default('security.session_timeout_minutes'));
@@ -27,7 +28,7 @@ final class SettingsRegistryTest extends TestCase
         $this->assertFalse(SettingsRegistry::default('booking.online_payment_enabled'));
 
         foreach ($keys as $key) {
-            $this->assertMatchesRegularExpression('/^(queue|serial|kiosk|reception|booking|billing|notifications|security|telemedicine)\.[a-z_]+$/', $key);
+            $this->assertMatchesRegularExpression('/^(queue|serial|kiosk|reception|booking|billing|notifications|patients|security|telemedicine)\.[a-z_]+$/', $key);
         }
     }
 

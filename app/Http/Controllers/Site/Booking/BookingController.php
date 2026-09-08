@@ -6,6 +6,8 @@ namespace App\Http\Controllers\Site\Booking;
 
 use App\Domain\Booking\Actions\BookAppointment;
 use App\Domain\Booking\Contracts\OnlinePaymentGateway;
+use App\Domain\Booking\Enums\AppointmentStatus;
+use App\Domain\Booking\Services\AdvancePaymentPolicy;
 use App\Domain\Clinic\Services\Settings;
 use App\Domain\Patients\Enums\OtpPurpose;
 use App\Domain\Patients\Exceptions\OtpAttemptsExceeded;
@@ -32,6 +34,9 @@ use Inertia\Response;
  * The public booking site (BRIEF §5.C channel 1, Tailwind, no MUI): doctor search by specialty / name / day →
  * calendar with online serials remaining (api.scheduling.availability) → mobile + OTP → confirmation with the
  * serial code and the public queue link. Payment: "pay at counter" unless the OnlinePaymentGateway says otherwise.
+ *
+ * A doctor with `advance_payment_required` (BRIEF §5.C) is announced on the doctor page BEFORE the patient fills the
+ * form, and the confirmation page tells the truth about a held serial instead of claiming it is confirmed.
  */
 final class BookingController extends Controller
 {
@@ -65,7 +70,7 @@ final class BookingController extends Controller
         ]);
     }
 
-    public function doctor(Request $request, string $doctor, Settings $settings, OnlinePaymentGateway $payment, OtpService $otp): Response
+    public function doctor(Request $request, string $doctor, Settings $settings, OnlinePaymentGateway $payment, OtpService $otp, AdvancePaymentPolicy $advance): Response
     {
         $model = Doctor::query()->active()->where('accepts_online_booking', true)->where('slug', $doctor)->with('profile')->firstOrFail();
         $branch = Branch::query()->active()->orderByDesc('is_main')->orderBy('id')->firstOrFail();
@@ -79,6 +84,7 @@ final class BookingController extends Controller
             'otp_required' => (bool) $settings->get('kiosk.otp_required'),
             'otp_resend_seconds' => $otp->resendSeconds(),
             'online_payment_enabled' => $payment->enabled(),
+            'advance_payment_required' => $advance->requiredBy($model),
             'channel' => 'online',
             'kiosk' => null,
         ]);
@@ -93,15 +99,22 @@ final class BookingController extends Controller
         return redirect()->to($checkout ?? route('site.booking.confirmed', ['appointment' => $result->appointment->public_id]));
     }
 
-    public function confirmed(Request $request, Appointment $appointment, OnlinePaymentGateway $payment): Response
+    public function confirmed(Request $request, Appointment $appointment, OnlinePaymentGateway $payment, AdvancePaymentPolicy $advance): Response
     {
         $appointment->load(['patient', 'doctor', 'sessionInstance', 'serial', 'branch']);
+
+        // A serial held for advance payment is NOT confirmed, and the page must not pretend otherwise: it shows the
+        // hold, when it lapses, and the way to pay (BRIEF §5.C).
+        $held = $appointment->status === AppointmentStatus::Pending;
 
         return Inertia::render('Booking/Confirmed', [
             'appointment' => (new AppointmentResource($appointment))->toArray($request),
             'queue_url' => '/q/'.$appointment->doctor->slug.'/today?s='.($appointment->serial->public_id ?? ''),
             'branch' => ['name' => $appointment->branch->name, 'phone' => $appointment->branch->phone, 'address' => $appointment->branch->address],
-            'pay_at_counter' => ! $payment->enabled(),
+            'pay_at_counter' => ! $held && ! $payment->enabled(),
+            'held_for_payment' => $held,
+            'hold_minutes' => $held ? $advance->holdMinutes() : null,
+            'checkout_url' => $held ? $payment->checkoutUrl($appointment) : null,
         ]);
     }
 

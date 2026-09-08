@@ -33,7 +33,7 @@ final class SettingsScreenTest extends TestCase
             ->component('Clinic/Settings/Index')
             ->has('registry', count(SettingsRegistry::all()))
             ->has('values', count(SettingsRegistry::all()))
-            ->has('groups', 9)          // + telemedicine (Module K)
+            ->has('groups', 10)         // + telemedicine (Module K) + patients (§5.H OCR naming)
             ->where('groups.0.prefix', 'queue')
             ->where('branding.name', $this->tenant()->name)
             ->has('branding.timezone')

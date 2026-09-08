@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Site\Booking;
 
 use App\Domain\Booking\Contracts\OnlinePaymentGateway;
+use App\Domain\Booking\Services\AdvancePaymentPolicy;
 use App\Domain\Clinic\Services\Settings;
 use App\Domain\Patients\Services\OtpService;
 use App\Domain\Scheduling\Services\SessionMaterialiser;
@@ -22,11 +23,12 @@ use Inertia\Response;
 /**
  * GET /booking/kiosk?branch=…[&session=…]&signature=… (signed, 12 h) — the QR at the desk (SERIAL_ENGINE §11.2):
  * today's open sessions at that branch (or the one session the QR names), mobile → OTP → self-booking on the
- * online pool with source kiosk. The same Booking/Doctor page renders with `kiosk` prefilled.
+ * online pool with source kiosk. The same Booking/Doctor page renders with `kiosk` prefilled — including the
+ * advance-payment notice, true when any doctor on the board asks for payment up front (BRIEF §5.C).
  */
 final class KioskController extends Controller
 {
-    public function __invoke(Request $request, SessionMaterialiser $materialiser, CapacityService $capacity, Settings $settings, OtpService $otp, OnlinePaymentGateway $payment): Response
+    public function __invoke(Request $request, SessionMaterialiser $materialiser, CapacityService $capacity, Settings $settings, OtpService $otp, OnlinePaymentGateway $payment, AdvancePaymentPolicy $advance): Response
     {
         $branch = Branch::query()->active()->where('public_id', (string) $request->query('branch', ''))->firstOrFail();
         $today = Clock::today();
@@ -53,6 +55,7 @@ final class KioskController extends Controller
             'otp_required' => (bool) $settings->get('kiosk.otp_required'),
             'otp_resend_seconds' => $otp->resendSeconds(),
             'online_payment_enabled' => $payment->enabled(),
+            'advance_payment_required' => $sessions->contains(fn (SessionInstance $s) => $advance->requiredBy($s->doctor)),
             'channel' => 'kiosk',
             'kiosk' => [
                 'branch' => $branch->public_id,

@@ -61,10 +61,11 @@ final class InvoiceResource extends JsonResource
                 'fee_rule_reason' => $this->appointment->fee_rule_reason,
                 'scheduled_date' => $this->appointment->scheduled_date?->toDateString(),
             ]),
-            'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
-            'payments' => PaymentResource::collection($this->whenLoaded('payments')),
-            'refunds' => RefundResource::collection($this->whenLoaded('refunds')),
-            'discounts' => DiscountResource::collection($this->whenLoaded('discounts')),
+            // Resolved: a nested resource collection reaches an Inertia page as `{data: [...]}` (see PatientResource).
+            'items' => $this->whenLoaded('items', fn () => InvoiceItemResource::collection($this->items)->resolve($request)),
+            'payments' => $this->whenLoaded('payments', fn () => PaymentResource::collection($this->payments)->resolve($request)),
+            'refunds' => $this->whenLoaded('refunds', fn () => RefundResource::collection($this->refunds)->resolve($request)),
+            'discounts' => $this->whenLoaded('discounts', fn () => DiscountResource::collection($this->discounts)->resolve($request)),
         ];
     }
 }

@@ -8,7 +8,7 @@
 // Layout: left history 260px, centre ≥ 640px, right quick-pick 280px. Below 1536px the history pane becomes an
 // overlay sheet so the centre keeps its width on the 1366×768 laptops clinics actually use; the quick-pick stays
 // docked because it is the one-click path.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
@@ -36,15 +36,18 @@ import GestureIcon from '@mui/icons-material/Gesture';
 import HistoryIcon from '@mui/icons-material/History';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { AlertsStrip } from '@panel/Components/Prescription/AlertsStrip';
-import { Cheatsheet } from '@panel/Components/Prescription/Cheatsheet';
 import { ChipListField } from '@panel/Components/Prescription/ChipListField';
 import { AdviceSection, FollowUpSection, InvestigationsSection, ReferralSection } from '@panel/Components/Prescription/ClinicalSections';
 import { DiagnosisField } from '@panel/Components/Prescription/DiagnosisField';
-import { DrawingDialog } from '@panel/Components/Prescription/DrawingDialog';
-import { HandwritingPanel } from '@panel/Components/Prescription/HandwritingPanel';
 import { HistoryPane } from '@panel/Components/Prescription/HistoryPane';
-import { IssueDialog } from '@panel/Components/Prescription/IssueDialog';
 import { QuickPickPane } from '@panel/Components/Prescription/QuickPickPane';
+// The four surfaces a routine 60-second prescription never touches: the shorthand cheat sheet, the issue
+// confirmation, the stylus drawing canvas and the handwriting pad. They are opened deliberately, so they load
+// deliberately — the writer's first paint is what the doctor waits for (BRIEF §5.G, §8).
+const Cheatsheet = lazy(() => import('@panel/Components/Prescription/Cheatsheet').then((m) => ({ default: m.Cheatsheet })));
+const DrawingDialog = lazy(() => import('@panel/Components/Prescription/DrawingDialog').then((m) => ({ default: m.DrawingDialog })));
+const HandwritingPanel = lazy(() => import('@panel/Components/Prescription/HandwritingPanel').then((m) => ({ default: m.HandwritingPanel })));
+const IssueDialog = lazy(() => import('@panel/Components/Prescription/IssueDialog').then((m) => ({ default: m.IssueDialog })));
 import { RxSection } from '@panel/Components/Prescription/RxSection';
 import { VitalsCard } from '@panel/Components/Prescription/VitalsCard';
 import { WriterStoreProvider, useWriter, useWriterStoreApi } from '@panel/hooks/prescription/useWriterStore';
@@ -406,7 +409,9 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
           <DiagnosisField label={t('prescriptions.writer.zones.diagnosis')} values={state.diagnoses} lang={padLang} inputRef={diagnosisRef} onChange={(values) => store.getState().setDiagnoses(values)} />
 
           {handwriting ? (
-            <HandwritingPanel prescriptionId={state.prescriptionId} paperSize={doctor.pad.paper_size} width={620} onSaved={() => setToast(t('prescriptions.handwriting.saved'))} />
+            <Suspense fallback={<CircularProgress size={20} />}>
+              <HandwritingPanel prescriptionId={state.prescriptionId} paperSize={doctor.pad.paper_size} width={620} onSaved={() => setToast(t('prescriptions.handwriting.saved'))} />
+            </Suspense>
           ) : null}
 
           <RxSection
@@ -470,10 +475,10 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
         {history}
       </Drawer>
 
-      <Cheatsheet open={cheatsheet} lang={padLang} onClose={() => setCheatsheet(false)} onInsert={(example) => insertIntoLine.current(example)} />
+      {cheatsheet ? <Suspense fallback={null}><Cheatsheet open lang={padLang} onClose={() => setCheatsheet(false)} onInsert={(example) => insertIntoLine.current(example)} /></Suspense> : null}
 
-      <IssueDialog
-        open={issueOpen}
+      {issueOpen ? <Suspense fallback={null}><IssueDialog
+        open
         busy={issuing}
         lang={padLang}
         items={state.items}
@@ -487,9 +492,9 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
         onAcknowledge={(fingerprint) => store.getState().acknowledge(fingerprint)}
         onClose={() => setIssueOpen(false)}
         onIssue={doIssue}
-      />
+      /></Suspense> : null}
 
-      <DrawingDialog open={drawing} prescriptionId={state.prescriptionId} templates={features.drawing_backgrounds} initial={drawingJson} onClose={() => setDrawing(false)} onSaved={setDrawingJson} />
+      {drawing ? <Suspense fallback={null}><DrawingDialog open prescriptionId={state.prescriptionId} templates={features.drawing_backgrounds} initial={drawingJson} onClose={() => setDrawing(false)} onSaved={setDrawingJson} /></Suspense> : null}
 
       <Dialog open={templateOpen} onClose={() => setTemplateOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ py: 1 }}>{t('prescriptions.templates.save_as')}</DialogTitle>

@@ -1542,6 +1542,20 @@ declare module 'ziggy-js' {
             "binding": "public_id"
         }
     ],
+    "panel.reception.vitals.open": [
+        {
+            "name": "serial",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "panel.reception.vitals.edit": [
+        {
+            "name": "visit",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
     "panel.reports.index": [],
     "panel.reports.exports.index": [],
     "panel.reports.exports.show": [

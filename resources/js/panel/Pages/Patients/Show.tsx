@@ -1,12 +1,15 @@
 // Patients/Show: header, household, and the mini-EMR tabs — timeline, allergies, conditions, medications,
 // documents (upload), consents. The server records the audit `view` before rendering (ARCHITECTURE §8.1).
-import { useState, type ReactNode, type SyntheticEvent } from 'react';
+import { lazy, Suspense, useState, type ReactNode, type SyntheticEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
 import CardContent from '@mui/material/CardContent';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
+import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
@@ -18,6 +21,9 @@ import { ConditionsTab } from '@panel/Components/Patients/ConditionsTab';
 import { MedicationsTab } from '@panel/Components/Patients/MedicationsTab';
 import { DocumentsTab } from '@panel/Components/Patients/DocumentsTab';
 import { ConsentsTab } from '@panel/Components/Patients/ConsentsTab';
+// recharts is ~90 KB gzip — a third of this page's budget for a tab most visits never open. Lazy, so the record
+// itself stays cheap on the desk's hardware (BRIEF §8, scripts/check-panel-budget.sh).
+const VitalsTrendCharts = lazy(() => import('@panel/Components/Patients/VitalsTrendCharts').then((m) => ({ default: m.VitalsTrendCharts })));
 import { PatientDuesPanel } from '@panel/Components/Billing/PatientDuesPanel';
 import { useSharedProps } from '@shared/inertia';
 import { formatBn } from '@shared/format/number';
@@ -37,7 +43,7 @@ type Props = PageProps<{
   policy_version: string;
 }>;
 
-const TABS = ['timeline', 'allergies', 'conditions', 'medications', 'documents', 'consents'] as const;
+const TABS = ['timeline', 'vitals', 'allergies', 'conditions', 'medications', 'documents', 'consents'] as const;
 type TabKey = (typeof TABS)[number];
 
 export default function Show({ patient, family, timeline, timeline_kinds, vitals_trend, vitals_available, can, policy_version }: Props) {
@@ -52,9 +58,11 @@ export default function Show({ patient, family, timeline, timeline_kinds, vitals
   const activeAllergies = (patient.allergies ?? []).filter((a) => a.is_active).length;
   const currentConditions = (patient.conditions ?? []).filter((c) => c.status !== 'resolved').length;
   const activeMedications = (patient.medications ?? []).filter((m) => m.is_active).length;
+  const latestVitals = vitals_trend[vitals_trend.length - 1];   // VitalsTrendQuery returns oldest first
 
   const counts: Record<TabKey, number | null> = {
     timeline: null,
+    vitals: vitals_available ? vitals_trend.length : null,
     allergies: activeAllergies,
     conditions: currentConditions,
     medications: activeMedications,
@@ -75,6 +83,10 @@ export default function Show({ patient, family, timeline, timeline_kinds, vitals
           </Tabs>
           <CardContent>
             {tab === 'timeline' ? <TimelineTab patient={id} initial={timeline} kinds={timeline_kinds} /> : null}
+            {tab === 'vitals' ? (
+              !vitals_available ? <Typography variant="body2" color="text.secondary">{t('patients.show.vitals_unavailable')}</Typography>
+                : <Suspense fallback={<Skeleton variant="rounded" height={360} />}><VitalsTrendCharts points={vitals_trend} locale={locale} /></Suspense>
+            ) : null}
             {tab === 'allergies' ? <AllergiesTab patient={id} allergies={patient.allergies ?? []} canManage={can.manage_clinical} /> : null}
             {tab === 'conditions' ? <ConditionsTab patient={id} conditions={patient.conditions ?? []} canManage={can.manage_clinical} /> : null}
             {tab === 'medications' ? <MedicationsTab patient={id} medications={patient.medications ?? []} canManage={can.manage_clinical} /> : null}
@@ -88,19 +100,26 @@ export default function Show({ patient, family, timeline, timeline_kinds, vitals
           <FamilyPanel patient={patient} family={family} canCreate={can.create} />
           <Card>
             <CardContent>
-              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>{t('patients.show.vitals_trend')}</Typography>
-              {!vitals_available || vitals_trend.length === 0 ? (
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>{t('patients.show.vitals_latest')}</Typography>
+              {!vitals_available || latestVitals === undefined ? (
                 <Typography variant="body2" color="text.secondary">{t('patients.show.vitals_unavailable')}</Typography>
               ) : (
-                <Stack spacing={0.5}>
-                  {vitals_trend.slice(-6).map((v) => (
-                    <Typography key={v.id} variant="body2">
-                      {formatDateDhaka(v.recorded_at, locale)} · {v.bp_systolic !== null && v.bp_diastolic !== null ? `BP ${formatBn(`${v.bp_systolic}/${v.bp_diastolic}`, locale)} ` : ''}
-                      {v.weight_kg !== null ? `${formatBn(v.weight_kg, locale)} kg ` : ''}
-                      {v.spo2_percent !== null ? `SpO₂ ${formatBn(v.spo2_percent, locale)}%` : ''}
-                    </Typography>
-                  ))}
-                </Stack>
+                <>
+                  <Typography variant="caption" color="text.secondary">{formatBn(formatDateDhaka(latestVitals.recorded_at, locale), locale)}</Typography>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1, mt: 1 }}>
+                    {([
+                      [t('patients.vitals.bp'), latestVitals.bp_systolic !== null && latestVitals.bp_diastolic !== null ? `${latestVitals.bp_systolic}/${latestVitals.bp_diastolic}` : null],
+                      [t('patients.vitals.pulse'), latestVitals.pulse_bpm],
+                      [t('patients.vitals.temperature'), latestVitals.temperature_c],
+                      [t('patients.vitals.spo2'), latestVitals.spo2_percent],
+                      [t('patients.vitals.weight'), latestVitals.weight_kg],
+                      ['BMI', latestVitals.bmi],
+                    ] as [string, number | string | null][]).filter(([, value]) => value !== null).map(([label, value]) => (
+                      <Chip key={label} size="small" variant="outlined" label={`${label} ${formatBn(value ?? '', locale)}`} />
+                    ))}
+                  </Stack>
+                  <Button size="small" sx={{ mt: 1.5 }} onClick={() => setTab('vitals')}>{t('patients.show.vitals_trend')}</Button>
+                </>
               )}
             </CardContent>
           </Card>

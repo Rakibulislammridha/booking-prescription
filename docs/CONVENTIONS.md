@@ -42,7 +42,7 @@ resources/views/print/**            Browsershot / print templates (prescription,
 resources/views/site/{rx,drug}/     the two non-Inertia public Blade pages of the site surface (PRESCRIPTION.md §7.4, §7.8)
 routes/{panel,site,api,super,central}/<module>.php   route files, globbed by bootstrap/app.php
 routes/channels.php, routes/console.php         foundation-owned (modules register schedules/channels via classes)
-scripts/                            dev-services.sh, check-site-deps.sh, sync-fonts.sh, test-agent.sh
+scripts/                            dev-services.sh, check-site-deps.sh, check-panel-budget.sh, sync-fonts.sh, test-agent.sh
 tests/Unit/<Module>/                pure unit tests (no DB, extend PHPUnit\Framework\TestCase)
 tests/Feature/<Module>/             HTTP + DB tests (extend Tests\TestCase, tenants provisioned)
 tests/Concurrency/<Module>/         real-process concurrency tests (committed state, no transaction)
@@ -489,7 +489,22 @@ with services up, search/realtime groups) is green on a fresh database — see �
   the barrel. Theme tokens only (`sx={{ p: 2, color: 'text.secondary' }}`), no hard-coded colours.
 * Data grids: MUI `Table` + our `DataTable` component in `panel/Components/Shared`; the Pro grid is not licensed.
 * Drag-and-drop: `@dnd-kit` only in `panel/Components/Serials/QueueList.tsx` (owned by S) and the pad
-  designer (F). Charts: `recharts` only under `panel/Pages/Reports/**` and the dashboard.
+  designer (F). Charts: `recharts` only under `panel/Pages/{Reports,Super}/**`, `panel/Components/Reports/**` and
+  `panel/Components/Patients/VitalsTrendCharts.tsx` (BRIEF §5.H's vitals trend), and it must be reached through
+  `React.lazy` from any page outside the Reports section.
+* **Panel payload budget.** `scripts/check-panel-budget.sh` (`npm run check:panel`, `composer check-panel`) is the
+  sibling of the site's guard and enforces both halves of the rules above: the barrel-import / recharts / dnd-kit /
+  date-picker rules by walking `resources/js/panel`, and a first-load budget per route read from
+  `public/build/manifest.json` (entry closure + heavier panel locale chunk + the route's page chunk). Two numbers:
+  **≤ 445 KB gzip for any panel route** and **≤ 380 KB gzip for the clinical routes** — `Reception/*`,
+  `Prescription/*`, `Queue/*`, `Patients/*`, `Dashboard/*` — which are the screens BRIEF §8 means by "usable on a
+  low-end device". Both are set from measured reality with headroom; lowering them is welcome, raising one needs a
+  reason in the PR. Anything a route does not need at first paint (dialogs, the drawing canvas, the handwriting
+  pad, charts, the token-slip printer) goes behind `React.lazy` — the service worker precaches every built chunk,
+  so a lazily loaded dialog still opens on an offline desk (OFFLINE.md §11).
+* `@mui/x-date-pickers` is **not** mounted in `panel/app.tsx`: no page uses a picker, and its `LocalizationProvider`
+  cost every route ~5 KB gzip. A page that needs one wraps itself (`LocalizationProvider` + `AdapterDayjs`) inside
+  its own chunk.
 * Keyboard-first: every dialog has an Enter/Esc binding; the prescription writer's shortcuts are
   PRESCRIPTION.md §1.4 and are registered through `panel/hooks/useHotkeys.ts`.
 
@@ -582,7 +597,7 @@ below is true and the PR shows the commands' output.
 | 6 | No prescription rendering path joins live to `catalog` | `vendor/bin/phpstan analyse` clean (rule `NoCatalogModelsInRendering`); `grep -rn "Models\\\\Catalog" app/Domain/Prescription/Render` returns nothing |
 | 7 | Schema matches `docs/SCHEMA.md` | migrations reviewed against SCHEMA.md; `php artisan tenants:migrate --tenant=9001 --pretend` shows no drift; enum values equal the CHECK lists |
 | 8 | Full test suite passes on a fresh database | `scripts/test-agent.sh N` (all suites, all groups, services up) — exit 0 — run **after** the final rebase |
-| 9 | Code quality gates | `vendor/bin/pint --test`, `vendor/bin/phpstan analyse --memory-limit=1G`, `npm run typecheck`, `scripts/check-site-deps.sh` all exit 0 |
+| 9 | Code quality gates | `vendor/bin/pint --test`, `vendor/bin/phpstan analyse --memory-limit=1G`, `npm run typecheck`, `scripts/check-site-deps.sh`, `scripts/check-panel-budget.sh` all exit 0 |
 | 10 | Routes, types and translations regenerated | `php artisan ziggy:generate --types-only resources/js/shared/types/ziggy.d.ts` committed; `php artisan route:list --name=<module>` reviewed for naming |
 | 11 | Octane-safe | No static mutable state; new singletons that hold request/tenant state are listed in `config/octane.php` `flush` (via the foundation owner); `php artisan octane:start --workers=2 --max-requests=50` + a 200-request smoke script (`scripts/octane-smoke.sh`) shows no `tenancy.leak` log line |
 | 12 | Queue-safe | Jobs use `TenantAware`, set `$queue`, are idempotent; `tests` dispatch them with `Bus::fake()` assertions and one real `sync` execution inside `asTenant('a')` |
@@ -591,7 +606,7 @@ below is true and the PR shows the commands' output.
 Quick pre-push sequence (copy/paste):
 
 ```
-vendor/bin/pint --dirty && vendor/bin/phpstan analyse --memory-limit=1G && npm run typecheck && scripts/check-site-deps.sh \
+vendor/bin/pint --dirty && vendor/bin/phpstan analyse --memory-limit=1G && npm run typecheck && scripts/check-site-deps.sh && scripts/check-panel-budget.sh \
 && php artisan lang:check && scripts/test-agent.sh N --exclude-group=concurrency,search,realtime
 # before declaring done:
 scripts/dev-services.sh start && scripts/test-agent.sh N

@@ -7,6 +7,7 @@ namespace App\Domain\Billing\Services;
 use App\Domain\Billing\Enums\InvoiceStatus;
 use App\Domain\Billing\Enums\RefundStatus;
 use App\Domain\Billing\Exceptions\DiscountBelowPaid;
+use App\Domain\Booking\Enums\AppointmentStatus;
 use App\Domain\Booking\Enums\PaymentStatus;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Invoice;
@@ -134,6 +135,12 @@ final class InvoiceLedger
      * `appointments.payment_status` is Booking's mirror of the same fact (the desk board reads it). Keeping it in
      * step here is the only place Billing writes another module's column, and it is written from the invoice —
      * never the other way round.
+     *
+     * It is also where a serial HELD for advance payment is released into a real booking (BRIEF §5.C "payment
+     * (optional / advance / full)"): a self-service booking for a doctor with `advance_payment_required` is written
+     * `pending` with no `confirmed_at`, and becomes `confirmed` the moment its bill is settled. Doing it from the
+     * invoice rather than from the gateway callback means the counter path confirms it too — a patient who walks in
+     * and pays the advance in cash is as confirmed as one who paid with bKash, and no second code path is needed.
      */
     private function mirrorOntoAppointment(Invoice $invoice): void
     {
@@ -154,8 +161,17 @@ final class InvoiceLedger
             default => PaymentStatus::Unpaid,
         };
 
-        if ($appointment->payment_status !== $status || $appointment->invoice_id !== $invoice->id) {
-            $appointment->forceFill(['payment_status' => $status, 'invoice_id' => $invoice->id])->save();
+        $columns = $appointment->payment_status !== $status || $appointment->invoice_id !== $invoice->id
+            ? ['payment_status' => $status, 'invoice_id' => $invoice->id]
+            : [];
+
+        // Fully paid settles the hold. A partial payment does not: the advance was not actually collected.
+        if ($status === PaymentStatus::Paid && $appointment->status === AppointmentStatus::Pending) {
+            $columns += ['status' => AppointmentStatus::Confirmed, 'confirmed_at' => $appointment->confirmed_at ?? now()];
+        }
+
+        if ($columns !== []) {
+            $appointment->forceFill($columns)->save();
         }
     }
 

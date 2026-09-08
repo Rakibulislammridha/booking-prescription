@@ -802,13 +802,21 @@ Quick-pick: doctor's own recent complaints (Redis zset, last 20).
 
 ### 4.2 Vitals (compounder enters, doctor reviews)
 
+- The compounder reaches it from the reception board: the vitals button on a **checked-in** row `POST`s
+  `panel.reception.vitals.open` (`VitalsDeskController`), which opens the visit through the same idempotent
+  `StartVisit` the doctor screen uses and redirects to `GET /panel/reception/visits/{visit}/vitals`
+  (`Reception/Vitals`). That screen is a form over the endpoint below — no second write path — and is online only
+  (OFFLINE.md §6.2, §11: clinical bodies are never cached on the device).
 - Compounder screen `POST /panel/visits/{visit}/vitals` (`VitalsController::store`, permission `prescriptions.vitals.record` — held by the `receptionist` (compounder) and `doctor` roles):
   `{bp_systolic, bp_diastolic, pulse_bpm, temperature_c, spo2_percent, respiratory_rate, weight_kg, height_cm, blood_glucose_mgdl, notes}`;
   server sets `recorded_by_user_id`, `recorded_at`, computes `bmi`. Several rows per visit are allowed (re-check); the writer shows the latest.
 - Writer shows the row read-only with a `☐ Reviewed` tick and an Edit pencil.
   Doctor edits go to `PATCH /panel/vitals/{vital}` (same row, `edited_by_doctor = true`, diff audited as `update` on `Vital`);
   ticking Reviewed (or the first doctor save) sets `reviewed_by_doctor_at` (SCHEMA.md §3.4).
-- BMI = `weight_kg / (height_cm/100)^2` (1 dp), computed by the app on write; the client computes it too for instant display.
+- BMI = `weight_kg / (height_cm/100)^2` (1 dp), computed by the app on write; the client computes it too for instant
+  display (`panel/lib/prescription/vitals.ts`, shared by the desk screen and the writer card). Measurements are held
+  as **text** while they are typed and parsed once on save — `Number('37.')` is `37`, so parsing per keystroke turns
+  37.6 °C into 376.
 - Age-based rules: age < 12 y and `weight_kg` null → banner "Weight needed for pediatric dosing" (PediatricDoseCheck emits `warning`, §5.3).
 - `VitalsRow`: `{id, bp_systolic, bp_diastolic, pulse_bpm, temperature_c, spo2_percent, respiratory_rate, weight_kg, height_cm, bmi, blood_glucose_mgdl, notes, recorded_by:{id,name}, recorded_at, edited_by_doctor, reviewed_by_doctor_at}`.
 

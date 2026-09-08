@@ -56,7 +56,8 @@ final class DoctorResource extends JsonResource
             ]),
             'specialty_ids' => $this->whenLoaded('doctorSpecialties', fn () => $this->doctorSpecialties->pluck('specialty_id')->map(fn ($id) => (int) $id)->values()->all()),
             'primary_specialty_id' => $this->whenLoaded('doctorSpecialties', fn () => $this->doctorSpecialties->firstWhere('is_primary', true)?->specialty_id),
-            'specialties' => SpecialtyResource::collection($this->whenLoaded('specialties')),
+            // Resolved: a nested resource collection reaches an Inertia page as `{data: [...]}` (see PatientResource).
+            'specialties' => $this->whenLoaded('specialties', fn () => SpecialtyResource::collection($this->specialties)->resolve($request)),
         ];
     }
 }

@@ -1,5 +1,7 @@
 // Booking confirmation (Inertia::render('Booking/Confirmed')): the serial code, when to come, "pay at counter",
 // and the public queue link + QR (the Queue module's page; the placeholder path is /q/{doctor-slug}/today).
+// A serial HELD for advance payment (BRIEF §5.C) is NOT confirmed: the page says so, says when the hold lapses,
+// and links straight to the checkout instead of congratulating the patient on a booking they do not have yet.
 import type { ReactNode } from 'react';
 import { Link } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
@@ -18,9 +20,12 @@ type Props = PageProps<{
   queue_url: string;
   branch: { name: string; phone: string | null; address: string | null };
   pay_at_counter: boolean;
+  held_for_payment: boolean;
+  hold_minutes: number | null;
+  checkout_url: string | null;
 }>;
 
-export default function Confirmed({ appointment, queue_url, branch, pay_at_counter }: Props) {
+export default function Confirmed({ appointment, queue_url, branch, pay_at_counter, held_for_payment, hold_minutes, checkout_url }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
   const doctor = appointment.doctor;
@@ -30,7 +35,7 @@ export default function Confirmed({ appointment, queue_url, branch, pay_at_count
   return (
     <div className="mx-auto max-w-md grid gap-4">
       <section className="rounded-xl bg-white p-6 text-center shadow-sm" aria-live="polite">
-        <p className="text-sm font-semibold uppercase tracking-wide text-green-700">{t('booking.confirmed.title')}</p>
+        <p className={`text-sm font-semibold uppercase tracking-wide ${held_for_payment ? 'text-amber-700' : 'text-green-700'}`}>{held_for_payment ? t('booking.confirmed.held_title') : t('booking.confirmed.title')}</p>
         <p className="mt-2 text-6xl font-black tracking-wider text-primary" data-testid="serial-code">{formatBn(appointment.serial?.display_code ?? '—', locale)}</p>
         <p className="mt-2 text-lg font-semibold">{locale === 'bn' && doctor?.name_bn ? doctor.name_bn : doctor?.name}</p>
         {session ? <p className="text-slate-700">{formatDateDhaka(session.date)} · {t('booking.session_label', { code: session.code })} · {formatTimeDhaka(session.planned_start_at)}</p> : null}
@@ -41,6 +46,12 @@ export default function Confirmed({ appointment, queue_url, branch, pay_at_count
         <div className="flex justify-between"><span>{t('booking.confirmed.fee')}</span><strong>{formatBdt(appointment.fee.paisa)}</strong></div>
         {appointment.fee_rule_reason ? <p className="text-xs text-slate-500">{appointment.fee_rule_reason}</p> : null}
         {pay_at_counter ? <p className="rounded-lg bg-amber-50 p-2 text-amber-900">{t('booking.confirmed.pay_at_counter')}</p> : null}
+        {held_for_payment ? (
+          <div className="grid gap-2 rounded-lg bg-amber-50 p-3 text-amber-900">
+            <p>{t('booking.confirmed.held_notice', { minutes: formatBn(hold_minutes ?? 0, locale) })}</p>
+            {checkout_url ? <a href={checkout_url} className="rounded-lg bg-primary px-4 py-2 text-center text-base font-semibold text-on-primary">{t('booking.confirmed.pay_now')}</a> : null}
+          </div>
+        ) : null}
         <p className="text-slate-700">{branch.name}{branch.address ? ` · ${branch.address}` : ''}</p>
         {branch.phone ? <p className="text-slate-700">{t('booking.confirmed.phone')}: {formatBn(branch.phone, locale)}</p> : null}
       </section>

@@ -6,6 +6,7 @@ namespace App\Domain\Booking\Actions;
 
 use App\Domain\Booking\Data\BookingRequest;
 use App\Domain\Booking\Data\BookingResult;
+use App\Domain\Booking\Enums\AppointmentStatus;
 use App\Domain\Booking\Enums\BookingChannel;
 use App\Domain\Booking\Exceptions\AlreadyBooked;
 use App\Domain\Booking\Exceptions\DoctorNotBookable;
@@ -13,6 +14,7 @@ use App\Domain\Booking\Exceptions\OtpRequired;
 use App\Domain\Booking\Exceptions\PatientAmbiguous;
 use App\Domain\Booking\Exceptions\PatientRequired;
 use App\Domain\Booking\Exceptions\SessionNotFound;
+use App\Domain\Booking\Services\AdvancePaymentPolicy;
 use App\Domain\Booking\Services\AppointmentWriter;
 use App\Domain\Booking\Services\FeeResolver;
 use App\Domain\Clinic\Services\Settings;
@@ -37,6 +39,10 @@ use Illuminate\Support\Facades\DB;
  * (materialised on demand) → AllocateSerial with the channel's pool/source → fee snapshot (FeeResolver) →
  * appointment row linked both ways → AppointmentBooked after commit. Online and kiosk never draw from the counter
  * pool (BookingChannel::pool). Idempotent by `clientEventId` (an online double submit returns the same booking).
+ *
+ * The "advance" leg of §5.C's payment step is AdvancePaymentPolicy: a self-service booking for a doctor who
+ * requires payment up front is written `pending` (the serial is HELD, not confirmed) and is refused outright when
+ * the tenant cannot take money online — checked after the fee is known and before a single number leaves the pool.
  */
 final class BookAppointment
 {
@@ -47,6 +53,7 @@ final class BookAppointment
         private readonly FeeResolver $fees,
         private readonly AppointmentWriter $writer,
         private readonly Settings $settings,
+        private readonly AdvancePaymentPolicy $advancePayment,
     ) {}
 
     public function handle(BookingRequest $r, Actor $actor): BookingResult
@@ -75,6 +82,10 @@ final class BookAppointment
 
             $fee = $this->fees->resolve($patient, $doctor, $session, $r->channel, $r->type, $r->feeOverride, $previous);
 
+            // Before allocation on purpose: a doctor who requires advance payment and a tenant that cannot take it
+            // online must not consume an online serial that nobody could ever pay for (AdvancePaymentUnavailable).
+            $held = $this->advancePayment->guard($r->channel, $doctor, $fee->feePaisa);
+
             $serial = ($this->allocate)(new AllocationRequest(
                 sessionInstanceId: $session->id,
                 pool: $r->channel->pool(staffActor: $actor->userId !== null),
@@ -99,7 +110,7 @@ final class BookAppointment
                 'notes' => $r->notes,
                 'idempotency_key' => $r->clientEventId,
                 'is_telemedicine' => $r->isTelemedicine || $r->channel === BookingChannel::Telemedicine,
-            ]);
+            ], status: $held ? AppointmentStatus::Pending : AppointmentStatus::Confirmed);
 
             return new BookingResult($appointment, $serial->refresh(), $patient, $created, $fee);
         });

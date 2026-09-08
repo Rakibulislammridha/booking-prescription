@@ -2,7 +2,8 @@
 // The desk service worker (docs/OFFLINE.md §11, vite-plugin-pwa injectManifest). Route table, in registration order:
 //   1. NetworkOnly guard list FIRST — any non-GET, /api/reception/sync*, /api/reception/blocks*, /api/ping, /broadcasting/*,
 //      /api/device/broadcasting/*, /sanctum/*, /queue/*: mutations and liveness are never served from cache;
-//   2. the reception shell (navigation to /panel/reception*) NetworkFirst 3 s → cold offline boot serves the last HTML
+//   2. the reception shell (navigation to /panel/reception*, except the clinical /panel/reception/visits/*)
+//      NetworkFirst 3 s → cold offline boot serves the last HTML;
 //      and the page hydrates from Dexie (the `bootstrap` in the props is treated as stale);
 //   3. /api/reception/bootstrap* NetworkFirst 4 s (belt and braces — Dexie is the real store);
 //   4. /api/reception/patients*, /history* NetworkFirst 4 s, 500 entries;
@@ -27,14 +28,19 @@ export const API_PATIENTS_CACHE = 'api-patients';
 export const PRINT_TEMPLATES_CACHE = 'print-templates';
 
 /** Never cached: mutations and every liveness / realtime / auth path (OFFLINE §11). */
-export const NETWORK_ONLY_PREFIXES = ['/api/reception/sync', '/api/reception/blocks', '/api/ping', '/broadcasting/', '/api/device/broadcasting/', '/sanctum/', '/queue/'] as const;
+export const NETWORK_ONLY_PREFIXES = ['/api/reception/sync', '/api/reception/blocks', '/api/ping', '/broadcasting/', '/api/device/broadcasting/', '/sanctum/', '/queue/', '/panel/reception/visits/'] as const;
 
 export function isNetworkOnly(method: string, pathname: string): boolean {
   return method !== 'GET' || NETWORK_ONLY_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+/**
+ * The desk's own screens. `/panel/reception/visits/*` — the compounder's vitals entry (BRIEF §5.G.2) — is
+ * deliberately excluded: it is a clinical body, and OFFLINE.md §6.2 keeps those off the device entirely. It is
+ * NetworkOnly below, so an offline desk gets the browser's failure instead of yesterday's blood pressure.
+ */
 export function isReceptionShell(mode: RequestMode, pathname: string, headers: Headers): boolean {
-  return mode === 'navigate' && pathname.startsWith('/panel/reception') && !headers.has('X-Inertia');
+  return mode === 'navigate' && pathname.startsWith('/panel/reception') && !pathname.startsWith('/panel/reception/visits/') && !headers.has('X-Inertia');
 }
 
 self.addEventListener('message', (event: ExtendableMessageEvent) => {

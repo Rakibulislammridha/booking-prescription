@@ -8,6 +8,7 @@
         "test": "vitest run",
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "check:site": "scripts/check-site-deps.sh",
+        "check:panel": "scripts/check-panel-budget.sh",
         "build:site": "BP_SURFACE=site vite build",
         "build:panel": "BP_SURFACE=panel vite build"
     },

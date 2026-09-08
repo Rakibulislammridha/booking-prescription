@@ -96,6 +96,9 @@
         ],
         "check-site": [
             "scripts/check-site-deps.sh"
+        ],
+        "check-panel": [
+            "scripts/check-panel-budget.sh"
         ]
     },
     "extra": {

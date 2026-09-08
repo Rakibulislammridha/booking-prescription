@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Booking;
 
+use App\Domain\Booking\Console\ExpireAdvancePaymentHoldsCommand;
 use App\Domain\Booking\Contracts\OnlinePaymentGateway;
 use App\Domain\Booking\Contracts\RefundProcessor;
 use App\Domain\Booking\Listeners\CreateDraftFollowUpAppointment;
@@ -27,8 +28,8 @@ use Illuminate\Support\ServiceProvider;
 
 /**
  * Booking module wiring: the appointment ↔ serial listeners, the follow-up draft listener (by event class name — the
- * Prescription module ships concurrently), the `booking` / `kiosk` rate limiters (SERIAL_ENGINE §11.2, §16) and the
- * pay-at-counter / null-refund bindings Billing later rebinds.
+ * Prescription module ships concurrently), the `booking` / `kiosk` rate limiters (SERIAL_ENGINE §11.2, §16), the
+ * advance-payment hold sweeper (BRIEF §5.C) and the pay-at-counter / null-refund bindings Billing later rebinds.
  */
 final class BookingServiceProvider extends ServiceProvider
 {
@@ -58,5 +59,9 @@ final class BookingServiceProvider extends ServiceProvider
             Limit::perMinute(5)->by('kiosk-mobile:'.(string) (Tenancy::id() ?? 'central').':'.$mobile($request)),
             Limit::perMinute(60)->by('kiosk-branch:'.(string) (Tenancy::id() ?? 'central').':'.(string) $request->input('branch', $request->ip())),
         ]);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([ExpireAdvancePaymentHoldsCommand::class]);
+        }
     }
 }

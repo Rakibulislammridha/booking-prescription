@@ -2,6 +2,8 @@
 // (api.scheduling.availability → AvailabilityCalendar, materialised on demand) → mobile + OTP (kiosk.otp_required)
 // → name/sex/age → POST site.booking.store. The kiosk QR lands here too (`kiosk` prop: today's sessions prefilled,
 // channel kiosk). Payment is "pay at counter" unless the OnlinePaymentGateway is enabled (extension point).
+// `advance_payment_required` (BRIEF §5.C) is announced before the form is filled: the serial will be HELD until it
+// is paid, or — with no gateway configured — self-booking is refused and the patient must phone the clinic.
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useForm } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +28,7 @@ type Props = PageProps<{
   otp_required: boolean;
   otp_resend_seconds: number;
   online_payment_enabled: boolean;
+  advance_payment_required: boolean;
   channel: 'online' | 'kiosk';
   kiosk: { branch: string; sessions: KioskSession[] } | null;
 }>;
@@ -34,7 +37,7 @@ interface PickedSession { public_id: string; code: string; date: string; planned
 
 const BD_MOBILE = /^(\+?88)?01[3-9]\d{8}$/;
 
-export default function Doctor({ doctor, branch, from, to, otp_required, otp_resend_seconds, online_payment_enabled, channel, kiosk }: Props) {
+export default function Doctor({ doctor, branch, from, to, otp_required, otp_resend_seconds, online_payment_enabled, advance_payment_required, channel, kiosk }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
   const [days, setDays] = useState<AvailabilityDay[]>([]);
@@ -91,7 +94,10 @@ export default function Doctor({ doctor, branch, from, to, otp_required, otp_res
     ? (kiosk?.sessions ?? []).map((s) => ({ public_id: s.public_id, code: s.code, date: s.date, planned_start_at: s.planned_start_at, online_remaining: s.online_remaining, doctorName: name(s.doctor.name, s.doctor.name_bn) }))
     : days.flatMap((d) => d.sessions.filter((s) => s.status === 'scheduled' || s.status === 'running' || s.status === 'paused').map((s) => ({ public_id: s.public_id, code: s.code, date: d.date, planned_start_at: s.planned_start_at, online_remaining: s.online_remaining, doctorName: doctor ? name(doctor.name, doctor.name_bn) : '' })));
   const byDate = sessions.reduce<Record<string, PickedSession[]>>((acc, s) => { (acc[s.date] ??= []).push(s); return acc; }, {});
-  const canSubmit = Boolean(form.data.session) && mobileValid && form.data.name.trim() !== '' && (!otp_required || form.data.otp.length >= 4) && !form.processing;
+  // Advance payment with no working gateway cannot be completed at all; the server refuses it too
+  // (AdvancePaymentUnavailable), so on the single-doctor online page the button says so up front.
+  const advanceBlocked = advance_payment_required && !online_payment_enabled;
+  const canSubmit = Boolean(form.data.session) && mobileValid && form.data.name.trim() !== '' && (!otp_required || form.data.otp.length >= 4) && !form.processing && !(channel === 'online' && advanceBlocked);
   const errors = form.errors as Record<string, string | undefined>;
 
   return (
@@ -176,6 +182,12 @@ export default function Doctor({ doctor, branch, from, to, otp_required, otp_res
         </div>
         {errors.session ? <p className="text-xs text-red-700">{errors.session}</p> : null}
         {errors.domain ? <p className="rounded-lg bg-red-50 p-2 text-sm text-red-800">{errors.domain}</p> : null}
+        {advance_payment_required ? (
+          <p className={`rounded-lg p-2 text-sm ${advanceBlocked ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-900'}`}>
+            {advanceBlocked ? t('booking.form.advance_payment_unavailable') : t('booking.form.advance_payment')}
+            {advanceBlocked && branch.phone ? ` ${formatBn(branch.phone, locale)}` : ''}
+          </p>
+        ) : null}
         <p className="text-xs text-slate-600">{online_payment_enabled ? t('booking.form.pay_online') : t('booking.form.pay_at_counter')}</p>
         <button type="submit" disabled={!canSubmit} className="rounded-lg bg-primary px-4 py-3 text-base font-semibold text-on-primary disabled:opacity-50">
           {picked ? t('booking.form.submit_for', { code: picked.code, date: formatDateDhaka(picked.date) }) : t('booking.form.submit')}

@@ -2,8 +2,8 @@
 // booked / arrived / done / remaining, one-click booking, check-in, collect fee, print slip, call-next, cancel with a
 // reason code, patient quick-search, kiosk QR, device registration, conflict cards. Live via the reception channel
 // when online; polled every 5 s when degraded; served from Dexie + the event log when offline (OFFLINE §5–§8).
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link } from '@inertiajs/react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
@@ -20,12 +20,21 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
 import { SessionTile } from '@panel/Components/Reception/SessionTile';
-import { BookingDialog } from '@panel/Components/Reception/BookingDialog';
 import { PatientQuickSearch, type QuickSearchHit } from '@panel/Components/Reception/PatientQuickSearch';
-import { PatientDuesPanel } from '@panel/Components/Billing/PatientDuesPanel';
-import { ConflictCards } from '@panel/Components/Reception/ConflictCards';
-import { TokenSlip, type SlipData, type SlipLabels } from '@panel/Components/Reception/TokenSlip';
-import { CancelDialog, CollectFeeDialog, DeviceRegistrationDialog, KioskQrDialog } from '@panel/Components/Reception/DeskDialogs';
+import type { SlipData, SlipLabels } from '@panel/Components/Reception/TokenSlip';
+
+// Everything below is a dialog, a print sheet or a side panel: none of it is on screen at first paint, and the
+// desk runs on cheap clinic hardware over clinic wifi (BRIEF §8). Splitting them keeps the board's first load
+// inside scripts/check-panel-budget.sh. The service worker precaches every built chunk, so an offline desk still
+// opens them (OFFLINE.md §11) — they are lazy, not optional.
+const BookingDialog = lazy(() => import('@panel/Components/Reception/BookingDialog').then((m) => ({ default: m.BookingDialog })));
+const PatientDuesPanel = lazy(() => import('@panel/Components/Billing/PatientDuesPanel').then((m) => ({ default: m.PatientDuesPanel })));
+const ConflictCards = lazy(() => import('@panel/Components/Reception/ConflictCards').then((m) => ({ default: m.ConflictCards })));
+const TokenSlip = lazy(() => import('@panel/Components/Reception/TokenSlip').then((m) => ({ default: m.TokenSlip })));
+const CancelDialog = lazy(() => import('@panel/Components/Reception/DeskDialogs').then((m) => ({ default: m.CancelDialog })));
+const CollectFeeDialog = lazy(() => import('@panel/Components/Reception/DeskDialogs').then((m) => ({ default: m.CollectFeeDialog })));
+const DeviceRegistrationDialog = lazy(() => import('@panel/Components/Reception/DeskDialogs').then((m) => ({ default: m.DeviceRegistrationDialog })));
+const KioskQrDialog = lazy(() => import('@panel/Components/Reception/DeskDialogs').then((m) => ({ default: m.KioskQrDialog })));
 import { useDesk, deviceFingerprint, APP_VERSION } from '@panel/hooks/reception/useDesk';
 import { callNext, serialAction } from '@panel/api/serials';
 import { cancelBooking, collectFee, fetchKioskUrl, fetchPrintTemplates, registerDevice } from '@panel/api/reception';
@@ -45,7 +54,7 @@ type Props = PageProps<{
   channel: string | null;
   print_format: PrintTemplate['id'];
   settings: Record<string, unknown>;
-  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; register_device: boolean; revoke: boolean };
+  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; register_device: boolean; revoke: boolean; record_vitals: boolean };
   actor_public_id: string | null;
 }>;
 
@@ -138,6 +147,12 @@ export default function Board({ board: initial, tenant_public_id, channel, print
     });
   };
 
+  // BRIEF §5.G.2: the compounder records vitals before the doctor sees the patient. One click from the row opens
+  // (idempotently) the visit and lands on the desk's vitals screen — the doctor's writer is never reachable here.
+  const openVitals = (serial: DeskSerial): void => {
+    router.post(route('panel.reception.vitals.open', { serial: serial.public_id }));
+  };
+
   const doCallNext = (session: BoardSession): void => {
     void run(async () => { const r = await callNext(session.public_id); await desk.refresh(); if (r.called) setToast(t('reception.toast.called', { code: formatBn(r.called.display_code, locale) })); });
   };
@@ -177,7 +192,8 @@ export default function Board({ board: initial, tenant_public_id, channel, print
             {desk.board.sessions.map((s) => (
               <SessionTile key={s.public_id} session={s} mode={desk.mode} blockRemaining={blockRemaining(s)} can={can} busy={busy}
                 onBook={(session, ch) => setBooking({ session, channel: ch })} onCallNext={doCallNext} onCheckIn={checkIn}
-                onCollect={(session, serial) => setCollect({ session, serial })} onPrint={print} onCancel={(session, serial) => setCancel({ session, serial })} onKiosk={openKiosk} />
+                onCollect={(session, serial) => setCollect({ session, serial })} onPrint={print} onCancel={(session, serial) => setCancel({ session, serial })}
+                onVitals={(_session, serial) => openVitals(serial)} onKiosk={openKiosk} />
             ))}
           </Stack>
         </Grid>
@@ -185,7 +201,7 @@ export default function Board({ board: initial, tenant_public_id, channel, print
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Typography variant="subtitle1" sx={{ mb: 1 }}>{t('reception.search.title')}</Typography>
             <PatientQuickSearch mode={desk.mode} cached={desk.cachedPatients} onPick={(hit: QuickSearchHit) => { setDuesPatient(hit.publicId); setToast(t('reception.search.picked', { name: hit.name })); }} />
-            {canSeeDues && !offline ? <Box sx={{ mt: 1.5 }}><PatientDuesPanel patient={duesPatient} /></Box> : null}
+            {canSeeDues && !offline ? <Box sx={{ mt: 1.5 }}><Suspense fallback={null}><PatientDuesPanel patient={duesPatient} /></Suspense></Box> : null}
           </Paper>
           {desk.blocks.filter((b) => b.status === 'active').length > 0 ? (
             <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
@@ -196,22 +212,25 @@ export default function Board({ board: initial, tenant_public_id, channel, print
         </Grid>
       </Grid>
 
-      <BookingDialog open={booking !== null} session={booking?.session ?? null} channel={booking?.channel ?? 'counter'} mode={desk.mode} blockRemaining={booking ? blockRemaining(booking.session) : 0}
+      <Suspense fallback={null}>
+      {booking !== null ? <BookingDialog open session={booking?.session ?? null} channel={booking?.channel ?? 'counter'} mode={desk.mode} blockRemaining={booking ? blockRemaining(booking.session) : 0}
         onClose={() => setBooking(null)} issueOffline={desk.issueOffline} cachedPatients={desk.cachedPatients}
         onBooked={({ serial, local, session }) => {
           const code = serial?.display_code ?? local?.displayCode ?? '';
           setToast(t('reception.toast.booked', { code: formatBn(code, locale) }));
           if (serial) { void desk.refresh(); print(session, serial); }
           else if (local) print(session, { public_id: local.publicId, display_code: local.displayCode, number: local.number, position: local.position, status: 'booked', priority: local.priority as DeskSerial['priority'], source: 'offline', pool: 'counter', patient_id: null, patient: { public_id: local.patientRef, name: local.patientName, mobile_masked: local.mobileMasked, age_text: null, sex: null, patient_code: '' }, appointment: { public_id: '', type: 'new', channel: 'offline', status: 'confirmed', fee_paisa: local.feePaisa ?? 0, list_fee_paisa: local.feePaisa ?? 0, fee_rule: 'new', payment_status: 'unpaid' }, appointment_id: null, slot_start_at: null, booked_at: '', checked_in_at: null, called_at: null, completed_at: null, no_show_at: null, cancelled_at: null, cancel_reason_code: null, passed_count: 0, skip_count: 0, eta: null });
-        }} />
-      <CollectFeeDialog open={collect !== null} serial={collect?.serial ?? null} offline={offline} busy={busy} error={error} onClose={() => setCollect(null)} onCollect={doCollect} />
-      <CancelDialog open={cancel !== null} serial={cancel?.serial ?? null} busy={busy} error={error} onClose={() => setCancel(null)} onCancel={doCancel} />
-      <DeviceRegistrationDialog open={registering} busy={busy} error={error} branchName={desk.board.branch.name} onClose={() => setRegistering(false)} onRegister={register} />
-      <KioskQrDialog open={kiosk.open} url={kiosk.url} hours={kiosk.hours} onClose={() => setKiosk((k) => ({ ...k, open: false }))} />
-      <ConflictCards open={conflicts.open} cards={conflicts.cards} index={conflicts.index} busy={conflicts.busy} error={conflicts.error} isAdmin={isAdmin}
+        }} /> : null}
+      {collect !== null ? <CollectFeeDialog open serial={collect?.serial ?? null} offline={offline} busy={busy} error={error} onClose={() => setCollect(null)} onCollect={doCollect} /> : null}
+      {cancel !== null ? <CancelDialog open serial={cancel?.serial ?? null} busy={busy} error={error} onClose={() => setCancel(null)} onCancel={doCancel} /> : null}
+      {registering ? <DeviceRegistrationDialog open busy={busy} error={error} branchName={desk.board.branch.name} onClose={() => setRegistering(false)} onRegister={register} /> : null}
+      {kiosk.open ? <KioskQrDialog open url={kiosk.url} hours={kiosk.hours} onClose={() => setKiosk((k) => ({ ...k, open: false }))} /> : null}
+      {conflicts.open ? <ConflictCards open cards={conflicts.cards} index={conflicts.index} busy={conflicts.busy} error={conflicts.error} isAdmin={isAdmin}
         onClose={() => conflicts.hide()} onNext={() => conflicts.next()}
-        onResolve={(card, resolution, params) => { conflicts.setBusy(true); desk.resolve(card.clientEventId, resolution, params).then(() => conflicts.setBusy(false)).catch((e: unknown) => conflicts.setBusy(false, isApiError(e) ? e.message : String(e))); }} />
-      <TokenSlip template={template} data={slip.key === 0 ? null : slip.data} locale={locale} labels={labels} printKey={slip.key} />
+        onResolve={(card, resolution, params) => { conflicts.setBusy(true); desk.resolve(card.clientEventId, resolution, params).then(() => conflicts.setBusy(false)).catch((e: unknown) => conflicts.setBusy(false, isApiError(e) ? e.message : String(e))); }} /> : null}
+      {slip.key === 0 ? null : <TokenSlip template={template} data={slip.data} locale={locale} labels={labels} printKey={slip.key} />}
+      </Suspense>
+
       <Snackbar open={toast !== null} autoHideDuration={4000} onClose={() => setToast(null)} message={toast} />
       <Box sx={{ display: 'none' }}><Link href={route('panel.reception.devices.index')}>devices</Link></Box>
     </Stack>

@@ -1253,6 +1253,12 @@ and `public/build/` are build outputs and are gitignored. `outDir: 'public'`
 OFFLINE.md §11. `resources/js/panel/pwa.ts` calls `registerSW({ immediate: true, onNeedRefresh })`
 from `virtual:pwa-register`, applies updates only when `pendingEvents === 0`, and is imported only by `panel/app.tsx`.
 
+The panel has its own guard, `scripts/check-panel-budget.sh` (CONVENTIONS §7.3): the same manifest arithmetic as
+the site's, applied to `resources/js/panel/app.tsx` and every page under `panel/Pages/**`, with ≤ 445 KB gzip for
+any panel route and ≤ 380 KB for the clinical ones. It also enforces the §7.3 import rules that cause the payload
+in the first place (no MUI barrel imports, recharts and dnd-kit only where they belong, no date pickers in the
+entry or a layout).
+
 `tsconfig.json`: `"strict": true`, `"jsx": "react-jsx"`, `"module": "ESNext"`,
 `"moduleResolution": "bundler"`, `"target": "ES2022"`, `"lib": ["ES2022","DOM","DOM.Iterable","WebWorker"]`,
 `"types": ["vite/client", "vite-plugin-pwa/client"]`, `"paths"` mirroring the aliases,
@@ -1352,9 +1358,12 @@ when it replaces the history entry — which is exactly what a redirect back to 
 
 ### 7.6 MUI theme and Bangla fonts
 
-`resources/js/panel/theme.ts`: `createTheme({ typography: { fontFamily: '"Inter", "Noto Sans Bengali", system-ui, sans-serif', fontSize: 14 }, palette: { primary: { main: '#0f766e' } }, components: { MuiButton: { defaultProps: { disableElevation: true } } } })`;
-date pickers use `LocalizationProvider` with `AdapterDayjs` from `@mui/x-date-pickers/AdapterDayjs`
-and `dayjs` locale `bn`/`en` plus the `timezone` plugin pinned to `Asia/Dhaka`.
+`resources/js/panel/theme.ts`: `createTheme({ typography: { fontFamily: '"Inter", "Noto Sans Bengali", system-ui, sans-serif', fontSize: 14 }, palette: { primary: { main: '#0f766e' } }, components: { MuiButton: { defaultProps: { disableElevation: true } } } })`.
+Date pickers use `LocalizationProvider` with `AdapterDayjs` from `@mui/x-date-pickers/AdapterDayjs` and `dayjs`
+locale `bn`/`en` plus the `timezone` plugin pinned to `Asia/Dhaka` — but the provider is **not** in `panel/app.tsx`:
+no page mounts a picker today and the provider cost every route ~5 KB gzip, so a page that needs one wraps itself
+inside its own chunk (CONVENTIONS §7.3, `scripts/check-panel-budget.sh`). `panel/app.tsx` still imports
+`@shared/format/date`, which registers the dayjs utc/timezone plugins and the `bn` locale for whoever does.
 Fonts: `panel/app.tsx` imports `@fontsource/inter/{400,500,600,700}.css` and
 `@fontsource/noto-sans-bengali/bengali-{400,500,700}.css` (Bengali unicode-range subsets only;
 fontsource defaults to `font-display: swap`). `site/app.tsx` imports only

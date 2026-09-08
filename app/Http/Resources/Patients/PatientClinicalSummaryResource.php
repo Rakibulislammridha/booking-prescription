@@ -43,9 +43,11 @@ final class PatientClinicalSummaryResource extends JsonResource
             'blood_group' => $this->blood_group?->value,
             'preferred_language' => $this->preferred_language->value,
             'family_head' => $head === null ? null : ['public_id' => $head->public_id, 'name' => $head->name, 'relation' => $this->primaryRelation->relation->value],
-            'allergies' => AllergyResource::collection($this->allergies->where('is_active', true)->values()),
-            'conditions' => ConditionResource::collection($conditions),
-            'medications' => MedicationResource::collection($this->medications->where('is_active', true)->values()),
+            // Resolved, not left as resource collections: nested Responsables reach an Inertia page as
+            // `{data: [...]}` (see PatientResource).
+            'allergies' => AllergyResource::collection($this->allergies->where('is_active', true)->values())->resolve($request),
+            'conditions' => ConditionResource::collection($conditions)->resolve($request),
+            'medications' => MedicationResource::collection($this->medications->where('is_active', true)->values())->resolve($request),
             'flags' => [
                 'pregnant' => self::any($codes, fn (string $c) => $c === 'Z33.1' || str_starts_with($c, 'O')),
                 'lactating' => in_array('Z39.1', $codes, true),
