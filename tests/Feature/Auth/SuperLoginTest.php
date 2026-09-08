@@ -37,7 +37,9 @@ final class SuperLoginTest extends TestCase
                 ->component('Super/Dashboard')
                 ->where('auth.guard', 'super')
                 ->where('tenant', null)
-                ->has('tenants_count'));
+                ->has('totals.tenants')
+                ->has('attention')
+                ->has('recent'));
     }
 
     public function test_super_guests_are_redirected_to_super_login_and_inactive_admins_are_rejected(): void

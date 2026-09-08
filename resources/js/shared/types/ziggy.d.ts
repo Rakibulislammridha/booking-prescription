@@ -27,6 +27,255 @@ declare module 'ziggy-js' {
             "binding": "public_id"
         }
     ],
+    "super.ping": [],
+    "super.plans.index": [],
+    "super.plans.store": [],
+    "super.plans.update": [
+        {
+            "name": "plan",
+            "required": true,
+            "binding": "code"
+        }
+    ],
+    "super.plans.destroy": [
+        {
+            "name": "plan",
+            "required": true,
+            "binding": "code"
+        }
+    ],
+    "super.usage.index": [],
+    "super.audit.index": [],
+    "super.catalog.review": [],
+    "super.catalog.reconciliation.index": [],
+    "super.catalog.reconciliation.resolve": [
+        {
+            "name": "report",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "super.tenants.index": [],
+    "super.tenants.show": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.suspend": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.reactivate": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.cancel": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.plan": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.features": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.limits": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.invoices.store": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.invoices.issue": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "invoice",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.invoices.void": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "invoice",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.invoices.pay": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "invoice",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.impersonate": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.backups.store": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.exports.store": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.archives.download": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "backup",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "super.tenants.archives.restore": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "backup",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "super.tenants.domains.store": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "super.tenants.domains.verify": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "domain",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "super.tenants.domains.primary": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "domain",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "super.tenants.domains.destroy": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "domain",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "central.billing.invoice": [
+        {
+            "name": "invoice",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "central.billing.pay": [
+        {
+            "name": "invoice",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "central.billing.callback": [
+        {
+            "name": "gateway",
+            "required": true
+        }
+    ],
+    "central.home": [],
+    "central.pricing": [],
+    "central.changelog": [],
+    "central.docs.index": [],
+    "central.docs.show": [
+        {
+            "name": "section",
+            "required": true
+        }
+    ],
+    "central.locale": [],
+    "central.onboarding.create": [],
+    "central.onboarding.store": [],
+    "central.onboarding.done": [
+        {
+            "name": "tenant",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
     "api.billing.webhook": [
         {
             "name": "gateway",
@@ -1286,6 +1535,38 @@ declare module 'ziggy-js' {
         {
             "name": "report",
             "required": true
+        }
+    ],
+    "panel.impersonate.enter": [
+        {
+            "name": "token",
+            "required": true
+        }
+    ],
+    "panel.impersonate.started": [],
+    "panel.impersonate.leave": [],
+    "panel.saas.subscription.index": [],
+    "panel.saas.domains.index": [],
+    "panel.saas.domains.store": [],
+    "panel.saas.domains.verify": [
+        {
+            "name": "domain",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "panel.saas.domains.primary": [
+        {
+            "name": "domain",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "panel.saas.domains.destroy": [
+        {
+            "name": "domain",
+            "required": true,
+            "binding": "id"
         }
     ],
     "panel.scheduling.index": [],

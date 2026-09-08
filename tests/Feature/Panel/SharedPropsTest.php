@@ -81,8 +81,16 @@ final class SharedPropsTest extends TestCase
         $raw = $this->withHeaders($this->inertiaHeaders())->get('/')->getContent();
 
         $this->assertStringContainsString('"theme":{}', $raw);
-        $this->assertStringContainsString('"features":{}', $raw);
         $this->assertStringContainsString('"logo_url":null', $raw);
+
+        // `features` is the Pennant map for the tenant (ARCHITECTURE §8.4). It became non-empty when the SaaS
+        // module shipped App\Domain\SaaS\Features; what still matters here is that it serialises as an OBJECT
+        // (the client types it Record<string, boolean>) and that a starter plan enables no paid module.
+        $features = $this->withHeaders($this->inertiaHeaders())->get('/')->json('props.features');
+        $this->assertIsArray($features);
+        $this->assertArrayHasKey('telemedicine', $features);
+        $this->assertSame([], array_keys(array_filter($features)));
+        $this->assertStringContainsString('"features":{"', $raw);
     }
 
     public function test_flash_props_come_from_the_session_and_are_null_when_unset(): void

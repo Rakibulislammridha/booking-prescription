@@ -12,6 +12,7 @@ use App\Domain\Prescription\PrescriptionServiceProvider;
 use App\Domain\Queue\QueueServiceProvider;
 use App\Domain\Reception\ReceptionServiceProvider;
 use App\Domain\Reports\ReportsServiceProvider;
+use App\Domain\SaaS\SaaSServiceProvider;
 use App\Domain\Scheduling\SchedulingServiceProvider;
 use App\Domain\Serials\SerialsServiceProvider;
 use App\Providers\AppServiceProvider;
@@ -37,4 +38,5 @@ return [
     BillingServiceProvider::class,
     NotificationsServiceProvider::class,
     ReportsServiceProvider::class,
+    SaaSServiceProvider::class,
 ];

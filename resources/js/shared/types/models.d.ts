@@ -1569,6 +1569,19 @@ export interface ReportExportRow {
 // reports:end
 
 // saas:start
+// The SaaS control plane's wire shapes deliberately do NOT live here, and this block records why so the next
+// person does not add a second copy:
+//
+//   resources/js/panel/Components/Super/types.ts    the super console + the two tenant-facing SaaS screens
+//   resources/js/site/Components/Central/types.ts   the central host's marketing, sign-up and invoice pages
+//
+// This file is the shared TENANT model contract, read by both bundles. Nothing in Module M is: the console
+// shapes (`TenantDetail`, `PlatformTotals`, `SuperPlan`, `CentralAuditRow`) are read only by
+// `panel/Pages/Super/**`, and the central shapes (`CentralLinks`, `PricingPlan`, `DocSection`) only by
+// `site/Pages/Central/**` — the two surfaces never share one. Duplicating them here would give a wire contract
+// two definitions and one of them would rot, so the module files are the single source and the server-side
+// shapes they mirror are `App\Domain\SaaS\Queries\{TenantOverview,PlanCatalog}` and
+// `App\Domain\SaaS\Data\LimitStatus`.
 // saas:end
 
 // telemedicine:start
