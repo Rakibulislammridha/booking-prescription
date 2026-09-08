@@ -1,0 +1,12 @@
+[Unit]
+Description=Laravel Reverb (WebSockets) for booking-prescription
+After=network.target bp-dragonfly.service
+
+[Service]
+WorkingDirectory=%h/www/booking-prescription
+ExecStart=%h/.config/herd-lite/bin/php artisan reverb:start --host=127.0.0.1 --port=8080
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

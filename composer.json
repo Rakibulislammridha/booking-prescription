@@ -24,6 +24,7 @@
         "laravel/tinker": "^2.10.1",
         "league/flysystem-aws-s3-v3": "^3.35",
         "meilisearch/meilisearch-php": "^1.17",
+        "predis/predis": "^3.6",
         "spatie/browsershot": "^5.4",
         "spatie/laravel-permission": "^8.3",
         "tightenco/ziggy": "^2.6"

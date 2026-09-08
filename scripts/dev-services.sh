@@ -49,4 +49,17 @@ stop() {
   pkill -f "$BIN/meilisearch" && echo "meilisearch: stopped"
   pkill -f "artisan reverb:start" && echo "reverb: stopped"
 }
+# Prefer the systemd --user units when they are installed: they survive this shell exiting
+# and restart on failure. Fall back to detached processes otherwise.
+UNITS="bp-dragonfly bp-meilisearch bp-reverb"
+have_units() { systemctl --user list-unit-files bp-dragonfly.service >/dev/null 2>&1 && systemctl --user cat bp-dragonfly >/dev/null 2>&1; }
+if have_units; then
+  case "${1:-start}" in
+    start)  systemctl --user start $UNITS; sleep 2; status;;
+    stop)   systemctl --user stop $UNITS;;
+    status) for u in $UNITS; do printf "%-16s %s\n" "$u" "$(systemctl --user is-active $u)"; done; status;;
+    *) echo "usage: $0 [start|stop|status]"; exit 2;;
+  esac
+  exit 0
+fi
 case "${1:-start}" in start) start;; status) status;; stop) stop;; *) echo "usage: $0 [start|status|stop]"; exit 2;; esac

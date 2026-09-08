@@ -1,0 +1,11 @@
+[Unit]
+Description=Dragonfly (Redis-compatible) for booking-prescription
+After=network.target
+
+[Service]
+ExecStart=%h/.local/bin/dragonfly --port 6379 --bind 127.0.0.1 --dir %h/.local/var/dragonfly --proactor_threads=2 --maxmemory 1gb --dbfilename dump --logtostderr
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

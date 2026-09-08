@@ -71,7 +71,11 @@ return [
 
     'redis' => [
 
-        'client' => env('REDIS_CLIENT', 'phpredis'),
+        // Auto-detect: the native phpredis extension when present (faster), otherwise the pure-PHP
+        // predis client. Different SAPIs on one machine can disagree about which extensions are
+        // loaded (a CLI build with ext-redis, a php-fpm build without it), so pinning one client
+        // breaks the other. Set REDIS_CLIENT explicitly to override.
+        'client' => env('REDIS_CLIENT') ?: (extension_loaded('redis') ? 'phpredis' : 'predis'),
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),

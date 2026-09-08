@@ -1,0 +1,12 @@
+[Unit]
+Description=Meilisearch for booking-prescription
+After=network.target
+
+[Service]
+Environment=MEILI_MASTER_KEY=bp-dev-master-key-0123456789abcdef
+ExecStart=%h/.local/bin/meilisearch --db-path %h/.local/var/meilisearch --http-addr 127.0.0.1:7700 --no-analytics --env development
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
