@@ -54,7 +54,7 @@ final class WaitTimeQuery
     /** @return array<string, mixed> */
     public function totals(ReportFilters $filters): array
     {
-        return self::shape($this->base($filters)->selectRaw(self::STATS)->first());
+        return self::shape($this->base($filters)->selectRaw(self::stats())->first());
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -62,7 +62,7 @@ final class WaitTimeQuery
     {
         $rows = $this->base($filters)
             ->join('doctors as d', 'd.id', '=', 'si.doctor_id')
-            ->selectRaw('si.doctor_id, d.name as doctor_name, d.public_id as doctor_public_id, '.self::STATS)
+            ->selectRaw('si.doctor_id, d.name as doctor_name, d.public_id as doctor_public_id, '.self::stats())
             ->groupBy('si.doctor_id', 'd.name', 'd.public_id')
             ->get();
 
@@ -83,7 +83,7 @@ final class WaitTimeQuery
         $bucket = LocalTime::dateBucket('si.session_date', $filters->granularity());
 
         $rows = $this->base($filters)
-            ->selectRaw("{$bucket} as k, ".self::STATS)
+            ->selectRaw("{$bucket} as k, ".self::stats())
             ->groupBy(DB::raw($bucket))
             ->orderBy('k')
             ->get();
@@ -164,18 +164,35 @@ final class WaitTimeQuery
     /**
      * One pass, six statistics. `wait` and `consult` have different sample predicates, which is exactly what
      * FILTER is for; `percentile_cont … WITHIN GROUP … FILTER` is valid Postgres and skips the rest.
+     *
+     * The consultation clamp is INTERPOLATED from `ConsultAverage::CLAMP` rather than written into the SQL as
+     * literals. The two numbers must be the same numbers the live queue accepts, and a constant that the SQL
+     * merely happens to agree with today is a constant that silently disagrees the day someone widens the
+     * clamp — leaving the ETA and the report quoting different averages for the same doctor.
      */
-    private const STATS = <<<'SQL'
-        count(*) filter (where s.checked_in_at is not null and s.called_at is not null and s.called_at >= s.checked_in_at) as wait_n,
-        avg(extract(epoch from (s.called_at - s.checked_in_at))) filter (where s.checked_in_at is not null and s.called_at is not null and s.called_at >= s.checked_in_at) as wait_avg,
-        percentile_cont(0.5) within group (order by extract(epoch from (s.called_at - s.checked_in_at))) filter (where s.checked_in_at is not null and s.called_at is not null and s.called_at >= s.checked_in_at) as wait_p50,
-        percentile_cont(0.9) within group (order by extract(epoch from (s.called_at - s.checked_in_at))) filter (where s.checked_in_at is not null and s.called_at is not null and s.called_at >= s.checked_in_at) as wait_p90,
-        count(*) filter (where s.status = 'completed' and s.called_at is not null and s.completed_at is not null and extract(epoch from (s.completed_at - s.called_at)) between 30 and 1800) as consult_n,
-        avg(extract(epoch from (s.completed_at - s.called_at))) filter (where s.status = 'completed' and s.called_at is not null and s.completed_at is not null and extract(epoch from (s.completed_at - s.called_at)) between 30 and 1800) as consult_avg,
-        percentile_cont(0.5) within group (order by extract(epoch from (s.completed_at - s.called_at))) filter (where s.status = 'completed' and s.called_at is not null and s.completed_at is not null and extract(epoch from (s.completed_at - s.called_at)) between 30 and 1800) as consult_p50,
-        percentile_cont(0.9) within group (order by extract(epoch from (s.completed_at - s.called_at))) filter (where s.status = 'completed' and s.called_at is not null and s.completed_at is not null and extract(epoch from (s.completed_at - s.called_at)) between 30 and 1800) as consult_p90,
-        count(*) filter (where s.status = 'completed' and s.called_at is not null and s.completed_at is not null and extract(epoch from (s.completed_at - s.called_at)) not between 30 and 1800) as consult_clamped
-    SQL;
+    private static function stats(): string
+    {
+        $lo = self::CONSULT_MIN_SECONDS;
+        $hi = self::CONSULT_MAX_SECONDS;
+
+        $waited = 's.checked_in_at is not null and s.called_at is not null and s.called_at >= s.checked_in_at';
+        $wait = 'extract(epoch from (s.called_at - s.checked_in_at))';
+        $consulted = "s.status = 'completed' and s.called_at is not null and s.completed_at is not null";
+        $consult = 'extract(epoch from (s.completed_at - s.called_at))';
+        $inClamp = "{$consulted} and {$consult} between {$lo} and {$hi}";
+
+        return <<<SQL
+            count(*) filter (where {$waited}) as wait_n,
+            avg({$wait}) filter (where {$waited}) as wait_avg,
+            percentile_cont(0.5) within group (order by {$wait}) filter (where {$waited}) as wait_p50,
+            percentile_cont(0.9) within group (order by {$wait}) filter (where {$waited}) as wait_p90,
+            count(*) filter (where {$inClamp}) as consult_n,
+            avg({$consult}) filter (where {$inClamp}) as consult_avg,
+            percentile_cont(0.5) within group (order by {$consult}) filter (where {$inClamp}) as consult_p50,
+            percentile_cont(0.9) within group (order by {$consult}) filter (where {$inClamp}) as consult_p90,
+            count(*) filter (where {$consulted} and {$consult} not between {$lo} and {$hi}) as consult_clamped
+        SQL;
+    }
 
     /** @return array<string, mixed> */
     private static function shape(mixed $row): array

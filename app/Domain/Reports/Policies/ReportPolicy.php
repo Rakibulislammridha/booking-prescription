@@ -6,6 +6,7 @@ namespace App\Domain\Reports\Policies;
 
 use App\Domain\Clinic\Enums\Permission;
 use App\Domain\Reports\Enums\ReportKind;
+use App\Domain\Reports\Services\ReportScopeResolver;
 use App\Models\Tenant\User;
 
 /**
@@ -16,10 +17,21 @@ use App\Models\Tenant\User;
  */
 final class ReportPolicy
 {
-    /** The section itself: without this the nav entry is hidden and every route 403s. */
+    public function __construct(private readonly ReportScopeResolver $scopes) {}
+
+    /**
+     * The section itself: without this the nav entry is hidden and every route 403s.
+     *
+     * The permission alone is not enough. A login that holds `reports.view` but is restricted to a doctor the
+     * system cannot identify (the doctor role without a `doctors` row) has a scope that denies everything, and
+     * showing it an empty report would hide a misconfiguration behind a page of zeroes. It is refused here
+     * instead, so the clinic finds out by being told rather than by reading wrong numbers.
+     */
     public function view(User $user): bool
     {
-        return $user->is_active && $user->can(Permission::ReportsView->value);
+        return $user->is_active
+            && $user->can(Permission::ReportsView->value)
+            && ! $this->scopes->for($user)->deniesAll();
     }
 
     /** One specific report family — money and clinical detail are separately gated. */

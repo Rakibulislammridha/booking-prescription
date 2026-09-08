@@ -56,7 +56,16 @@ final class ReportScopeTest extends TestCase
         $this->assertFalse($none->financial);
         $this->assertFalse($none->clinical);
         $this->assertFalse($none->canExport);
-        // A scope with neither all-doctors nor a doctor row filters on `doctor_id = null`: empty by construction.
-        $this->assertNull($none->apply($this->filters()->withDoctor(99))->doctorId);
+        $this->assertTrue($none->deniesAll());
+        $this->assertSame([], $none->visibleReports());
+
+        // A scope with neither all-doctors nor a doctor row is the MOST restricted one there is, so it must be
+        // forced onto a doctor that cannot exist. Leaving `doctor_id` null here would read to every query
+        // object as "no doctor filter" — `if ($filters->doctorId !== null)` — and hand it the whole clinic.
+        $this->assertSame(0, $none->apply($this->filters()->withDoctor(99))->doctorId);
+
+        foreach (ReportKind::cases() as $kind) {
+            $this->assertFalse($none->allows($kind));
+        }
     }
 }

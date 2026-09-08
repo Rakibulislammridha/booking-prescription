@@ -53,7 +53,10 @@ final class ReportData
             return ['data' => [], 'generated_at' => now()->toIso8601String(), 'cached' => false];
         }
 
-        return $this->cache->remember($kind->value, $scoped, fn (): array => $this->compute($kind, $scoped, $scope));
+        // The cache row is keyed by the scope's CAPABILITIES as well as by the filters: the dashboard's payload
+        // contains the clinic's takings only for a scope that may see them, and two viewers whose filters
+        // happen to match must never be handed each other's version of it.
+        return $this->cache->remember($kind->value.'.'.$scope->cacheVariant(), $scoped, fn (): array => $this->compute($kind, $scoped, $scope));
     }
 
     /** @return array<string, mixed> */

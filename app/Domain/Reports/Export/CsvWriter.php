@@ -73,8 +73,14 @@ final class CsvWriter
             $rows++;
         }
 
-        foreach ($table->notes as $note) {
-            fputcsv($handle, [$note], ',', '"', '\\');
+        // The same trailing shape the streamed response writes, blank separator included: a queued export and
+        // a downloaded one are the same report, and a diff between the two files should be empty.
+        if ($table->notes !== []) {
+            fputcsv($handle, [], ',', '"', '\\');
+
+            foreach ($table->notes as $note) {
+                fputcsv($handle, [$note], ',', '"', '\\');
+            }
         }
 
         fclose($handle);

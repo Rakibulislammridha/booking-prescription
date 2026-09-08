@@ -32,8 +32,10 @@ use Illuminate\Support\Facades\DB;
  *
  * INDEXES: `prescriptions_issued_at_idx_p` (this module's migration, partial on status = 'issued') for the
  * clinic-wide period scan, or `prescriptions_doctor_id_issued_at_idx` under a doctor filter; then the
- * `prescription_items.prescription_id` FK index for the nested loop. `prescription_items_generic_id_idx` is not
- * the driving index here — it serves the reconcile scans — because a period is always the narrower predicate.
+ * `prescription_items_prescription_id_sort_order_uniq` index for the nested loop into a prescription's lines
+ * (Postgres creates no index for a foreign key on its own, so that leading column is what serves the join).
+ * `prescription_items_generic_id_idx` is not the driving index here — it serves the reconcile scans — because
+ * a period is always the narrower predicate.
  */
 final class TopDrugsQuery
 {
