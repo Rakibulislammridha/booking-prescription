@@ -7,6 +7,7 @@ use App\Domain\Shared\Exceptions\DomainException;
 use App\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\EnforceIdleTimeout;
+use App\Http\Middleware\EnsureStaffIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SetActiveBranch;
 use App\Http\Middleware\TrustProxies;
@@ -70,7 +71,9 @@ return Application::configure(basePath: dirname(__DIR__))
             foreach (glob(base_path('routes/panel/*.php')) ?: [] as $file) {
                 // `idle:web` (BRIEF §5.N) sits after auth:web and before the screens: it is what makes
                 // users.session_timeout_minutes / settings.security.session_timeout_minutes mean something.
-                Route::middleware(['web', 'tenant', 'auth:web', 'idle:web', SetActiveBranch::class])
+                // EnsureStaffIsActive (B1) re-checks is_active/tenant on every authenticated request, so an account
+                // deactivated mid-session — or holding only a recaller cookie — cannot keep using the panel.
+                Route::middleware(['web', 'tenant', 'auth:web', EnsureStaffIsActive::class, 'idle:web', SetActiveBranch::class])
                     ->prefix('panel')->name('panel.')->group($file);
             }
 

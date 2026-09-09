@@ -16,10 +16,10 @@ final class LoginRequest extends FormRequest
     /** @return array<string, array<int, string>> */
     public function rules(): array
     {
+        // No `remember`: the super guard has no remember-me (B4).
         return [
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
-            'remember' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -37,10 +37,5 @@ final class LoginRequest extends FormRequest
     public function credentials(): array
     {
         return ['email' => strtolower((string) $this->string('email')), 'password' => (string) $this->string('password')];
-    }
-
-    public function remember(): bool
-    {
-        return $this->boolean('remember');
     }
 }

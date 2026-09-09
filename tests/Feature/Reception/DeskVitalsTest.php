@@ -152,6 +152,7 @@ final class DeskVitalsTest extends TestCase
         $patient = Patient::factory()->create();
         $serial = $this->allocate($session, patientId: $patient->id);
         $this->actingAsStaff(Role::Receptionist);
+        $this->post($this->url('panel.serials.check-in', ['serial' => $serial->public_id]))->assertOk();
 
         $this->post($this->url('panel.reception.vitals.open', ['serial' => $serial->public_id]))->assertRedirect();
         $this->post($this->url('panel.reception.vitals.open', ['serial' => $serial->public_id]))->assertRedirect();
@@ -168,6 +169,7 @@ final class DeskVitalsTest extends TestCase
         $serial = $this->allocate($session, patientId: $patient->id);
 
         $this->actingAsStaff(Role::Receptionist);
+        $this->post($this->url('panel.serials.check-in', ['serial' => $serial->public_id]))->assertOk();
         $this->post($this->url('panel.reception.vitals.open', ['serial' => $serial->public_id]))->assertRedirect();
         $visit = Visit::query()->where('serial_id', $serial->id)->firstOrFail();
 
@@ -179,5 +181,27 @@ final class DeskVitalsTest extends TestCase
 
         $this->get($this->url('panel.reception.board'))->assertOk()
             ->assertInertia(fn (AssertableInertia $p) => $p->where('can.record_vitals', false));
+    }
+
+    /**
+     * "One click for a checked-in patient" means exactly that: the row's button is only offered for a serial whose
+     * patient is in the building (the board sends `vitals: null` for the others), and the endpoint behind it holds
+     * the same line — a booked serial nobody has seen yet is refused, and no encounter comes into being for it.
+     */
+    public function test_a_serial_that_has_not_been_checked_in_cannot_have_an_encounter_opened_from_the_desk(): void
+    {
+        $doctor = $this->doctorWithTemplate();
+        $session = $this->openSession(10, 10, 5, $doctor);
+        $patient = Patient::factory()->create();
+        $serial = $this->allocate($session, patientId: $patient->id);
+        $this->actingAsStaff(Role::Receptionist);
+
+        $this->post($this->url('panel.reception.vitals.open', ['serial' => $serial->public_id]))->assertForbidden();
+
+        $this->assertNull(Visit::query()->where('serial_id', $serial->id)->first(), 'no visit for a patient who has not arrived');
+        $this->assertSame(0, $patient->fresh()->visit_count);
+        $this->assertNull($patient->fresh()->last_visit_at);
+        $this->getJson($this->url('panel.reception.board.data'))->assertOk()
+            ->assertJsonPath('sessions.0.serials.0.vitals', null);
     }
 }

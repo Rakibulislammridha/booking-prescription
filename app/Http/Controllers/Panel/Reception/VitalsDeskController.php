@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Panel\Reception;
 
-use App\Domain\Clinic\Enums\Permission;
-use App\Domain\Prescription\Actions\StartVisit;
+use App\Domain\Prescription\Actions\OpenVisitForVitals;
 use App\Domain\Prescription\Services\DraftSerializer;
 use App\Domain\Reception\Services\SerialPresenter;
 use App\Domain\Shared\Actor;
@@ -21,20 +20,24 @@ use Inertia\Response;
 
 /**
  * The compounder's half of BRIEF §5.G.2: vitals are "entered by the compounder before the doctor sees the
- * patient", so the desk needs a way in. The board's checked-in row opens the encounter (the same idempotent
- * `StartVisit` the doctor screen uses) and lands on a single-purpose entry screen that writes through the
- * Prescription module's own endpoint — there is no second write path, and no prescription content is reachable
- * from here. Clinical data, so online only (OFFLINE.md §6.2: "Prescriptions, vitals, clinical history bodies").
+ * patient", so the desk needs a way in. The board's checked-in row opens the encounter (OpenVisitForVitals — the
+ * same idempotent `StartVisit` the doctor screen uses, behind the desk's own rule that the patient is here) and
+ * lands on a single-purpose entry screen that writes through the Prescription module's own endpoint — there is
+ * no second write path, and no prescription content is reachable from here. Clinical data, so online only
+ * (OFFLINE.md §6.2: "Prescriptions, vitals, clinical history bodies").
  */
 final class VitalsDeskController extends Controller
 {
-    /** POST /panel/reception/serials/{serial}/vitals — open (idempotently) the visit and go to the entry screen. */
-    public function open(Request $request, Serial $serial, StartVisit $start): RedirectResponse
+    /**
+     * POST /panel/reception/serials/{serial}/vitals — open (idempotently) the visit and go to the entry screen.
+     * `recordVitals` (SerialPolicy) is the scoped ability: the permission, the patient present, the serial at a
+     * branch this user acts for.
+     */
+    public function open(Request $request, Serial $serial, OpenVisitForVitals $open): RedirectResponse
     {
-        $this->authorize('view', $serial);
-        abort_unless($request->user('web')?->can(Permission::PrescriptionsVitalsRecord->value) ?? false, 403);
+        $this->authorize('recordVitals', $serial);
 
-        $visit = $start->handle($serial, Actor::fromRequest($request), 'reception_desk');
+        $visit = $open->handle($serial, Actor::fromRequest($request));
 
         return redirect()->route('panel.reception.vitals.edit', ['visit' => $visit->public_id]);
     }

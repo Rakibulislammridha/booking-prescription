@@ -11,6 +11,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Redis\Factory as RedisFactory;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Str;
 
 /**
  * The `sessions_by_user` index of ARCHITECTURE §6.1: which devices a staff account is logged in on, and the ability
@@ -107,17 +108,24 @@ final class StaffSessionIndex
         return null;
     }
 
-    /** Destroy the session itself and drop it from the index. Returns false when it was already gone. */
+    /**
+     * Destroy the session itself, drop it from the index AND rotate the user's remember_token so no recaller cookie
+     * can quietly resurrect the account (B1). Returns false when the session was already gone.
+     *
+     * The remember_token is a single per-user column (Laravel's default recaller model), so rotating it invalidates
+     * EVERY "remember me" cookie this account holds, on every device — not only the one being revoked. That is the
+     * accepted trade of not implementing a per-device recaller table: revoking one remembered device signs out all
+     * remembered devices. The staff Sessions screen says so (clinic.sessions.remember_note).
+     */
     public function revoke(User $user, string $sessionId): bool
     {
-        if ($this->read($user, $sessionId) === null) {
-            return false;
+        $revoked = $this->destroy($user, $sessionId);
+
+        if ($revoked) {
+            $this->rotateRememberToken($user);
         }
 
-        Session::getHandler()->destroy($sessionId);
-        $this->forget($user, $sessionId);
-
-        return true;
+        return $revoked;
     }
 
     /** Throw every other device off. Returns how many sessions were destroyed. */
@@ -130,7 +138,11 @@ final class StaffSessionIndex
                 continue;
             }
 
-            $revoked += $this->revoke($user, $sessionId) ? 1 : 0;
+            $revoked += $this->destroy($user, $sessionId) ? 1 : 0;
+        }
+
+        if ($revoked > 0) {
+            $this->rotateRememberToken($user);
         }
 
         return $revoked;
@@ -138,11 +150,40 @@ final class StaffSessionIndex
 
     /**
      * End every session of this user. Used when an account is deactivated: an account that can no longer log in
-     * must not stay logged in on a desk somewhere.
+     * must not stay logged in on a desk somewhere — and must not be able to walk back in through a recaller cookie,
+     * so the remember_token is rotated UNCONDITIONALLY, even when the index holds no live session (a browser that
+     * kept only its remember cookie after the session itself expired would otherwise be untouched here).
      */
     public function revokeAll(User $user): int
     {
-        return $this->revokeOthers($user, '');
+        $revoked = $this->revokeOthers($user, '');
+        $this->rotateRememberToken($user);
+
+        return $revoked;
+    }
+
+    /**
+     * Invalidate every "remember me" cookie this account holds by minting a new remember_token (Laravel's own
+     * `cycleRememberToken` mechanism). `EloquentUserProvider::retrieveByToken` compares against this column, so an
+     * old recaller cookie stops authenticating the instant this runs.
+     */
+    public function rotateRememberToken(User $user): void
+    {
+        $user->setRememberToken(Str::random(60));
+        $user->save();
+    }
+
+    /** Destroy the session payload and drop the index entry, without touching the remember_token. */
+    private function destroy(User $user, string $sessionId): bool
+    {
+        if ($this->read($user, $sessionId) === null) {
+            return false;
+        }
+
+        Session::getHandler()->destroy($sessionId);
+        $this->forget($user, $sessionId);
+
+        return true;
     }
 
     public function forget(User $user, string $sessionId): void

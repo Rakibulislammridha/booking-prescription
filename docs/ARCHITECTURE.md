@@ -1057,9 +1057,12 @@ on the `panel` group as `idle:web` and the `super` group as `idle:super`. It sta
 session and, past the effective limit, logs the guard out, invalidates the session and returns the person to their
 login screen with `auth.idle_timeout` (401 JSON for an XHR). The limit is `users.session_timeout_minutes` falling
 back to the tenant setting `security.session_timeout_minutes`; the super console has no tenant to ask and uses
-`config('session.idle_timeout_minutes')`. It is deliberately **not** on the `api` group: the panel's background
-traffic (`/api/ping`, the dashboard refresh poll, queue state) lives there, and a timer an open tab silently resets
-is not an idle timeout. Device management is the `sessions_by_user` Redis index,
+`config('session.idle_timeout_minutes')`. It is deliberately **not** on the `api` group (`/api/ping` lives there),
+and the two panel routes the desk and the doctor screen poll every 5 s — `panel.reception.board.data` and
+`panel.queue.today.data` — are listed in the middleware's `POLL_ROUTES` so they neither extend nor expire the
+clock: a timer an open tab silently resets is not an idle timeout. Revoking a device or deactivating an account
+also rotates `remember_token`, so every remembered browser is signed out together (the token is one column per
+user, not per device). Device management is the `sessions_by_user` Redis index,
 `App\Domain\Clinic\Services\StaffSessionIndex` (`bp:sessions_by_user:{tenant}:{user}` → session id ⇒ ip, user
 agent, login_at, last_seen_at, TTL = the session lifetime). The entry is created by the middleware on the first
 authenticated request rather than by the `Login` listener, because the login controller regenerates the session id

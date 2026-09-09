@@ -20,6 +20,16 @@ enum SerialStatus: string
         return in_array($this, [self::Completed, self::Cancelled, self::Postponed], true);
     }
 
+    /**
+     * checked_in | in_consultation — the patient is physically in the clinic (SERIAL_ENGINE §6: "mark arrived" and
+     * "check in" are the same transition). The only states in which anything clinical — vitals, an encounter —
+     * can be done to them at the desk.
+     */
+    public function isPresent(): bool
+    {
+        return in_array($this, [self::CheckedIn, self::InConsultation], true);
+    }
+
     /** booked | checked_in | in_consultation — the serials listed in the queue (I-POSITION applies to these). */
     public function isActive(): bool
     {

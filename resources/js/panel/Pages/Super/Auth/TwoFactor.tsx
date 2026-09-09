@@ -44,8 +44,9 @@ export default function TwoFactor({ enabled, required, confirmed_at, recovery_re
 
   const startForm = useForm({});
   const confirmForm = useForm({ code: '' });
-  const disableForm = useForm({ password: '' });
-  const rotateForm = useForm({});
+  // Both credential-changing actions re-ask for the password AND a current authenticator code (B4).
+  const disableForm = useForm({ password: '', code: '' });
+  const rotateForm = useForm({ password: '', code: '' });
 
   const start = (): void => { startForm.post(route('super.two-factor.store'), { preserveScroll: true }); };
   const confirm = (e: FormEvent<HTMLFormElement>): void => {
@@ -53,9 +54,13 @@ export default function TwoFactor({ enabled, required, confirmed_at, recovery_re
     setConfirming(true);
     confirmForm.post(route('super.two-factor.confirm'), { preserveScroll: true, onFinish: () => { setConfirming(false); confirmForm.reset('code'); } });
   };
+  const regenerate = (e: FormEvent<HTMLFormElement>): void => {
+    e.preventDefault();
+    rotateForm.post(route('super.two-factor.recovery-codes'), { preserveScroll: true, onFinish: () => rotateForm.reset('password', 'code') });
+  };
   const disable = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
-    disableForm.delete(route('super.two-factor.destroy'), { preserveScroll: true, onFinish: () => disableForm.reset('password') });
+    disableForm.delete(route('super.two-factor.destroy'), { preserveScroll: true, onFinish: () => disableForm.reset('password', 'code') });
   };
 
   return (
@@ -93,15 +98,36 @@ export default function TwoFactor({ enabled, required, confirmed_at, recovery_re
                   {t('auth.two_factor.enabled_since', { at: confirmed_at ? formatDhaka(confirmed_at, 'D MMM YYYY, h:mm a') : '—' })}
                 </Typography>
                 <Typography variant="body2">{t('auth.two_factor.recovery_remaining', { remaining: recovery_remaining })}</Typography>
-                <Box>
-                  <Button variant="outlined" size="small" disabled={rotateForm.processing} onClick={() => rotateForm.post(route('super.two-factor.recovery-codes'), { preserveScroll: true })}>
-                    {t('auth.two_factor.regenerate_recovery')}
-                  </Button>
+                <Box component="form" onSubmit={regenerate} noValidate sx={{ display: 'grid', gap: 1.5, maxWidth: 320 }}>
+                  <Typography variant="body2" color="text.secondary">{t('auth.two_factor.regenerate_recovery_help')}</Typography>
+                  <TextField
+                    label={t('auth.password')}
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    size="small"
+                    value={rotateForm.data.password}
+                    onChange={(e) => rotateForm.setData('password', e.target.value)}
+                    error={Boolean(rotateForm.errors.password)}
+                    helperText={rotateForm.errors.password}
+                  />
+                  <TextField
+                    label={t('auth.two_factor.code')}
+                    name="code"
+                    autoComplete="one-time-code"
+                    size="small"
+                    value={rotateForm.data.code}
+                    onChange={(e) => rotateForm.setData('code', e.target.value)}
+                    error={Boolean(rotateForm.errors.code)}
+                    helperText={rotateForm.errors.code}
+                    slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 6, pattern: '[0-9]*' } }}
+                  />
+                  <Box><Button type="submit" variant="outlined" size="small" disabled={rotateForm.processing}>{t('auth.two_factor.regenerate_recovery')}</Button></Box>
                 </Box>
 
                 <Divider />
 
-                <Box component="form" onSubmit={disable} noValidate sx={{ display: 'grid', gap: 1.5 }}>
+                <Box component="form" onSubmit={disable} noValidate sx={{ display: 'grid', gap: 1.5, maxWidth: 320 }}>
                   <Typography variant="subtitle2">{t('auth.two_factor.disable_title')}</Typography>
                   <Typography variant="body2" color="text.secondary">{t('auth.two_factor.disable_help')}</Typography>
                   <TextField
@@ -114,7 +140,17 @@ export default function TwoFactor({ enabled, required, confirmed_at, recovery_re
                     onChange={(e) => disableForm.setData('password', e.target.value)}
                     error={Boolean(disableForm.errors.password)}
                     helperText={disableForm.errors.password}
-                    sx={{ maxWidth: 320 }}
+                  />
+                  <TextField
+                    label={t('auth.two_factor.code')}
+                    name="code"
+                    autoComplete="one-time-code"
+                    size="small"
+                    value={disableForm.data.code}
+                    onChange={(e) => disableForm.setData('code', e.target.value)}
+                    error={Boolean(disableForm.errors.code)}
+                    helperText={disableForm.errors.code}
+                    slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 6, pattern: '[0-9]*' } }}
                   />
                   <Box><Button type="submit" color="error" variant="outlined" size="small" disabled={disableForm.processing}>{t('auth.two_factor.disable')}</Button></Box>
                 </Box>

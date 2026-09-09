@@ -69,14 +69,16 @@ final class LoginController extends Controller
             // it is not a session for the console, it is a receipt for the password half, and it expires.
             $request->session()->put(SuperTwoFactor::SESSION_PENDING, [
                 'id' => $admin->id,
-                'remember' => $request->remember(),
                 'at' => CarbonImmutable::now()->getTimestamp(),
             ]);
 
             return redirect()->route('super.two-factor.challenge');
         }
 
-        Auth::guard('super')->login($admin, $request->remember());
+        // No "remember me" on the super guard (B4): the console can impersonate into any clinic's records, so a
+        // durable recaller cookie that could re-authenticate it — and, worse, one that bypasses the second-factor
+        // challenge — is not a trade worth making. Every super session begins with the password (and the code).
+        Auth::guard('super')->login($admin);
         $request->session()->regenerate();
 
         return $this->completeSuperLogin($request, $admin, $this->audit);

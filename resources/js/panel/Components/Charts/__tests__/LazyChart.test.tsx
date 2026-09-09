@@ -2,7 +2,7 @@
 // (scripts/check-panel-budget.sh). Two promises worth pinning down: an empty card never MOUNTS its chart, so the
 // chunk is never requested; and a card with rows does mount it, so the split did not quietly delete a chart.
 import { lazy } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { ThemeProvider } from '@mui/material/styles';
 import { I18nextProvider } from 'react-i18next';
@@ -76,10 +76,47 @@ describe('the chart components every page lazies', () => {
     for (const [name, value] of exports) expect(typeof value, name).toBe('function');
   });
 
-  it('renders the two super-admin charts with real points without throwing', async () => {
-    const { UsageSeriesChart, TenantHistoryChart } = await import('../SuperCharts');
+  describe('the two super-admin charts really draw their points', () => {
+    // jsdom has no layout and no ResizeObserver, so recharts' ResponsiveContainer sits at 0×0 and renders NOTHING
+    // inside — a test that only checks "no throw" would pass for an empty component. Hand the container a size the
+    // way the browser would (one ResizeObserver callback with the parent's content box) and assert the drawing.
+    class StubResizeObserver {
+      constructor(private readonly cb: ResizeObserverCallback) {}
 
-    show(<div style={{ width: 600, height: 260 }}><UsageSeriesChart series={[{ period: '2026-08', total: 41000, tenants: 12 }]} label="SMS" /></div>);
-    show(<div style={{ width: 600, height: 220 }}><TenantHistoryChart points={[{ period: '2026-08', value: 900 }]} label="Appointments" /></div>);
+      observe(): void { this.cb([{ contentRect: { width: 600, height: 240 } } as ResizeObserverEntry], this as unknown as ResizeObserver); }
+
+      unobserve(): void {}
+
+      disconnect(): void {}
+    }
+
+    beforeEach(() => vi.stubGlobal('ResizeObserver', StubResizeObserver));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('UsageSeriesChart draws one bar per period, labelled with the metric', async () => {
+      const { UsageSeriesChart } = await import('../SuperCharts');
+
+      const { container } = show(<div style={{ width: 600, height: 260 }}><UsageSeriesChart series={[{ period: '2026-07', total: 38000, tenants: 11 }, { period: '2026-08', total: 41000, tenants: 12 }]} label="SMS" /></div>);
+
+      await waitFor(() => expect(container.querySelector('svg.recharts-surface')).toBeInTheDocument());
+      expect(container.querySelectorAll('.recharts-bar-rectangle')).toHaveLength(2);
+      expect(container.querySelector('.recharts-cartesian-axis-tick-value')?.textContent).toBe('2026-07');
+      expect(container.textContent).toContain('2026-08');
+    });
+
+    it('TenantHistoryChart draws a line through its points', async () => {
+      const { TenantHistoryChart } = await import('../SuperCharts');
+
+      const { container } = show(<div style={{ width: 600, height: 220 }}><TenantHistoryChart points={[{ period: '2026-07', value: 700 }, { period: '2026-08', value: 900 }]} label="Appointments" /></div>);
+
+      await waitFor(() => expect(container.querySelector('svg.recharts-surface')).toBeInTheDocument());
+      // The line is drawn without dots (dot={false}), so the curve's path is the drawing: one segment between two points.
+      const curve = container.querySelector('path.recharts-line-curve');
+      expect(curve).toBeInTheDocument();
+      expect(curve?.getAttribute('d')).toMatch(/^M[\d.,-]+/);
+      expect(container.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')).toHaveLength(2);
+      expect(container.textContent).toContain('2026-07');
+      expect(container.textContent).toContain('2026-08');
+    });
   });
 });

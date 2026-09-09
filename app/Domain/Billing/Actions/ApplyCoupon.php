@@ -94,25 +94,27 @@ final class ApplyCoupon
                 return $redemption;
             });
         } catch (UniqueConstraintViolationException $e) {
-            // Unreachable while I-OWNER holds; the backstop speaking is still a refusal, never a 500.
+            // Unreachable while I-OWNER holds; the backstop speaking is still a refusal, never a 500. The database
+            // error stays attached as `previous`, so a refusal made HERE is distinguishable from the validator's
+            // (ApplyCouponConcurrencyTest asserts the lock makes this path go quiet).
             $constraint = self::violatedConstraint($e);
 
             if (str_contains($constraint, 'invoice_id')) {
-                throw new CouponAlreadyApplied;
+                throw new CouponAlreadyApplied(previous: $e);
             }
 
             if (str_contains($constraint, 'patient_use_seq')) {
-                throw new CouponInvalid(['reason' => __('billing.coupon.reason.per_patient')]);
+                throw new CouponInvalid(['reason' => __('billing.coupon.reason.per_patient')], $e);
             }
 
             if (str_contains($constraint, 'coupon_use_seq')) {
-                throw new CouponInvalid(['reason' => __('billing.coupon.reason.exhausted')]);
+                throw new CouponInvalid(['reason' => __('billing.coupon.reason.exhausted')], $e);
             }
 
             throw $e;
         } catch (QueryException $e) {
             if (CouponRedemption::query()->where('invoice_id', $invoice->id)->exists()) {
-                throw new CouponAlreadyApplied;
+                throw new CouponAlreadyApplied(previous: $e);
             }
 
             throw $e;

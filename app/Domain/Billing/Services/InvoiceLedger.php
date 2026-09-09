@@ -148,7 +148,11 @@ final class InvoiceLedger
             return;
         }
 
-        $appointment = Appointment::query()->find($invoice->appointment_id);
+        // Locked, because the hold sweep (ReleaseExpiredHold) decides under this same row lock: the mirror must see
+        // the appointment as it is once that decision has committed, never a stale "pending" it would then
+        // confirm on top of a cancellation. The payment's own transaction already takes this lock on the UPDATE
+        // below; taking it on the read only moves it before the decision.
+        $appointment = Appointment::query()->whereKey($invoice->appointment_id)->lockForUpdate()->first();
 
         if ($appointment === null) {
             return;

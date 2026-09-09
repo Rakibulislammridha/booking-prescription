@@ -15,6 +15,8 @@ use App\Domain\Telemedicine\Services\JoinLink;
 use App\Models\Tenant\Notification;
 use App\Models\Tenant\Patient;
 use App\Models\Tenant\TelemedicineRoom;
+use Illuminate\Auth\SessionGuard;
+use Illuminate\Support\Facades\Auth;
 use Tests\Feature\Telemedicine\Concerns\TelemedicineFixtures;
 use Tests\TestCase;
 
@@ -57,6 +59,32 @@ final class PatientJoinLinkTest extends TestCase
 
         $this->assertAuthenticatedAs($room->appointment->patient, 'patient');
         $this->get('/telemedicine/room/'.$room->room_name)->assertOk();
+    }
+
+    /**
+     * B8 regression (was tests/Feature/Audit2/JoinLinkRememberTest). The controller logged the patient in with
+     * `remember: true`, but a Patient is OTP-only and has no remember_token, so that set a 400-day recaller cookie
+     * with an empty token — dead weight that could never authenticate. The remember flag is gone: no recaller
+     * cookie is set, on either guard.
+     */
+    public function test_the_join_link_sets_no_remember_me_cookie(): void
+    {
+        $room = $this->room();
+        $this->flushSession();
+
+        $response = $this->get($this->link($room))->assertRedirect('/telemedicine/room/'.$room->room_name);
+
+        $this->assertNull($response->getCookie($this->recallerName('patient')), 'the patient guard must not get a recaller cookie');
+        $this->assertNull($response->getCookie($this->recallerName('web')), 'no recaller cookie on any guard');
+        $this->assertAuthenticatedAs($room->appointment->patient, 'patient');
+    }
+
+    private function recallerName(string $guard): string
+    {
+        $sessionGuard = Auth::guard($guard);
+        assert($sessionGuard instanceof SessionGuard);
+
+        return $sessionGuard->getRecallerName();
     }
 
     public function test_an_expired_link_is_refused(): void

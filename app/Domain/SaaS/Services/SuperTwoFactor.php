@@ -9,6 +9,7 @@ use App\Domain\Prescription\Render\QrCodeRenderer;
 use App\Models\Central\SuperAdmin;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\Repository as Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use SensitiveParameter;
 
@@ -144,7 +145,12 @@ final class SuperTwoFactor
         return $step !== null && $this->markStepSpent($admin, $step);
     }
 
-    /** A recovery code. Single use: the digest is struck off the list before this returns. */
+    /**
+     * A recovery code. Single use even under concurrency (B5): the read-strike-save happens inside a transaction
+     * that holds `FOR UPDATE` on the super_admins row, so six parallel presentations of one code serialise on the
+     * lock — the first consumes the digest, the rest re-read a list it is no longer in and fail. A lock-free
+     * read-modify-write let all six win.
+     */
     public function verifyRecoveryCode(SuperAdmin $admin, #[SensitiveParameter] string $code): bool
     {
         $code = trim($code);
@@ -153,28 +159,40 @@ final class SuperTwoFactor
             return false;
         }
 
-        $stored = $this->recoveryDigests($admin);
         $offered = self::digest($code);
-        $match = null;
 
-        foreach ($stored as $index => $digest) {
-            if (hash_equals($digest, $offered)) {
-                $match = $index;                       // no early break: the loop costs the same for every input
+        return (bool) DB::connection($admin->getConnectionName())->transaction(function () use ($admin, $offered): bool {
+            $locked = SuperAdmin::query()->whereKey($admin->getKey())->lockForUpdate()->first();
+
+            if (! $locked instanceof SuperAdmin) {
+                return false;
             }
-        }
 
-        if ($match === null) {
-            return false;
-        }
+            $stored = $this->recoveryDigests($locked);
+            $match = null;
 
-        unset($stored[$match]);
-        $remaining = array_values($stored);
+            foreach ($stored as $index => $digest) {
+                if (hash_equals($digest, $offered)) {
+                    $match = $index;                   // no early break: the loop costs the same for every input
+                }
+            }
 
-        $admin->forceFill(['two_factor_recovery_codes' => $remaining])->save();
+            if ($match === null) {
+                return false;
+            }
 
-        $this->audit->record(CentralAuditAction::TwoFactorRecoveryUsed, null, $admin, null, ['remaining' => count($remaining)], $admin->id);
+            unset($stored[$match]);
+            $remaining = array_values($stored);
 
-        return true;
+            $locked->forceFill(['two_factor_recovery_codes' => $remaining])->save();
+
+            // Keep the caller's instance consistent with what was persisted (the old code mutated it in place).
+            $admin->setRawAttributes($locked->getAttributes(), sync: true);
+
+            $this->audit->record(CentralAuditAction::TwoFactorRecoveryUsed, null, $admin, null, ['remaining' => count($remaining)], $admin->id);
+
+            return true;
+        });
     }
 
     /**

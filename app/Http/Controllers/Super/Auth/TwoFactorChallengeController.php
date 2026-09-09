@@ -82,8 +82,7 @@ final class TwoFactorChallengeController extends Controller
 
         RateLimiter::clear($key);
 
-        $pending = $this->pending($request);
-        Auth::guard('super')->login($admin, (bool) ($pending['remember'] ?? false));
+        Auth::guard('super')->login($admin);        // no remember-me on the super guard (B4)
         $request->session()->regenerate();          // the session id that carried the pending marker never becomes a console session
 
         return $this->completeSuperLogin($request, $admin, $this->audit);

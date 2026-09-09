@@ -92,6 +92,61 @@ final class SessionTimeoutTest extends TestCase
         $this->get('/panel')->assertRedirect(route('panel.login', absolute: false));
     }
 
+    /**
+     * B3 (was tests/Feature/Audit2/IdleClockPollingTest). The reception board and the doctor's queue each poll a
+     * PANEL data route every 5 s. Those polls used to carry `idle:web` like a click and silently reset the clock,
+     * so a desk left open never timed out. Now a background poll is treated like the /api/ping heartbeat: it
+     * neither extends nor expires the idle clock, and only a genuine navigation does.
+     */
+    public function test_the_reception_board_poll_does_not_extend_the_idle_clock(): void
+    {
+        $this->assertBackgroundPollDoesNotKeepTheSessionAlive('panel.reception.board.data', Role::Receptionist);
+    }
+
+    public function test_the_doctor_queue_poll_does_not_extend_the_idle_clock(): void
+    {
+        $this->assertBackgroundPollDoesNotKeepTheSessionAlive('panel.queue.today.data', Role::HospitalAdmin);
+    }
+
+    private function assertBackgroundPollDoesNotKeepTheSessionAlive(string $pollRoute, Role $role): void
+    {
+        $this->asTenant('a');
+        app(Settings::class)->set('security.session_timeout_minutes', 5);
+        $this->actingAsStaff($role);
+
+        $this->get('/panel')->assertOk();
+        $marker = session(EnforceIdleTimeout::SESSION_KEY);
+
+        // Nothing but the screen's own 5-second poll for 40 minutes (sampled every 4). It must not touch the clock.
+        for ($i = 0; $i < 10; $i++) {
+            $this->travel(4)->minutes();
+            $this->getJson(route($pollRoute, absolute: false))->assertOk();
+            $this->assertSame($marker, session(EnforceIdleTimeout::SESSION_KEY), 'a background poll reset the idle clock');
+        }
+
+        // 44 minutes with no human action against a 5-minute limit: the next real navigation ends the session.
+        $this->travel(4)->minutes();
+        $this->get('/panel')->assertRedirect(route('panel.login', absolute: false));
+        $this->assertGuest('web');
+    }
+
+    public function test_a_genuine_navigation_still_extends_the_idle_clock(): void
+    {
+        $this->asTenant('a');
+        app(Settings::class)->set('security.session_timeout_minutes', 5);
+        $this->actingAsStaff(Role::Receptionist);
+
+        $this->get('/panel')->assertOk();
+
+        // A real page load every 4 minutes keeps the 5-minute session alive indefinitely; a poll would not.
+        for ($i = 0; $i < 10; $i++) {
+            $this->travel(4)->minutes();
+            $this->get('/panel')->assertOk();
+        }
+
+        $this->assertAuthenticated('web');
+    }
+
     public function test_the_super_console_uses_its_own_configured_limit(): void
     {
         config(['session.idle_timeout_minutes' => 5]);

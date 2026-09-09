@@ -25,6 +25,13 @@ use Symfony\Component\HttpFoundation\Response;
  *  2. **Forced enrolment.** With `saas.two_factor.required` on, an operator who has not enrolled is sent to the
  *     enrolment screen and can reach nothing else. Not a dismissible banner: the account that can read every
  *     clinic's records does not get to postpone this. Their only other option is `super.logout`.
+ *
+ * This middleware now runs on the `security/two-factor/*` management routes too (they used to opt out of it). That
+ * is what closes B4: an ENABLED operator whose session never passed the challenge — e.g. one re-authenticated by
+ * some other path — hits condition (1) and is logged out BEFORE it can reach `recoveryCodes`, which minted fresh
+ * codes with no code and no password. The enrolment-in-progress flow is preserved by letting a NOT-YET-enabled
+ * operator reach the `super.two-factor.*` management routes (condition 2), which is the one place forced enrolment
+ * is allowed to land.
  */
 final class EnsureSuperTwoFactor
 {
@@ -54,6 +61,12 @@ final class EnsureSuperTwoFactor
         }
 
         if ($this->twoFactor->required()) {
+            // Not enabled yet, and enrolment is mandatory: the enrolment/management routes are where the operator
+            // is being sent, so let those through and hold everything else on the enrolment screen.
+            if ($request->routeIs('super.two-factor.*')) {
+                return $next($request);
+            }
+
             return $this->refuse($request, route('super.two-factor.show'), __('auth.two_factor.enrolment_required'));
         }
 

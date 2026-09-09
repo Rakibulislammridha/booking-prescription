@@ -6,8 +6,6 @@ import { useTranslation } from 'react-i18next';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-import FormControlLabel from '@mui/material/FormControlLabel';
 import Alert from '@mui/material/Alert';
 import { GuestLayout } from '@panel/Layouts/GuestLayout';
 import { route } from '@shared/routes';
@@ -17,7 +15,8 @@ type Props = PageProps<{ status?: string | null }>;
 
 export default function Login({ status }: Props) {
   const { t } = useTranslation();
-  const form = useForm({ email: '', password: '', remember: false });
+  // No "remember me" on the super guard (B4): the platform console never gets a durable recaller cookie.
+  const form = useForm({ email: '', password: '' });
 
   const submit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
@@ -49,10 +48,6 @@ export default function Login({ status }: Props) {
         onChange={(e) => form.setData('password', e.target.value)}
         error={Boolean(form.errors.password)}
         helperText={form.errors.password}
-      />
-      <FormControlLabel
-        control={<Checkbox name="remember" checked={form.data.remember} onChange={(e) => form.setData('remember', e.target.checked)} />}
-        label={t('auth.remember')}
       />
       <Button type="submit" variant="contained" size="large" disabled={form.processing}>
         {t('auth.login')}

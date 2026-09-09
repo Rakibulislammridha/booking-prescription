@@ -13,6 +13,7 @@ use App\Models\Tenant\Patient;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\Feature\Billing\Concerns\BillingFixtures;
 use Tests\Support\ProcessPool;
+use Tests\Support\ProcessPoolResult;
 use Tests\TestCase;
 
 /**
@@ -23,6 +24,11 @@ use Tests\TestCase;
  *
  * The third test drops the FOR UPDATE (`--skip-coupon-lock`, honoured only under APP_ENV=testing) and proves the
  * unique ordinals hold the cap on their own — the backstop, exactly as SERIAL_ENGINE §18.1 does for numbers.
+ *
+ * Row counts alone cannot tell the lock from the backstop: both leave exactly one redemption. What tells them
+ * apart is HOW every refusal was produced (the hammer's `via`): under the lock every over-cap attempt is refused
+ * by CouponValidator with the clean `exhausted` outcome and the unique-violation translation path is never
+ * exercised; without the lock that path is exactly what saves the cap, so it must have been hit.
  */
 #[Group('concurrency')]
 final class ApplyCouponConcurrencyTest extends TestCase
@@ -75,6 +81,16 @@ final class ApplyCouponConcurrencyTest extends TestCase
         $this->assertSame([1], $redemptions->pluck('coupon_use_seq')->all());
         $this->assertSame(1, (int) Coupon::query()->whereKey($coupon->id)->value('uses_count'), 'the cached counter is the row count, never 2');
         $this->assertSame(0, $results->failed(), 'no worker crashed');
+
+        // The lock's own signature: 47 refusals, every one decided by the validator under the coupon lock, and
+        // every over-cap one with the clean "used up" reason. Remove the FOR UPDATE and this is what changes.
+        $outcomes = $this->outcomes($results);
+        $this->assertSame(1, $outcomes['ok']);
+        $this->assertSame(47, $outcomes['refused']);
+        $this->assertSame(0, $outcomes['backstop'], 'with the owner lock held, the unique-violation translation path must never be exercised');
+        $this->assertSame(47, $outcomes['validator']);
+        $this->assertGreaterThan(0, $outcomes['exhausted'], 'the cap itself was what refused the later attempts');
+        $this->assertSame($outcomes['exhausted'] + $outcomes['already_applied'], $outcomes['refused'], 'nothing but the cap and the per-bill rule ever said no');
     }
 
     public function test_parallel_desks_can_redeem_a_once_per_patient_coupon_once_for_that_patient(): void
@@ -134,6 +150,43 @@ final class ApplyCouponConcurrencyTest extends TestCase
         $this->assertGreaterThan(0, count($seqs));
         $this->assertSame(array_values(array_unique($seqs)), $seqs, 'every ordinal is distinct');
         $this->assertSame(range(1, count($seqs)), $seqs, 'and the ordinals are dense from 1');
+
+        // And the proof that this run really was lockless: the backstop had to speak. Under the lock it never does.
+        $outcomes = $this->outcomes($results);
+        $this->assertGreaterThan(0, $outcomes['backstop'], 'with no owner lock, stale counts collide on the unique ordinals and the translation path is what refuses them');
+        $this->assertSame(0, $results->failed(), 'a backstop refusal is a clean 422, never a crash');
+    }
+
+    /**
+     * Tally the hammer's JSON lines: how many attempts succeeded, and how each refusal was produced.
+     *
+     * @return array{ok: int, refused: int, validator: int, backstop: int, exhausted: int, already_applied: int}
+     */
+    private function outcomes(ProcessPoolResult $results): array
+    {
+        $tally = ['ok' => 0, 'refused' => 0, 'validator' => 0, 'backstop' => 0, 'exhausted' => 0, 'already_applied' => 0];
+
+        foreach ($results->lines() as $line) {
+            /** @var array{ok: bool, code?: string, reason?: string|null, via?: string} $row */
+            $row = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+
+            if ($row['ok']) {
+                $tally['ok']++;
+
+                continue;
+            }
+
+            $tally['refused']++;
+            $tally[$row['via'] ?? 'validator'] = ($tally[$row['via'] ?? 'validator'] ?? 0) + 1;
+
+            if (($row['code'] ?? '') === 'billing.coupon_already_applied') {
+                $tally['already_applied']++;
+            } elseif (($row['reason'] ?? null) === __('billing.coupon.reason.exhausted')) {
+                $tally['exhausted']++;
+            }
+        }
+
+        return $tally;
     }
 
     /**

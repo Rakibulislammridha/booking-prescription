@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace App\Domain\Queue;
 
 use App\Domain\Clinic\Enums\Permission;
-use App\Domain\Clinic\Enums\Role;
+use App\Domain\Clinic\Services\BranchAccess;
 use App\Domain\Reception\Enums\DeviceKind;
-use App\Http\Middleware\SetActiveBranch;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Doctor;
 use App\Models\Tenant\ReceptionDevice;
@@ -103,22 +102,9 @@ final class ChannelGuards
         return Branch::query()->where('public_id', $branch)->first();
     }
 
+    /** The one branch rule (BranchAccess): hospital admin anywhere; otherwise the user's default or active branch. */
     private static function staffAtBranch(User $user, Branch $branch): bool
     {
-        if (! $user->is_active) {
-            return false;
-        }
-
-        if ($user->hasRole(Role::HospitalAdmin->value)) {
-            return true;
-        }
-
-        if ($user->default_branch_id === $branch->id) {
-            return true;
-        }
-
-        $active = app()->bound('session') && session()->isStarted() ? session(SetActiveBranch::SESSION_KEY) : null;
-
-        return is_numeric($active) && (int) $active === $branch->id;
+        return app(BranchAccess::class)->actsFor($user, $branch->id);
     }
 }

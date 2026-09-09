@@ -8,6 +8,7 @@ use App\Domain\SaaS\Services\SuperTwoFactor;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Super\Auth\ConfirmTwoFactorRequest;
 use App\Http\Requests\Super\Auth\DisableTwoFactorRequest;
+use App\Http\Requests\Super\Auth\RegenerateRecoveryCodesRequest;
 use App\Models\Central\SuperAdmin;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -79,12 +80,17 @@ final class TwoFactorController extends Controller
             ->with('flash.success', __('auth.two_factor.enabled'));
     }
 
-    public function recoveryCodes(Request $request): RedirectResponse
+    public function recoveryCodes(RegenerateRecoveryCodesRequest $request): RedirectResponse
     {
         $admin = $this->admin($request);
 
         if (! $this->twoFactor->enabled($admin)) {
             return back()->withErrors(['domain' => __('auth.two_factor.not_enabled')]);
+        }
+
+        // The password matched (form request). Prove possession of the factor too, and spend the code (B4).
+        if (! $this->twoFactor->verifyCode($admin, $request->code())) {
+            return back()->withErrors(['code' => __('auth.two_factor.invalid')]);
         }
 
         return redirect()->route('super.two-factor.show')
@@ -94,7 +100,14 @@ final class TwoFactorController extends Controller
 
     public function destroy(DisableTwoFactorRequest $request): RedirectResponse
     {
-        $this->twoFactor->disable($this->admin($request));
+        $admin = $this->admin($request);
+
+        // The password matched (form request). Prove possession of the factor too, and spend the code (B4).
+        if (! $this->twoFactor->verifyCode($admin, $request->code())) {
+            return back()->withErrors(['code' => __('auth.two_factor.invalid')]);
+        }
+
+        $this->twoFactor->disable($admin);
 
         return redirect()->route('super.two-factor.show')->with('flash.warning', __('auth.two_factor.disabled'));
     }

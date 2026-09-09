@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Billing\Console;
 
 use App\Domain\Billing\Actions\ApplyCoupon;
+use App\Domain\Billing\Exceptions\CouponInvalid;
 use App\Domain\Shared\Actor;
 use App\Domain\Shared\Exceptions\DomainException;
 use App\Models\Central\Tenant;
@@ -12,6 +13,7 @@ use App\Models\Tenant\Coupon;
 use App\Models\Tenant\Invoice;
 use App\Tenancy\Facades\Tenancy;
 use Illuminate\Console\Command;
+use Illuminate\Database\QueryException;
 use Throwable;
 
 /**
@@ -27,7 +29,9 @@ use Throwable;
  * proof `serials:hammer --skip-owner-lock` gives for `serials_session_number_uniq`. Honoured only under
  * APP_ENV=testing (`ApplyCoupon::lockCoupon()`).
  *
- * Dev/testing only; prints one JSON line per attempt so ProcessPool can count outcomes.
+ * Dev/testing only; prints one JSON line per attempt so ProcessPool can count outcomes. A refusal line also says
+ * `via`: `validator` when CouponValidator decided it under the lock, `backstop` when it is a unique-index violation
+ * ApplyCoupon translated — the difference between the lock holding and the backstop catching what it let through.
  */
 final class CouponHammerCommand extends Command
 {
@@ -81,7 +85,13 @@ final class CouponHammerCommand extends Command
                     $this->line(json_encode(['ok' => true, 'invoice' => $invoiceId, 'seq' => $redemption->coupon_use_seq], JSON_THROW_ON_ERROR));
                 } catch (DomainException $e) {
                     // A refusal is the correct outcome here — it is the cap declining another redemption.
-                    $this->line(json_encode(['ok' => false, 'invoice' => $invoiceId, 'code' => $e->code()], JSON_THROW_ON_ERROR));
+                    $this->line(json_encode([
+                        'ok' => false,
+                        'invoice' => $invoiceId,
+                        'code' => $e->code(),
+                        'reason' => $e instanceof CouponInvalid ? $e->reason() : null,
+                        'via' => $e->getPrevious() instanceof QueryException ? 'backstop' : 'validator',
+                    ], JSON_THROW_ON_ERROR));
                 } catch (Throwable $e) {
                     $failed++;
                     $this->line(json_encode(['ok' => false, 'invoice' => $invoiceId, 'code' => 'unexpected', 'message' => $e->getMessage()], JSON_THROW_ON_ERROR));

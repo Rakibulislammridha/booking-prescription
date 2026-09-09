@@ -6,6 +6,7 @@ namespace Tests\Feature\Booking;
 
 use App\Domain\Billing\Actions\RecordCashPayment;
 use App\Domain\Billing\Gateways\GatewayManager;
+use App\Domain\Booking\Actions\ReleaseExpiredHold;
 use App\Domain\Booking\Enums\AppointmentStatus;
 use App\Domain\Booking\Enums\PaymentStatus;
 use App\Domain\Booking\Schedule;
@@ -19,11 +20,14 @@ use App\Domain\Serials\Enums\SerialStatus;
 use App\Domain\Shared\Actor;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Doctor;
+use App\Models\Tenant\Refund;
 use App\Models\Tenant\Serial;
 use App\Models\Tenant\SessionInstance;
 use App\Support\Scheduling\RegistersSchedule;
 use App\Tenancy\Facades\Tenancy;
 use Illuminate\Console\Scheduling\Schedule as Scheduler;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Feature\Billing\Concerns\BillingFixtures;
@@ -117,6 +121,93 @@ final class ExpireAdvancePaymentHoldsTest extends TestCase
         $this->assertSame(AppointmentStatus::Confirmed, $paid->refresh()->status);
         $this->assertSame(AppointmentStatus::Cancelled, $fresh->refresh()->status);
         $this->assertSame(SerialStatus::Booked, Serial::query()->findOrFail($paid->serial_id)->status);
+    }
+
+    /**
+     * The race the sweep must lose gracefully: it has READ the row (still pending + unpaid + old) and is about to
+     * cancel it, and the advance lands in between — a gateway callback, or counter cash as here. The decision is
+     * taken under the row lock on the row as it is THEN, so the paid, confirmed booking survives and nothing is
+     * refunded. `$stale` is exactly the instance the sweep's candidate read would be holding.
+     */
+    public function test_a_hold_paid_between_the_sweeps_read_and_its_lock_keeps_its_booking(): void
+    {
+        $session = $this->advanceSession();
+        $held = $this->hold($session, '01712000006', '01J8ZK4V2Q3W5X6Y7Z8A9B0E06');
+
+        $this->travel(31)->minutes();
+        $cutoff = now()->subMinutes(30);
+        $stale = Appointment::query()->whereKey($held->id)->firstOrFail();
+
+        $this->actingAsStaff(Role::Receptionist);
+        app(RecordCashPayment::class)->handle($held->refresh(), $held->fee_paisa, 'C-RACE-'.$held->id, $this->staffActor());
+        $this->assertSame(AppointmentStatus::Confirmed, $held->refresh()->status, 'precondition: the money confirmed the hold');
+
+        $this->assertNull(app(ReleaseExpiredHold::class)->handle($stale, $cutoff, Actor::system(), __('booking.hold.expired')), 'a settled hold is skipped, not released');
+
+        $held->refresh();
+        $this->assertSame(AppointmentStatus::Confirmed, $held->status);
+        $this->assertSame(PaymentStatus::Paid, $held->payment_status);
+        $this->assertNull($held->cancelled_at);
+        $this->assertNull($held->cancel_reason_code);
+        $this->assertSame(SerialStatus::Booked, Serial::query()->findOrFail($held->serial_id)->status, 'the number is still the patient\'s');
+        $this->assertSame(0, $session->refresh()->cancelled_count);
+        $this->assertSame(0, Refund::query()->count(), 'no refund was raised on a booking that was never cancelled');
+    }
+
+    /**
+     * The same interleaving through the command itself: the advance is recorded the moment the sweep's candidate
+     * SELECT has returned and before it takes the row lock. The sweep must report the row as skipped, not released.
+     */
+    public function test_the_sweep_reports_a_hold_settled_after_its_candidate_read_as_skipped(): void
+    {
+        $session = $this->advanceSession();
+        $held = $this->hold($session, '01712000007', '01J8ZK4V2Q3W5X6Y7Z8A9B0E07');
+        $stillHeld = $this->hold($session, '01712000008', '01J8ZK4V2Q3W5X6Y7Z8A9B0E08');
+        $this->travel(31)->minutes();
+
+        $receptionist = $this->actingAsStaff(Role::Receptionist);
+        $actor = Actor::user((int) $receptionist->id, Role::Receptionist->value);
+        $paid = false;
+
+        DB::listen(function (QueryExecuted $query) use ($held, $actor, &$paid): void {
+            // The candidate read is the only statement that filters appointments on payment_status.
+            if ($paid || ! str_contains($query->sql, 'from "appointments"') || ! str_contains($query->sql, '"payment_status"')) {
+                return;
+            }
+
+            $paid = true;
+            app(RecordCashPayment::class)->handle($held->refresh(), $held->fee_paisa, 'C-LATE-'.$held->id, $actor);
+        });
+
+        $this->artisan('booking:expire-holds')->assertExitCode(0)
+            ->expectsOutputToContain('1 unpaid hold(s) released')
+            ->expectsOutputToContain('1 hold(s) skipped');
+
+        $this->assertTrue($paid, 'the payment was injected between the candidate read and the lock');
+        $this->assertSame(AppointmentStatus::Confirmed, $held->refresh()->status);
+        $this->assertSame(PaymentStatus::Paid, $held->payment_status);
+        $this->assertSame(SerialStatus::Booked, Serial::query()->findOrFail($held->serial_id)->status);
+        $this->assertSame(AppointmentStatus::Cancelled, $stillHeld->refresh()->status, 'the genuinely unpaid hold in the same chunk still goes');
+        $this->assertSame(Refund::query()->count(), 0);
+    }
+
+    /** The other order: the sweep already cancelled; money arriving afterwards must not confirm a cancelled booking. */
+    public function test_money_arriving_after_the_release_does_not_resurrect_the_cancelled_hold(): void
+    {
+        $session = $this->advanceSession();
+        $held = $this->hold($session, '01712000011', '01J8ZK4V2Q3W5X6Y7Z8A9B0E11');
+
+        $this->travel(31)->minutes();
+        $this->artisan('booking:expire-holds')->assertExitCode(0)->expectsOutputToContain('1 unpaid hold(s) released');
+        $this->assertSame(AppointmentStatus::Cancelled, $held->refresh()->status);
+
+        $this->actingAsStaff(Role::Receptionist);
+        app(RecordCashPayment::class)->handle($held->refresh(), $held->fee_paisa, 'C-AFTER-'.$held->id, $this->staffActor());
+
+        $held->refresh();
+        $this->assertSame(AppointmentStatus::Cancelled, $held->status, 'paid, but the cancellation stands — the ledger only confirms a PENDING hold');
+        $this->assertSame(PaymentStatus::Paid, $held->payment_status, 'and the money is on the record for the desk to refund');
+        $this->assertSame(SerialStatus::Cancelled, Serial::query()->findOrFail($held->serial_id)->status);
     }
 
     public function test_the_window_is_the_tenant_setting_and_the_command_is_idempotent(): void

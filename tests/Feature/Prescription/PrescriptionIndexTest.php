@@ -12,6 +12,7 @@ use App\Models\Tenant\Patient;
 use App\Models\Tenant\Prescription;
 use App\Models\Tenant\Visit;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
@@ -61,7 +62,7 @@ final class PrescriptionIndexTest extends TestCase
                 ->where('prescriptions.meta.total', 3)
                 ->where('options.statuses', PrescriptionStatus::values())
                 // Contains, not "is first": the filter offers every active doctor, and the tenant may hold others.
-                ->where('options.doctors', fn ($doctors) => collect($doctors)->contains('public_id', $doctor->public_id)));
+                ->where('options.doctors', fn (Collection $doctors) => $doctors->contains('public_id', $doctor->public_id)));
     }
 
     public function test_the_list_is_searched_by_patient_name_mobile_and_code(): void

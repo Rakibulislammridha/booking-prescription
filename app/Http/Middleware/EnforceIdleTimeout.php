@@ -24,14 +24,32 @@ use Symfony\Component\HttpFoundation\Response;
  * `session.idle_timeout_minutes`, since there is no tenant to ask). Past it the guard is logged out, the session is
  * invalidated and the person is sent back to their login screen with a message that says why.
  *
- * Registered on the `panel` and `super` route groups only, deliberately NOT on `api`: the panel's background
- * traffic (the `/api/ping` heartbeat, the dashboard refresh poll, queue state) all lives on `api`, and a timer an
- * open tab silently resets is not an idle timeout. Human navigation of a session-authenticated screen is the
- * activity that counts.
+ * Registered on the `panel` and `super` route groups only, deliberately NOT on `api`: the `/api/ping` heartbeat
+ * lives on `api`, and a timer an open tab silently resets is not an idle timeout. Human navigation of a
+ * session-authenticated screen is the activity that counts.
+ *
+ * BUT two panel screens poll their own PANEL data routes every 5 seconds — the reception board
+ * (`panel.reception.board.data`, useDesk.ts) and the doctor's queue (`panel.queue.today.data`, Queue/Today.tsx) —
+ * and those requests carry `idle:web` just like a click (B3). A desk left open all night was therefore never idle.
+ * A background poll must be treated exactly like the `/api/ping` heartbeat: it neither extends nor expires the
+ * idle clock. These routes are named in POLL_ROUTES below rather than matched by URL: a route NAME is a stable,
+ * explicit identifier (better than a fragile path pattern), and keeping the list here — in the middleware that
+ * owns the behaviour — avoids reaching into the queue/reception route and client files another engineer is
+ * changing in parallel. Extend POLL_ROUTES if a new background poll appears under the panel group.
  */
 final class EnforceIdleTimeout
 {
     public const SESSION_KEY = 'idle_last_activity_at';
+
+    /**
+     * Panel routes whose traffic is a background poll, not a person at the desk. They do not touch the idle clock.
+     *
+     * @var array<int, string>
+     */
+    public const POLL_ROUTES = [
+        'panel.reception.board.data',
+        'panel.queue.today.data',
+    ];
 
     /** Refresh `last_seen_at` in the device index at most this often, so a chatty screen is not a write storm. */
     private const INDEX_TOUCH_SECONDS = 60;
@@ -57,11 +75,15 @@ final class EnforceIdleTimeout
             return $next($request);
         }
 
+        // A background poll is not human activity: like the /api/ping heartbeat it neither extends the idle clock
+        // nor trips the timeout. The device index is still kept fresh below, so the desk stays listed.
+        $isPoll = $this->isBackgroundPoll($request);
+
         $session = $request->session();
         $now = CarbonImmutable::now()->getTimestamp();
         $last = $session->get(self::SESSION_KEY);
 
-        if (is_int($last)) {
+        if (! $isPoll && is_int($last)) {
             $idle = $now - $last;
             $limit = $this->limitMinutes($guard, $idle);
 
@@ -70,10 +92,19 @@ final class EnforceIdleTimeout
             }
         }
 
-        $session->put(self::SESSION_KEY, $now);
+        if (! $isPoll) {
+            $session->put(self::SESSION_KEY, $now);
+        }
+
         $this->touchIndex($request, $guard, $now);
 
         return $next($request);
+    }
+
+    /** Whether this request is one of the panel's background pollers (POLL_ROUTES) rather than a person acting. */
+    private function isBackgroundPoll(Request $request): bool
+    {
+        return $request->routeIs(...self::POLL_ROUTES);
     }
 
     /**

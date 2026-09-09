@@ -11,7 +11,10 @@ use App\Domain\Clinic\Data\StaffUserData;
 use App\Domain\Clinic\Enums\Role;
 use App\Domain\Clinic\Services\StaffSessionIndex;
 use App\Domain\Shared\Actor;
+use App\Models\Tenant\Branch;
 use App\Models\Tenant\User;
+use Illuminate\Auth\SessionGuard;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
@@ -121,6 +124,37 @@ final class StaffSessionsTest extends TestCase
         $this->get('/panel/clinic/staff/'.$me->public_id.'/sessions')->assertOk();
         $this->get('/panel/clinic/staff/'.$colleague->public_id.'/sessions')->assertForbidden();
         $this->delete('/panel/clinic/staff/'.$colleague->public_id.'/sessions')->assertForbidden();
+    }
+
+    public function test_revoking_a_device_from_the_screen_also_kills_its_remember_me_cookie(): void
+    {
+        $this->asTenant('a');
+        $branch = Branch::query()->where('is_main', true)->firstOrFail();
+        $user = User::factory()->create(['password' => 'password', 'default_branch_id' => $branch->id]);
+        $user->assignRole(Role::HospitalAdmin->value);
+
+        // A real remember-me login: this device holds a recaller cookie.
+        $response = $this->post('/panel/login', ['email' => $user->email, 'password' => 'password', 'remember' => 1]);
+        $response->assertRedirect();
+        $webGuard = Auth::guard('web');
+        assert($webGuard instanceof SessionGuard);
+        $recallerName = $webGuard->getRecallerName();
+        $recaller = (string) $response->getCookie($recallerName)?->getValue();
+        $this->assertNotSame('', $recaller, 'remember=1 must hand out a recaller cookie');
+
+        $sessionId = Session::getId();
+        $this->withCookie((string) config('session.cookie'), $sessionId)->get('/panel')->assertOk();   // index this device
+
+        // Throw this very device off from the screen: it signs the session out here …
+        $this->withCookie((string) config('session.cookie'), $sessionId)
+            ->delete('/panel/clinic/staff/'.$user->public_id.'/sessions/'.StaffSessionData::ref($sessionId))
+            ->assertRedirect(route('panel.login', absolute: false));
+
+        // … and its remember_token was rotated, so the recaller it was handed no longer walks back in.
+        Auth::forgetGuards();
+        $this->flushSession();
+        $this->withCookie($recallerName, $recaller)->get('/panel')->assertRedirect(route('panel.login', absolute: false));
+        $this->assertGuest('web');
     }
 
     public function test_deactivating_an_account_ends_every_session_it_still_holds(): void

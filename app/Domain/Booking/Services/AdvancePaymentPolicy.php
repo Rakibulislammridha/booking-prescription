@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Domain\Booking\Services;
 
 use App\Domain\Booking\Contracts\OnlinePaymentGateway;
+use App\Domain\Booking\Enums\AppointmentStatus;
 use App\Domain\Booking\Enums\BookingChannel;
+use App\Domain\Booking\Enums\PaymentStatus;
 use App\Domain\Booking\Exceptions\AdvancePaymentUnavailable;
 use App\Domain\Clinic\Services\Settings;
+use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Doctor;
+use Carbon\CarbonInterface;
 
 /**
  * The "advance" leg of BRIEF §5.C's "payment (optional / advance / full)": `doctor_profiles.advance_payment_required`
@@ -67,6 +71,26 @@ final class AdvancePaymentPolicy
     public function holdMinutes(): int
     {
         return max(1, (int) $this->settings->get(self::HOLD_SETTING));
+    }
+
+    /**
+     * Still a number held for money that has not arrived: pending, and not a paisa settled. A part-paid hold is
+     * pending but is NOT one of these (the sweep leaves it, the board shows it without a countdown).
+     */
+    public function isUnpaidHold(Appointment $appointment): bool
+    {
+        return $appointment->status === AppointmentStatus::Pending && $appointment->payment_status === PaymentStatus::Unpaid;
+    }
+
+    /**
+     * The sweep's whole predicate on ONE row — the only thing that may decide a release. `booking:expire-holds`
+     * selects candidates with the same three conditions, but a candidate list is a snapshot: the decision is
+     * taken by re-evaluating this under the appointment's row lock (ReleaseExpiredHold), so money that landed
+     * after the snapshot keeps the booking.
+     */
+    public function isExpiredHold(Appointment $appointment, CarbonInterface $cutoff): bool
+    {
+        return $this->isUnpaidHold($appointment) && $appointment->created_at !== null && $appointment->created_at->lessThan($cutoff);
     }
 
     public function onlinePaymentEnabled(): bool

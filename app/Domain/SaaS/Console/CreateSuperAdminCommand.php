@@ -57,7 +57,7 @@ final class CreateSuperAdminCommand extends Command
                 return self::FAILURE;
             }
 
-            if (method_exists($existing, 'trashed') && $existing->trashed()) {
+            if ($existing->trashed()) {
                 $existing->restore();
             }
 

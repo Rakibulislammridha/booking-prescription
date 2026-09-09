@@ -58,6 +58,10 @@ final class DoctorScreenController extends Controller
             'can' => [
                 'call_next' => $user->can(Permission::QueueCallNext->value) || $doctor->user_id === $user->id,
                 'delay' => $user->can(Permission::QueueDelayBroadcast->value),
+                // The writer for the serial in the chamber (VisitPolicy::write's rule): a prescriber who owns this
+                // screen, or one who may write anyone's. An operator working the screen for a doctor gets no Prescribe.
+                'prescribe' => $user->can(Permission::PrescriptionsWrite->value)
+                    && ($doctor->user_id === $user->id || $user->can(Permission::PrescriptionsViewAny->value)),
             ],
         ]);
     }

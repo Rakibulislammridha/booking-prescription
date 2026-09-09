@@ -803,10 +803,15 @@ Quick-pick: doctor's own recent complaints (Redis zset, last 20).
 ### 4.2 Vitals (compounder enters, doctor reviews)
 
 - The compounder reaches it from the reception board: the vitals button on a **checked-in** row `POST`s
-  `panel.reception.vitals.open` (`VitalsDeskController`), which opens the visit through the same idempotent
-  `StartVisit` the doctor screen uses and redirects to `GET /panel/reception/visits/{visit}/vitals`
-  (`Reception/Vitals`). That screen is a form over the endpoint below — no second write path — and is online only
-  (OFFLINE.md §6.2, §11: clinical bodies are never cached on the device).
+  `panel.reception.vitals.open` (`VitalsDeskController`), which opens the visit through `OpenVisitForVitals` —
+  the same idempotent `StartVisit` the doctor screen uses, behind the desk's own rule — and redirects to
+  `GET /panel/reception/visits/{visit}/vitals` (`Reception/Vitals`). That screen is a form over the endpoint
+  below — no second write path — and is online only (OFFLINE.md §6.2, §11: clinical bodies are never cached on
+  the device). The entry is scoped, not just permissioned: `SerialPolicy::recordVitals` requires the serial to be
+  at a branch the user acts for (`BranchAccess`) **and** the patient to be present (`SerialStatus::isPresent`:
+  `checked_in` / `in_consultation` — the same rule that puts the button on the row), and `OpenVisitForVitals`
+  refuses a non-present serial on its own (`prescriptions.serial_not_present`, 409), so no encounter — and no
+  `visit_count` / `last_visit_at` bump — ever exists for a patient who has not arrived.
 - Compounder screen `POST /panel/visits/{visit}/vitals` (`VitalsController::store`, permission `prescriptions.vitals.record` — held by the `receptionist` (compounder) and `doctor` roles):
   `{bp_systolic, bp_diastolic, pulse_bpm, temperature_c, spo2_percent, respiratory_rate, weight_kg, height_cm, blood_glucose_mgdl, notes}`;
   server sets `recorded_by_user_id`, `recorded_at`, computes `bmi`. Several rows per visit are allowed (re-check); the writer shows the latest.

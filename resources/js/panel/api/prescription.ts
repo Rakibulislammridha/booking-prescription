@@ -24,8 +24,21 @@ import type {
   DraftSaveResponse,
   ExternalCentreBrief,
   DrawingJson,
+  VisitRow,
 } from '@shared/types/models';
 import type { KeywordTable } from '@panel/lib/prescription/shorthand/keywords';
+
+// ---- visit ------------------------------------------------------------------------------------------------------
+
+/**
+ * Open (idempotently) the visit of a called serial and get the writer's URL — `panel.prescription.visits.start`,
+ * the same endpoint the telemedicine console and the desk rely on. The doctor screen's "Prescribe" lands on
+ * `writer_url`; issuing from the writer completes the consultation (CompleteConsultationOnPrescriptionIssued).
+ */
+export async function startVisit(serial: string): Promise<{ visit: VisitRow; writer_url: string }> {
+  const { data } = await http.post<{ visit: VisitRow; writer_url: string }>(route('panel.prescription.visits.start', { serial }));
+  return data;
+}
 
 // ---- draft ------------------------------------------------------------------------------------------------------
 

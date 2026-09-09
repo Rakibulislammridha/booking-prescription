@@ -51,6 +51,7 @@ export default function Sessions({ staff, sessions, idle_timeout_minutes, is_sel
 
       <Typography variant="body2" color="text.secondary">{t('clinic.sessions.subtitle')}</Typography>
       <Alert severity="info">{t('clinic.sessions.idle_note', { minutes: idle_timeout_minutes })}</Alert>
+      <Alert severity="warning">{t('clinic.sessions.remember_note')}</Alert>
 
       <Card>
         <Box sx={{ overflowX: 'auto' }}>

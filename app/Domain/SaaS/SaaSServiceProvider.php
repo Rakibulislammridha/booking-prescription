@@ -12,6 +12,7 @@ use App\Domain\SaaS\Console\DunSubscriptionsCommand;
 use App\Domain\SaaS\Console\LimitHammerCommand;
 use App\Domain\SaaS\Console\PruneImpersonationTokensCommand;
 use App\Domain\SaaS\Console\RecountUsageCommand;
+use App\Domain\SaaS\Console\RecoveryHammerCommand;
 use App\Domain\SaaS\Console\RenewSubscriptionsCommand;
 use App\Domain\SaaS\Console\TenantsBackupCommand;
 use App\Domain\SaaS\Console\TenantsExportCommand;
@@ -106,7 +107,7 @@ final class SaaSServiceProvider extends ServiceProvider
             ]);
 
             if (! $this->app->isProduction()) {
-                $this->commands([LimitHammerCommand::class]);
+                $this->commands([LimitHammerCommand::class, RecoveryHammerCommand::class]);
             }
         }
     }

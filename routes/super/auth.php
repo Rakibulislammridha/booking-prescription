@@ -26,12 +26,16 @@ Route::post('two-factor/challenge', [TwoFactorChallengeController::class, 'store
 // on one screen with no way to end their session.
 Route::post('logout', [LoginController::class, 'destroy'])->withoutMiddleware(EnsureSuperTwoFactor::class)->name('logout');
 
-Route::prefix('security/two-factor')->name('two-factor.')->withoutMiddleware(EnsureSuperTwoFactor::class)->group(function (): void {
+// EnsureSuperTwoFactor stays ON this group (B4): an enrolled operator whose session never passed the challenge is
+// logged out before it can reach these routes; an operator still enrolling is let through by the middleware's
+// forced-enrolment branch (it recognises `super.two-factor.*`). regenerating recovery codes and disabling the
+// factor each re-ask for the password AND a current TOTP code, in their form requests.
+Route::prefix('security/two-factor')->name('two-factor.')->group(function (): void {
     Route::get('/', [TwoFactorController::class, 'show'])->name('show');
     Route::post('/', [TwoFactorController::class, 'store'])->name('store');
     Route::post('confirm', [TwoFactorController::class, 'confirm'])->middleware('throttle:super-2fa')->name('confirm');
-    Route::post('recovery-codes', [TwoFactorController::class, 'recoveryCodes'])->name('recovery-codes');
-    Route::delete('/', [TwoFactorController::class, 'destroy'])->name('destroy');
+    Route::post('recovery-codes', [TwoFactorController::class, 'recoveryCodes'])->middleware('throttle:super-2fa')->name('recovery-codes');
+    Route::delete('/', [TwoFactorController::class, 'destroy'])->middleware('throttle:super-2fa')->name('destroy');
 });
 
 Route::get('/', DashboardController::class)->name('dashboard');

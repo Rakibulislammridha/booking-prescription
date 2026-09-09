@@ -234,16 +234,25 @@ final class SuperTwoFactorTest extends TestCase
         $this->getJson('/api/ping')->assertOk();       // and to a guest, which is what a heartbeat is for
     }
 
-    public function test_disabling_needs_the_password_and_is_audited(): void
+    public function test_disabling_needs_the_password_and_a_current_code_and_is_audited(): void
     {
         $admin = $this->actingAsSuperWithout2fa();
         $secret = app(SuperTwoFactor::class)->beginEnrolment($admin);
-        app(SuperTwoFactor::class)->confirm($admin->refresh(), Totp::code($secret));
+        app(SuperTwoFactor::class)->confirm($admin->refresh(), Totp::code($secret));   // spends this step
 
-        $this->from('/security/two-factor')->delete('/security/two-factor', ['password' => 'wrong-one'])->assertSessionHasErrors('password');
+        // Wrong password is refused even with a valid code.
+        $this->from('/security/two-factor')->delete('/security/two-factor', ['password' => 'wrong-one', 'code' => $this->freshCode($secret)])
+            ->assertSessionHasErrors('password');
         $this->assertNotNull($admin->refresh()->two_factor_confirmed_at);
 
-        $this->delete('/security/two-factor', ['password' => self::PASSWORD])->assertRedirect('http://super.bp.test/security/two-factor');
+        // Right password, NO code is refused: a lifted password alone must not turn the factor off (B4).
+        $this->from('/security/two-factor')->delete('/security/two-factor', ['password' => self::PASSWORD])
+            ->assertSessionHasErrors('code');
+        $this->assertNotNull($admin->refresh()->two_factor_confirmed_at);
+
+        // Password AND a current code: now it turns off.
+        $this->delete('/security/two-factor', ['password' => self::PASSWORD, 'code' => $this->freshCode($secret)])
+            ->assertRedirect('http://super.bp.test/security/two-factor');
 
         $admin->refresh();
         $this->assertNull($admin->two_factor_confirmed_at);
@@ -251,16 +260,40 @@ final class SuperTwoFactorTest extends TestCase
         $this->assertSame(1, AuditLogCentral::query()->where('super_admin_id', $admin->id)->where('action', 'two_factor_disabled')->count());
     }
 
-    public function test_recovery_codes_can_be_reissued_and_the_old_ones_stop_working(): void
+    public function test_recovery_codes_can_be_reissued_with_password_and_code_and_the_old_ones_stop_working(): void
     {
         $admin = $this->actingAsSuperWithout2fa();
         $secret = app(SuperTwoFactor::class)->beginEnrolment($admin);
-        $first = (array) app(SuperTwoFactor::class)->confirm($admin->refresh(), Totp::code($secret));
+        $first = (array) app(SuperTwoFactor::class)->confirm($admin->refresh(), Totp::code($secret));   // spends this step
 
-        $this->post('/security/two-factor/recovery-codes')->assertRedirect('http://super.bp.test/security/two-factor');
+        // Password alone (the old exempt-route behaviour) no longer regenerates anything.
+        $this->from('/security/two-factor')->post('/security/two-factor/recovery-codes', ['password' => self::PASSWORD])
+            ->assertSessionHasErrors('code');
+        $this->assertTrueButUnchanged($admin, $first);
+
+        $this->post('/security/two-factor/recovery-codes', ['password' => self::PASSWORD, 'code' => $this->freshCode($secret)])
+            ->assertRedirect('http://super.bp.test/security/two-factor');
 
         $this->assertFalse(app(SuperTwoFactor::class)->verifyRecoveryCode($admin->refresh(), (string) $first[0]));
         $this->assertSame(8, app(SuperTwoFactor::class)->recoveryCodesRemaining($admin));
+    }
+
+    /**
+     * The old recovery codes still work after a refused (code-less) regenerate.
+     *
+     * @param  array<int, string>  $first
+     */
+    private function assertTrueButUnchanged(SuperAdmin $admin, array $first): void
+    {
+        $digests = (array) $admin->refresh()->two_factor_recovery_codes;
+        $this->assertCount(8, $digests);
+        $this->assertSame(hash('sha256', (string) $first[0]), $digests[0] ?? null, 'a code-less regenerate must not have replaced the codes');
+    }
+
+    /** A TOTP code for the NEXT step, so it is not the one a preceding confirm()/verify already spent. */
+    private function freshCode(string $secret): string
+    {
+        return Totp::code($secret, time() + Totp::PERIOD);
     }
 
     /** An operator who is signed in and enrolled but not required to be — nothing forces them anywhere. */

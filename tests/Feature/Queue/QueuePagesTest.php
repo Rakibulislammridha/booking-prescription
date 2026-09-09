@@ -184,8 +184,25 @@ final class QueuePagesTest extends TestCase
                 ->where('doctor_channel', TenantChannel::doctorName($this->tenantId(), $doctor->public_id))
                 ->where('session_id', $session->public_id)
                 ->where('can.call_next', true)
+                ->where('can.prescribe', true)   // the screen's Prescribe → visits.start → writer (BRIEF §5.G)
                 ->where('patients.'.$serial->public_id.'.name', 'Rahima Begum')
                 ->has('state.serials', 1)
+            );
+    }
+
+    /** An operator running a doctor's screen may call next but is not a prescriber: no Prescribe for them. */
+    public function test_an_operator_on_a_doctors_screen_gets_call_next_but_not_prescribe(): void
+    {
+        $other = $this->queueDoctor('dr-other');
+        $this->queueSession($other);
+
+        $this->actingAsStaff(Role::Receptionist, $this->mainBranch());
+        $this->get('/panel/queue/doctor?doctor='.$other->slug)
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Queue/Doctor')
+                ->where('can.call_next', true)
+                ->where('can.prescribe', false)
             );
     }
 

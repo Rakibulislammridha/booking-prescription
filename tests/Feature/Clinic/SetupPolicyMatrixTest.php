@@ -143,8 +143,11 @@ final class SetupPolicyMatrixTest extends TestCase
         $user = $this->actingAsStaff(Role::HospitalAdmin);
         $user->forceFill(['is_active' => false])->save();
 
-        $this->get('/panel/clinic/branches')->assertForbidden();
-        $this->get('/panel/clinic/doctors')->assertForbidden();
+        // An account deactivated mid-session is signed out on its very next request by EnsureStaffIsActive (B1),
+        // so it never even reaches the setup policies — a redirect to login, not a 403.
+        $this->get('/panel/clinic/branches')->assertRedirect(route('panel.login', absolute: false));
+        $this->get('/panel/clinic/doctors')->assertRedirect(route('panel.login', absolute: false));
+        $this->assertGuest('web');
     }
 
     public function test_the_setup_screens_write_only_inside_the_acting_tenant(): void

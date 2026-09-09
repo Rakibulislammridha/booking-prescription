@@ -1,7 +1,10 @@
 // The doctor screen (Inertia::render('Queue/Doctor'), REALTIME.md §11): one big Call next, the patient card of the
-// serial in the chamber, the next three, the running ETA and a one-tap delay broadcast. Live over the private
-// doctor channel (`call.next`) plus the session's public `queue.state`; every mutation is a Serials endpoint.
+// serial in the chamber with its Prescribe action (the flagship flow: call → prescribe → issue completes the
+// consultation, BRIEF §5.G), the next three, the running ETA and a one-tap delay broadcast. Live over the private
+// doctor channel (`call.next`) plus the session's public `queue.state`; every mutation is a Serials endpoint,
+// except Prescribe, which opens the serial's visit through the Prescription module and lands in its writer.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -21,6 +24,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { callNext, delaySession, serialAction } from '@panel/api/serials';
+import { startVisit } from '@panel/api/prescription';
 import { useChannel } from '@shared/realtime/useChannel';
 import { useQueueState } from '@shared/realtime/useQueueState';
 import { QUEUE_EVENTS, type QueueState } from '@shared/realtime/types';
@@ -40,7 +44,7 @@ type Props = PageProps<{
   state: QueueState | null;
   sessions: Array<{ public_id: string; code: string; status: string; planned_start_at: string; delay_minutes: number }>;
   patients: Record<string, QueuePatientCard>;
-  can: { call_next: boolean; delay: boolean };
+  can: { call_next: boolean; delay: boolean; prescribe: boolean };
 }>;
 
 const DELAY_PRESETS = [15, 30, 45];
@@ -108,6 +112,17 @@ export default function Doctor({ tenant_public_id, doctor_channel, doctor, sessi
     void run(() => serialAction(serving.id, action));
   }, [serving, run]);
 
+  // The serial in the chamber → its visit (opened idempotently; the SerialCalled listener normally already has)
+  // → the writer. Exactly what Prescription/Show and the telemedicine console do with `writer_url`.
+  const canPrescribe = serving !== null && can.prescribe;
+  const prescribe = useCallback((): void => {
+    if (!serving || !can.prescribe) return;
+    void run(async () => {
+      const { writer_url } = await startVisit(serving.id);
+      router.visit(writer_url);
+    });
+  }, [serving, can.prescribe, run]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const target = e.target as HTMLElement | null;
@@ -115,10 +130,11 @@ export default function Doctor({ tenant_public_id, doctor_channel, doctor, sessi
       if (e.code === 'Space') { e.preventDefault(); doCallNext(); }
       else if (e.key === 'Enter') { e.preventDefault(); onServing('complete'); }
       else if (e.key.toLowerCase() === 'n') { e.preventDefault(); onServing('no-show'); }
+      else if (e.key.toLowerCase() === 'p') { e.preventDefault(); prescribe(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [doCallNext, onServing]);
+  }, [doCallNext, onServing, prescribe]);
 
   const submitDelay = (minutes: number): void => {
     if (!sessionId) return;
@@ -159,8 +175,13 @@ export default function Doctor({ tenant_public_id, doctor_channel, doctor, sessi
             {card ? (
               <Typography variant="body1">{card.name}{card.age_text ? ` · ${formatBn(card.age_text, locale)}` : ''}{card.patient_code ? ` · ${formatBn(card.patient_code, locale)}` : ''}</Typography>
             ) : null}
+            {canPrescribe ? (
+              <Button size="large" variant="contained" color="success" onClick={prescribe} disabled={busy} sx={{ mt: 2 }} data-testid="prescribe">
+                {t('queue.doctor.prescribe')}
+              </Button>
+            ) : null}
             <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
-              <Button size="large" variant="contained" onClick={doCallNext} disabled={busy || !can.call_next || !sessionId}>{t('queue.doctor.call_next')}</Button>
+              <Button size="large" variant={serving ? 'outlined' : 'contained'} onClick={doCallNext} disabled={busy || !can.call_next || !sessionId}>{t('queue.doctor.call_next')}</Button>
               <Button onClick={() => onServing('start')} disabled={busy || !serving}>{t('queue.doctor.start')}</Button>
               <Button onClick={() => onServing('complete')} disabled={busy || !serving}>{t('queue.doctor.complete')}</Button>
               <Button onClick={() => onServing('skip')} disabled={busy || !serving}>{t('queue.doctor.skip')}</Button>

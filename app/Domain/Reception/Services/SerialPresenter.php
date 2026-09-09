@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domain\Reception\Services;
 
-use App\Domain\Booking\Enums\AppointmentStatus;
-use App\Domain\Booking\Enums\PaymentStatus;
 use App\Domain\Booking\Services\AdvancePaymentPolicy;
 use App\Domain\Patients\Services\MobileNumber;
 use App\Domain\Prescription\Data\VitalsStatus;
 use App\Domain\Prescription\Queries\VitalsStatusQuery;
-use App\Domain\Serials\Enums\SerialStatus;
 use App\Http\Resources\Serials\SerialResource;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Patient;
@@ -36,9 +33,6 @@ use Illuminate\Http\Request;
  */
 final class SerialPresenter
 {
-    /** The serial states in which "vitals recorded?" is a question the desk can act on. */
-    private const VITALS_STATES = [SerialStatus::CheckedIn, SerialStatus::InConsultation];
-
     private ?int $holdMinutes = null;
 
     public function __construct(
@@ -46,10 +40,14 @@ final class SerialPresenter
         private readonly AdvancePaymentPolicy $holds,
     ) {}
 
-    /** Board rows this shape carries a vitals answer for; the board loads them in one query (BoardBuilder). */
+    /**
+     * Board rows this shape carries a vitals answer for; the board loads them in one query (BoardBuilder). The
+     * patient has to be in the building (SerialStatus::isPresent) — the same rule SerialPolicy::recordVitals
+     * enforces when the row's button is pressed.
+     */
     public static function canHaveVitals(Serial $serial): bool
     {
-        return in_array($serial->status, self::VITALS_STATES, true);
+        return $serial->status->isPresent();
     }
 
     /** @return array<string, mixed> */
@@ -93,13 +91,13 @@ final class SerialPresenter
     }
 
     /**
-     * When `booking:expire-holds` will release this serial: `created_at` + the hold window, mirroring the sweep's
-     * own predicate exactly (ExpireAdvancePaymentHoldsCommand). A hold that has been part-paid is pending but is
-     * NOT swept, so it gets no deadline — the board shows it as held without a countdown it would be wrong about.
+     * When `booking:expire-holds` will release this serial: `created_at` + the hold window, on the sweep's own
+     * predicate (AdvancePaymentPolicy::isUnpaidHold). A hold that has been part-paid is pending but is NOT swept,
+     * so it gets no deadline — the board shows it as held without a countdown it would be wrong about.
      */
     private function holdExpiresAt(Appointment $appointment): ?string
     {
-        if ($appointment->status !== AppointmentStatus::Pending || $appointment->payment_status !== PaymentStatus::Unpaid) {
+        if (! $this->holds->isUnpaidHold($appointment)) {
             return null;
         }
 

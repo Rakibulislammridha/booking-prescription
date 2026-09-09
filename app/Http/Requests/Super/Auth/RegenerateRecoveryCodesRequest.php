@@ -7,11 +7,12 @@ namespace App\Http\Requests\Super\Auth;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * Turning the second factor off is a downgrade of the platform's most valuable credential, so it re-asks for the
- * password AND a current authenticator code (B4): an unattended console must not be one click — or one lifted
- * password — away from an unprotected super account. The code is verified (and spent) in the controller.
+ * Reissuing recovery codes silently invalidates the operator's old ones and hands out a fresh, durable set — so it
+ * is a credential-minting action and, like disabling the factor, it re-asks for the password AND a current
+ * authenticator code (B4). Without this a session that reached the management screen without proving possession
+ * (the old exempt-route hole) could print itself a new way in. The code is verified (and spent) in the controller.
  */
-final class DisableTwoFactorRequest extends FormRequest
+final class RegenerateRecoveryCodesRequest extends FormRequest
 {
     public function authorize(): bool
     {

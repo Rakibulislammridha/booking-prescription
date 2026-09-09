@@ -6,15 +6,33 @@ namespace App\Domain\Serials\Policies;
 
 use App\Domain\Clinic\Enums\Permission;
 use App\Domain\Clinic\Enums\Role;
+use App\Domain\Clinic\Services\BranchAccess;
 use App\Models\Tenant\Serial;
 use App\Models\Tenant\User;
 
 /** Serial-level authorisation per the "Who" column of SERIAL_ENGINE §6. */
 final class SerialPolicy
 {
+    public function __construct(private readonly BranchAccess $branches) {}
+
     public function view(User $user, Serial $serial): bool
     {
         return $user->is_active;
+    }
+
+    /**
+     * The desk recording vitals on this serial (BRIEF §5.G.2, `prescriptions.vitals.record`). Unlike `view`, this
+     * is scoped: the patient must be in the building (checked in or in the chamber — SerialStatus::isPresent, the
+     * same rule that puts the button on the board row) and the serial must sit at a branch this user acts for
+     * (BranchAccess). A receptionist on the main desk does not open encounters for a booked serial at another
+     * branch.
+     */
+    public function recordVitals(User $user, Serial $serial): bool
+    {
+        return $user->is_active
+            && $user->can(Permission::PrescriptionsVitalsRecord->value)
+            && $serial->status->isPresent()
+            && $this->branches->actsFor($user, (int) $serial->sessionInstance->branch_id);
     }
 
     public function checkIn(User $user, Serial $serial): bool

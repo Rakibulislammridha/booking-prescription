@@ -41,7 +41,10 @@ final class JoinLinkController extends Controller
             return $this->refuse($room->status === RoomStatus::Cancelled ? 'telemedicine.join.room_cancelled' : 'telemedicine.join.room_ended', 410);
         }
 
-        Auth::guard('patient')->login($room->appointment->patient, remember: true);
+        // No remember-me: a Patient has no remember_token (OTP-only identity), so `remember: true` only set a
+        // 400-day recaller cookie with an empty token that could never authenticate (B8). A consultation link is a
+        // short-lived, single-visit credential — it should not try to create a durable session anyway.
+        Auth::guard('patient')->login($room->appointment->patient);
         $request->session()->regenerate();
 
         return redirect()->route('site.telemedicine.room', ['room' => $room->room_name]);
