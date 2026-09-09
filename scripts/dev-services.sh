@@ -51,7 +51,7 @@ stop() {
 }
 # Prefer the systemd --user units when they are installed: they survive this shell exiting
 # and restart on failure. Fall back to detached processes otherwise.
-UNITS="bp-dragonfly bp-meilisearch bp-reverb"
+UNITS="bp-dragonfly bp-meilisearch bp-reverb bp-horizon"
 have_units() { systemctl --user list-unit-files bp-dragonfly.service >/dev/null 2>&1 && systemctl --user cat bp-dragonfly >/dev/null 2>&1; }
 if have_units; then
   case "${1:-start}" in

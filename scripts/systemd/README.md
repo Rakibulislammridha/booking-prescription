@@ -5,7 +5,7 @@ survive the terminal that started them and restart on failure. No root required.
 
     cp scripts/systemd/bp-*.service ~/.config/systemd/user/
     systemctl --user daemon-reload
-    systemctl --user enable --now bp-dragonfly bp-meilisearch bp-reverb
+    systemctl --user enable --now bp-dragonfly bp-meilisearch bp-reverb bp-horizon
 
 `scripts/dev-services.sh {start,stop,status}` uses these units when installed and falls back to
 detached processes otherwise.

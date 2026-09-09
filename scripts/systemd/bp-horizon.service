@@ -1,0 +1,13 @@
+[Unit]
+Description=Laravel Horizon queue workers for booking-prescription
+After=network.target bp-dragonfly.service
+
+[Service]
+WorkingDirectory=%h/www/booking-prescription
+ExecStart=%h/.config/herd-lite/bin/php artisan horizon
+ExecReload=%h/.config/herd-lite/bin/php artisan horizon:terminate
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
