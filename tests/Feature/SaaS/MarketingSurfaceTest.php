@@ -35,6 +35,32 @@ final class MarketingSurfaceTest extends TestCase
             ->has('copy'));
     }
 
+    /**
+     * Central pages are rendered by the SITE bundle, which carries the `site` Ziggy group — and no `site.*` route
+     * is registered on the bare central host, so before `config/ziggy.php` grew a `central` group these pages
+     * received an EMPTY route list and could only ever use link props. The group is the fix; this pins it, and
+     * pins the isolation that makes it worth having (a central page cannot name a tenant route by accident).
+     */
+    public function test_central_pages_receive_their_own_ziggy_group(): void
+    {
+        /** @var array<string, mixed> $ziggy */
+        $ziggy = $this->props('/', 'ziggy');
+        /** @var array<string, mixed> $routes */
+        $routes = $ziggy['routes'];
+
+        $this->assertArrayHasKey('central.pricing', $routes);
+        $this->assertArrayHasKey('central.onboarding.store', $routes);
+        $this->assertArrayNotHasKey('site.home', $routes);
+        $this->assertArrayNotHasKey('panel.dashboard', $routes);
+        $this->assertArrayNotHasKey('super.dashboard', $routes);
+        $this->assertSame('bp.test', $ziggy['url'] === null ? null : parse_url((string) $ziggy['url'], PHP_URL_HOST));
+
+        // …and the pages still work, links prop and all.
+        $this->get('/pricing')->assertOk();
+        $this->get('/signup')->assertOk();
+        $this->get('/docs')->assertOk();
+    }
+
     public function test_pricing_is_driven_by_the_plan_rows_and_hides_archived_and_private_plans(): void
     {
         $this->get('/pricing')->assertOk()->assertInertia(fn ($page) => $page->component('Central/Pricing'));

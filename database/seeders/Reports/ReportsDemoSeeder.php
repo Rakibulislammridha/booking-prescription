@@ -40,6 +40,7 @@ use App\Models\Tenant\SessionInstance;
 use App\Models\Tenant\Visit;
 use App\Support\Clock;
 use Carbon\CarbonImmutable;
+use Database\Seeders\Tenant\VitalsDemoSeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -155,6 +156,15 @@ final class ReportsDemoSeeder extends Seeder
         $followUps = $this->flushFollowUps();
 
         $this->command->getOutput()->writeln("  seeded {$sessions} sessions, {$serials} serials and {$followUps} follow-up bookings over ".(self::WEEKS * 7).' days');
+
+        // The visits this seeder just wrote are what a vitals history hangs on, so the demo's trend charts are
+        // filled in the same breath rather than left as an empty panel on every patient (BRIEF §5.H).
+        $this->recountPatients();
+
+        $vitals = new VitalsDemoSeeder;
+        $vitals->run();
+
+        $this->command->getOutput()->writeln("  seeded {$vitals->written['history']} vitals readings across the history and {$vitals->written['today']} for the patients in the clinic right now");
     }
 
     /** @return array<int, Patient> */
@@ -329,6 +339,19 @@ final class ReportsDemoSeeder extends Seeder
         $this->recountSession($session);
 
         return $issued;
+    }
+
+    /**
+     * `patients.visit_count` / `last_visit_at` are maintained by StartVisit in production, and this seeder writes
+     * `visits` rows directly — so without this every seeded patient's record reads "No visits yet" above a full
+     * history, which makes the product look broken to exactly the person the demo is for. One statement for the
+     * whole clinic (a demo-only bulk write of two counters, no clinical content).
+     */
+    private function recountPatients(): void
+    {
+        DB::statement('update patients p set visit_count = v.n, last_visit_at = v.last_at
+            from (select patient_id, count(*) as n, max(started_at) as last_at from visits group by patient_id) v
+            where v.patient_id = p.id and (p.visit_count is distinct from v.n or p.last_visit_at is distinct from v.last_at)');
     }
 
     /** The counters `CountsRecalculator` keeps in production; the reports aggregate from `serials` regardless. */

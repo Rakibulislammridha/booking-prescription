@@ -1126,8 +1126,38 @@ register with `kind = display` and use the same guard for the private display ch
 
 ### 6.5 Super admin (`super`)
 
-Email + password + TOTP (Clinic-independent; `pragmarx/google2fa` is **not** installed — the
-SaaS module implements TOTP with `OTPHP`-style HMAC in `App\Domain\SaaS\Services\Totp`, 40 lines).
+Email + password + TOTP (clinic-independent; `pragmarx/google2fa` is **not** installed — the SaaS module
+implements TOTP itself in `App\Domain\SaaS\Services\Totp`: RFC 6238, HMAC-SHA1, 6 digits, a 30-second step, the
+counter packed big-endian, comparison with `hash_equals`, verified against the RFC's own test vectors).
+
+**Enforcement is on by default.** `config('saas.two_factor.required')` (env `SUPER_2FA_REQUIRED`, default `true`)
+puts `App\Domain\SaaS\Http\Middleware\EnsureSuperTwoFactor` in charge of the whole `super.` route group: an
+operator who has not enrolled reaches the enrolment screen and nothing else — not a banner, a wall — because this
+is the one account that can read every clinic's records. Only `super.login`, `super.two-factor.challenge`,
+`super.two-factor.*` and `super.logout` opt out.
+
+**The flow.** `Super\Auth\LoginController` checks the password through the provider directly rather than
+`attempt()`, and for an enrolled operator does **not** log them in: it parks `{id, remember, at}` under
+`SuperTwoFactor::SESSION_PENDING` (TTL `saas.two_factor.pending_ttl_seconds`) and redirects to
+`Super\Auth\TwoFactorChallengeController`. So an unchallenged session is a GUEST — it cannot reach a super route
+and cannot mint an impersonation token, by construction rather than by check. The challenge logs the operator in,
+regenerates the session id and stamps `SESSION_PASSED_AT`, which the middleware also verifies as a second line.
+
+**Enrolment** (`Super\Auth\TwoFactorController`, page `Super/Auth/TwoFactor`) is confirm-before-enable: the secret
+is written with `two_factor_confirmed_at` NULL and only a code that verifies against it turns the factor on, so a
+mis-scanned QR is discovered while the operator is still signed in. The QR is `Endroid` through the prescription
+module's `QrCodeRenderer::svgDataUri()` (§8.5) — one QR renderer in the codebase. Re-enrolling on an already-enabled
+account is refused; rotating means disabling first, which re-asks for the password.
+
+**Threat model.** Replay: a TOTP code is valid for its whole step, so the accepted step is *spent* — an atomic
+`Cache::add` keyed by admin+step — and the same code fails the second time. Skew: ±1 step, no more. Lockout:
+`saas.two_factor.challenge_attempts` (5) per admin+IP for `challenge_decay_seconds` (900), plus a per-IP
+`throttle:super-2fa`. Recovery: 8 single-use codes, shown once, SHA-256 digests inside the already-`encrypted`
+`super_admins.two_factor_recovery_codes` (the same reasoning that has Sanctum hash API tokens with SHA-256 —
+these are our own CSPRNG output, not a chosen password). Every enrolment, disablement, failed challenge and spent
+recovery code is a `public.audit_logs_central` row (`two_factor_enabled | two_factor_disabled | two_factor_failed |
+two_factor_recovery_used`, SCHEMA §2.13).
+
 Impersonation: `super` creates `public.impersonation_tokens` (single-use, 60 s), redirects to
 `https://{tenant-host}/panel/impersonate/{token}`; `Panel\Auth\ImpersonationController` logs the
 super admin in as the chosen tenant user with `session('impersonated_by' => superAdminId)`; every
@@ -1254,10 +1284,14 @@ OFFLINE.md §11. `resources/js/panel/pwa.ts` calls `registerSW({ immediate: true
 from `virtual:pwa-register`, applies updates only when `pendingEvents === 0`, and is imported only by `panel/app.tsx`.
 
 The panel has its own guard, `scripts/check-panel-budget.sh` (CONVENTIONS §7.3): the same manifest arithmetic as
-the site's, applied to `resources/js/panel/app.tsx` and every page under `panel/Pages/**`, with ≤ 445 KB gzip for
-any panel route and ≤ 380 KB for the clinical ones. It also enforces the §7.3 import rules that cause the payload
-in the first place (no MUI barrel imports, recharts and dnd-kit only where they belong, no date pickers in the
-entry or a layout).
+the site's, applied to `resources/js/panel/app.tsx` and every page under `panel/Pages/**`, with ≤ 355 KB gzip for
+any panel route and ≤ 345 KB for the clinical ones. A panel route's first load is the entry's static closure +
+the `bp-lang/lang-panel-<locale>` base slice + the route's `bp-lang/lang-panel-<module>-<locale>` slice (§7.5 —
+both are requested in the same tick as the page chunk) + the page chunk and its static imports. It also enforces
+the §7.3 import rules that cause the payload in the first place (no MUI barrel imports, dnd-kit only where it
+belongs, no date pickers in the entry or a layout, and **recharts only inside `panel/Components/Charts/**`** —
+every chart on the panel is reached through `React.lazy` and is not mounted at all when there are no rows, so
+recharts' ~97 KB gzip never enters a first load; `Components/Charts/LazyChart.tsx` is the wrapper that does it).
 
 `tsconfig.json`: `"strict": true`, `"jsx": "react-jsx"`, `"module": "ESNext"`,
 `"moduleResolution": "bundler"`, `"target": "ES2022"`, `"lib": ["ES2022","DOM","DOM.Iterable","WebWorker"]`,
@@ -1335,13 +1369,33 @@ from the first page load (`setZiggy(props.ziggy)` in each `app.tsx`). No `@route
 PHP (`__('reception.board.title')`; `AppServiceProvider::register()` calls
 `$this->app->useLangPath(resource_path('lang'))`) and the client — unchanged for anyone adding a key.
 They are **not** bundled into the entries: shipping both locales × every key cost 38 KB gzip on every
-page. The Vite plugin `bp:lang-bundles` slices them at build time into one chunk per (surface, locale)
-— `@lang/<locale>.json?site` / `?panel`, with `resources/js/shared/lang/surfaces.ts` holding the site's
-key-prefix allowlist (262 of 960 keys: the site never renders `prescriptions.*`, `reception.*`,
-`scheduling.*`, `serials.*`, `catalog.*`) — and each `app.tsx` loads exactly one of them:
-`registerMessageLoader(loadSiteMessages)` + `ensureMessages(documentLocale())` at module scope, awaited
-inside `createInertiaApp({ resolve })` so the locale chunk downloads **in parallel with** the page chunk
-and nothing ever renders untranslated. `documentLocale()` reads `<html lang>`, which the root Blade
+page. The Vite plugin `bp:lang-bundles` slices them at build time into one chunk per (bundle, locale)
+— `@lang/<locale>.json?<bundle>`, with `resources/js/shared/lang/surfaces.ts` holding every bundle's
+key-prefix list. There are three kinds of bundle:
+
+* **`site`** — the site's allowlist (`SITE_KEY_PREFIXES`): the site never renders `prescriptions.*`,
+  `reception.*`, `scheduling.*`, `serials.*`, `catalog.*`.
+* **`panel`** — the panel's **base**: `PANEL_BASE_PREFIXES` = `auth. common. connection. dashboard. nav.
+  passwords. pwa. roles. tenancy. validation.`, about 160 of the ~2 900 keys (~4 KB gzip in Bangla). This is
+  the shell's own copy — the nav, the flash snackbars, the connection indicator, the PWA prompt, the field
+  errors — so it must be in the base or every route flashes raw keys before its module arrives.
+* **`panel-<module>`** — one chunk per directory under `panel/Pages/` (`PANEL_MODULES`, mapped by
+  `panelModuleForPage()`), carrying only that module's blocks and never repeating a base key. A reception
+  desk downloads `reception.`, `serials.`, `booking.`, `patients.`, `billing.`, `scheduling.` and
+  `prescriptions.` — and not `reports.*`, `saas.*`, `super.*`, `catalog.*`, `notifications.*`, `clinic.*`
+  or `telemedicine.*`. Shipping all ~2 900 keys to every route cost 51 KB gzip in Bangla; the base plus the
+  heaviest module is 20 KB, and most routes are under 10 KB.
+
+Each `app.tsx` loads exactly what its route needs: `registerMessageLoader(loadSiteMessages)` +
+`ensureMessages(documentLocale())` at module scope, awaited inside `createInertiaApp({ resolve })` so the
+locale chunk downloads **in parallel with** the page chunk and nothing ever renders untranslated. The panel
+additionally calls `registerModuleLoader(loadPanelModuleMessages)` and, inside the same `resolve(name)`
+`Promise.all`, `ensureModuleMessages(panelModuleForPage(name), documentLocale())` — the page name is known
+before either request goes out, so the module slice is a *parallel* request, never an extra round trip.
+`setLocale()` re-fetches every module slice this session has shown, so a language switch never leaves half
+the screen in keys. `resources/js/shared/lang/__tests__/bundles.test.ts` walks each panel page's real import
+graph (dynamic imports included) and fails if it can render a key its bundle does not carry, naming the list
+in `surfaces.ts` to add the prefix to. `documentLocale()` reads `<html lang>`, which the root Blade
 renders from `app()->getLocale()` — the same expression `share()` uses for `SharedProps.locale`, so the
 two can never disagree. `shared/i18n.ts` initialises
 `i18next.use(initReactI18next).init({ resources: {}, lng, fallbackLng: 'en', interpolation: { escapeValue: false } })`

@@ -267,7 +267,7 @@ All models extend `App\Models\Central\CentralModel` with `$table = 'public.<name
 | Column | Type | Null | Default | Meaning |
 |---|---|---|---|---|
 | tenant_id | bigint | no | | |
-| domain | varchar(253) | no | | Lower-case FQDN, e.g. `queue.hospital.com` |
+| domain | varchar(253) | no | | Lower-case FQDN, e.g. `hospital.com` or `booking.hospital.com` — **never** a service label (see below) |
 | type | varchar(16) | no | | `subdomain`, `custom` |
 | is_primary | boolean | no | `false` | Canonical host for links in SMS/PDF |
 | verification_status | varchar(16) | no | `'pending'` | `pending`, `verified`, `failed` |
@@ -280,6 +280,14 @@ All models extend `App\Models\Central\CentralModel` with `$table = 'public.<name
 **PK** id. **FK** tenant_id → public.tenants(id) ON DELETE CASCADE. **Unique** domain; (tenant_id) WHERE is_primary `_p`. **Indexes** (verification_status, last_checked_at) (re-verify sweep). **Checks** type, verification_status, ssl_status lists; `domain = lower(domain)`.
 **Model** `App\Models\Central\Domain`.
 
+**A row here is the BARE host, not a vanity host.** `App\Tenancy\TenantResolver` strips a leading service label
+(`config('tenancy.service_prefixes')` = `queue`, `book`, `display`) from the request host *before* it looks the
+domain up, and remembers it as the surface hint. So `queue.hospital.com` reaches the tenant that owns the row
+`hospital.com` and lands on the live-queue surface; a row literally spelled `queue.hospital.com` would only ever
+match the host `queue.queue.hospital.com` and is therefore useless. Register the host the clinic actually owns —
+`hospital.com`, or `booking.hospital.com` if that is where they point the CNAME — and the three vanity prefixes
+come for free. `HostResolutionTest` pins the stripping behaviour.
+
 ### 2.8 `super_admins`
 **Purpose.** Platform operators (guard `super`). — **soft delete: yes**
 
@@ -290,7 +298,7 @@ All models extend `App\Models\Central\CentralModel` with `$table = 'public.<name
 | email_verified_at | timestamptz | yes | | |
 | password | varchar(255) | no | | bcrypt/argon hash |
 | two_factor_secret | text | yes | | **ENC** TOTP secret |
-| two_factor_recovery_codes | text | yes | | **ENC** JSON array |
+| two_factor_recovery_codes | text | yes | | **ENC** JSON array of SHA-256 digests, one per unused single-use code (cast `encrypted:array`) |
 | two_factor_confirmed_at | timestamptz | yes | | |
 | remember_token | varchar(100) | yes | | |
 | is_active | boolean | no | `true` | |
@@ -375,7 +383,7 @@ All models extend `App\Models\Central\CentralModel` with `$table = 'public.<name
 |---|---|---|---|---|
 | super_admin_id | bigint | yes | | Null for system jobs |
 | tenant_id | bigint | yes | | Affected tenant if any |
-| action | varchar(32) | no | | `login`, `logout`, `impersonate`, `impersonate_end`, `create`, `update`, `delete`, `suspend`, `reactivate`, `plan_change`, `export`, `restore`, `catalog_promote`, `settings_change`, `view` |
+| action | varchar(32) | no | | `login`, `logout`, `impersonate`, `impersonate_end`, `create`, `update`, `delete`, `suspend`, `reactivate`, `plan_change`, `export`, `restore`, `catalog_promote`, `settings_change`, `view`, `two_factor_enabled`, `two_factor_disabled`, `two_factor_failed`, `two_factor_recovery_used` |
 | auditable_type | varchar(160) | yes | | Morph class |
 | auditable_id | bigint | yes | | |
 | before | jsonb | yes | | Changed attributes before |
@@ -388,6 +396,10 @@ All models extend `App\Models\Central\CentralModel` with `$table = 'public.<name
 **PK** id. **FK** super_admin_id → public.super_admins(id) ON DELETE SET NULL; tenant_id → public.tenants(id) ON DELETE SET NULL. **Indexes** (tenant_id, occurred_at DESC); (super_admin_id, occurred_at DESC); (auditable_type, auditable_id); BRIN (occurred_at). **Checks** action list. No UPDATE/DELETE grants for the app role.
 **JSON** `before`/`after`: flat `{"column": value}` of changed attributes only.
 **Model** `App\Models\Central\AuditLogCentral`.
+The CHECK on `action` is rebuilt from `App\Domain\Audit\Enums\CentralAuditAction::values()` by
+`2026_01_02_000100_extend_audit_logs_central_actions`, so the enum is the single source and the two cannot drift.
+The four `two_factor_*` actions are the super console's second factor (ARCHITECTURE §6.5): enrolment, disablement,
+every failed challenge and every recovery code spent.
 
 ### 2.14 `personal_access_tokens` (Sanctum, central)
 **Purpose.** API tokens for super admins and platform integrations. Exact Sanctum 4.3 shape.
@@ -2214,7 +2226,7 @@ JSON-only vocabularies (no CHECK; validated in code): `ParsedLine.unit`, `timing
 
 ## Appendix B — Tenant settings registry (`settings.key`)
 
-The closed list of dotted keys stored in `settings` (§3.1). `value` is jsonb of the stated type; a missing row means the default. A definition may carry `options` (an allowed set) or `pattern` (a regex the string must match), both enforced by `SettingsRegistry::validate()`. `Settings::get('serial.elderly_skip')` is the only read path (Redis-cached per tenant under `t:{tenantId}:settings`, bigint tenant id); `Settings::set()` rejects unknown keys and wrong types. The prefix is `serial.` (singular). Branch-level presentation settings (`token_slip_width_mm`, `display_mode`) live in `branches.settings` jsonb, not here; per-doctor writer preferences live in `doctor_profiles.prefs`.
+The closed list of dotted keys stored in `settings` (§3.1). `value` is jsonb of the stated type; a missing row means the default. A definition may carry `options` (an allowed set) or `pattern` (a regex the string must match), both enforced by `SettingsRegistry::validate()`, and **`secret`** (marked 🔒 below) for a credential. A secret is a storage contract, not a UI hint: `Settings::set()` encrypts it before it reaches `settings.value` (plain jsonb, and in every backup), `Settings::get()` decrypts it for module code, `Settings::all()` — the bulk read the settings screen renders — returns a mask (`••••1234`) instead, a blank submit means *keep the stored value* (clearing is the explicit `ForgetSetting` action) and the audit row carries `[redacted]`. `Settings::get('serial.elderly_skip')` is the only read path (Redis-cached per tenant under `t:{tenantId}:settings`, bigint tenant id); `Settings::set()` rejects unknown keys and wrong types. The prefix is `serial.` (singular). Branch-level presentation settings (`token_slip_width_mm`, `display_mode`) live in `branches.settings` jsonb, not here; per-doctor writer preferences live in `doctor_profiles.prefs`.
 
 | Key | Type | Default | Meaning | Owner |
 |---|---|---|---|---|
@@ -2243,12 +2255,14 @@ The closed list of dotted keys stored in `settings` (§3.1). `value` is jsonb of
 | `notifications.quiet_hours_start` | string `HH:MM` | `"21:00"` | Start of the quiet window, clinic-local (`tenants.timezone`). Validated against `/^([01]\d\|2[0-3]):[0-5]\d$/` | BRIEF §5.J |
 | `notifications.quiet_hours_end` | string `HH:MM` | `"08:00"` | End of the quiet window; a window that wraps past midnight is normal. A message produced inside the window is stored `scheduled` for this time, never dropped | BRIEF §5.J |
 | `security.session_timeout_minutes` | int | `120` | Staff session lifetime; `users.session_timeout_minutes` overrides per user | §3.1, ARCHITECTURE.md §6.1 |
-| `telemedicine.provider` | string: `default`, `livekit`, `jitsi`, `null` | `"default"` | Which video driver this clinic uses; `default` follows `config('telemedicine.default')` | BRIEF §5.K |
+| `telemedicine.provider` | string: `default`, `agora`, `livekit`, `jitsi`, `null` | `"default"` | Which video driver this clinic uses; `default` follows `config('telemedicine.default')` | BRIEF §5.K |
 | `telemedicine.host` | string | `""` | LiveKit URL (`wss://…`) or Jitsi domain; empty falls back to `config/telemedicine.php` | BRIEF §5.K |
-| `telemedicine.api_key` | string | `""` | Provider API key / Jitsi app id | BRIEF §5.K |
-| `telemedicine.api_secret` | string | `""` | Provider API secret, stored as a **Laravel-encrypted string** (`TelemedicineSettings::storeSecret()`) — `settings.value` is plain jsonb, so the ciphertext is what is written | BRIEF §5.K |
+| `telemedicine.api_key` | string 🔒 | `""` | Provider API key / Jitsi app id / Agora app id | BRIEF §5.K |
+| `telemedicine.api_secret` | string 🔒 | `""` | Provider API secret / Agora app certificate. Encrypted at rest by the settings service, whichever screen writes it (`TelemedicineSettings::storeSecret()` encrypts for itself and is detected, never wrapped twice) | BRIEF §5.K |
 | `telemedicine.recording_enabled` | bool | `false` | Allow consultation recording (a granted `telemedicine` patient consent is ALSO required per call) | BRIEF §5.K |
 | `telemedicine.max_minutes` | int (5–240) | `45` | Cap on one consultation, snapshotted onto `telemedicine_rooms.settings` | BRIEF §5.K |
+| `patients.ocr_driver` | string: `default`, `null`, `google` | `"default"` | OCR engine for uploaded reports; `default` follows `config('patients.ocr.driver')`, which ships as `null` (nothing leaves the clinic) | PRESCRIPTION.md §8 |
+| `patients.ocr_api_key` | string 🔒 | `""` | The clinic's own Vision key; empty falls back to `config('patients.ocr.key')` | PRESCRIPTION.md §8 |
 
 ---
 

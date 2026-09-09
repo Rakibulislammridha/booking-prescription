@@ -145,6 +145,11 @@ final class SaaSServiceProvider extends ServiceProvider
         // unauthenticated request in the system, so it is throttled hard, per IP.
         RateLimiter::for('saas-signup', fn (Request $request) => [Limit::perHour(5)->by('saas-signup:'.$request->ip())]);
 
+        // The TOTP challenge, per IP. It is the OUTER wall only: the lockout that matters is per super admin and
+        // lives in TwoFactorChallengeController, because an attacker with a leaked password rotates IPs and a
+        // per-IP bucket alone would let them keep guessing. Both are needed; neither is enough.
+        RateLimiter::for('super-2fa', fn (Request $request) => [Limit::perMinute(20)->by('super-2fa:'.$request->ip())]);
+
         // A DNS check is cheap for us and slow for the resolver; a "check now" button must not become a probe.
         RateLimiter::for('saas-domain-verify', fn (Request $request) => [
             Limit::perMinute(10)->by('saas-domain-verify:'.(string) (Tenancy::id() ?? 'central').':'.$request->ip()),

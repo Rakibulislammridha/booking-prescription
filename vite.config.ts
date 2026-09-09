@@ -42,14 +42,16 @@ function copyPanelManifest(): Plugin {
   };
 }
 
-const LANG_REQUEST = /(?:^|[\\/])(en|bn)\.json\?(panel|site)$/;
-const LANG_VIRTUAL = /^\0bp-lang\/lang-(panel|site)-(en|bn)$/;
+const LANG_REQUEST = /(?:^|[\\/])(en|bn)\.json\?([a-z-]+)$/;
+const LANG_VIRTUAL = /^\0bp-lang\/lang-([a-z-]+)-(en|bn)$/;
 
 /**
- * `@lang/<locale>.json?<surface>` → that surface's slice of the flat Laravel messages, as its own chunk
- * (resources/js/shared/lang/surfaces.ts holds the prefix lists). resources/lang/{en,bn}.json stay the single
- * source of truth for PHP and `php artisan lang:check`; nothing is generated on disk. Emitted as
- * `JSON.parse('…')` because the engine parses that faster, and smaller, than an object literal.
+ * `@lang/<locale>.json?<bundle>` → that bundle's slice of the flat Laravel messages, as its own chunk
+ * (resources/js/shared/lang/surfaces.ts holds the prefix lists). The bundle is `site`, `panel` (the panel's
+ * base) or `panel-<module>` — one chunk per panel module, so a reception desk never downloads `reports.*`.
+ * resources/lang/{en,bn}.json stay the single source of truth for PHP and `php artisan lang:check`; nothing is
+ * generated on disk. Emitted as `JSON.parse('…')` because the engine parses that faster, and smaller, than an
+ * object literal.
  */
 function langBundles(): Plugin {
   return {
@@ -66,6 +68,8 @@ function langBundles(): Plugin {
       if (!match) return null;
 
       const [, surface, locale] = match;
+      if (!isLangSurface(surface as string)) return null;
+
       const all = JSON.parse(fs.readFileSync(path.resolve(`resources/lang/${locale}.json`), 'utf8')) as Record<string, string>;
       const slice = messagesForSurface(all, surface as LangSurface);
 

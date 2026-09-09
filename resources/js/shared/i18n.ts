@@ -25,10 +25,19 @@ export function laravelToI18next(messages: Messages): Messages {
   return out;
 }
 
+/** Fetches one module's extra slice (`resources/js/shared/lang/panel.ts`). Registered by the panel entry. */
+export type ModuleLoader = (module: string, locale: Locale) => Promise<Messages>;
+
 let initialised = false;
 let loader: MessageLoader | null = null;
+let moduleLoader: ModuleLoader | null = null;
 const loaded = new Set<Locale>();
 const inflight = new Map<Locale, Promise<void>>();
+// Which module bundles this session has asked for, and which (locale, module) pairs are already installed.
+// The first set is what a language switch has to re-fetch; the second is the de-duplication.
+const modulesSeen = new Set<string>();
+const modulesLoaded = new Set<string>();
+const modulesInflight = new Map<string, Promise<void>>();
 
 /** Idempotent; synchronous. Resources arrive through `addMessages`/`ensureMessages`. */
 export function initI18n(locale: Locale | string | undefined = DEFAULT_LOCALE): I18nInstance {
@@ -55,10 +64,14 @@ export function initI18n(locale: Locale | string | undefined = DEFAULT_LOCALE): 
   return i18next;
 }
 
-/** Install a locale's messages (Laravel placeholders converted once). Safe before or after `initI18n`. */
-export function addMessages(locale: Locale, messages: Messages): void {
+function install(locale: Locale, messages: Messages): void {
   if (!initialised) initI18n(locale);
   i18next.addResourceBundle(locale, 'translation', laravelToI18next(messages), true, true);
+}
+
+/** Install a locale's messages (Laravel placeholders converted once). Safe before or after `initI18n`. */
+export function addMessages(locale: Locale, messages: Messages): void {
+  install(locale, messages);
   loaded.add(locale);
 }
 
@@ -69,6 +82,41 @@ export function hasMessages(locale: Locale): boolean {
 /** Called once per app entry with the surface's bundle loader (`@shared/lang/site` or `@shared/lang/panel`). */
 export function registerMessageLoader(next: MessageLoader): void {
   loader = next;
+}
+
+/**
+ * Called once by an entry whose surface is split further than the base bundle (the panel: one chunk per
+ * module, ARCHITECTURE §7.5). The site registers none, so everything below is inert there.
+ */
+export function registerModuleLoader(next: ModuleLoader): void {
+  moduleLoader = next;
+}
+
+/**
+ * Install one module's extra slice. De-duplicated per (locale, module), so calling it from `resolve()` on every
+ * navigation costs nothing after the first visit to that module. `null` (a page whose module is the base) and a
+ * missing loader both resolve immediately, which is what keeps this a no-op for the site.
+ */
+export function ensureModuleMessages(module: string | null, locale: Locale | string | undefined): Promise<void> {
+  if (module === null || moduleLoader === null) return Promise.resolve();
+
+  const lng: Locale = isLocale(locale) ? locale : DEFAULT_LOCALE;
+  const id = `${lng}:${module}`;
+  modulesSeen.add(module);
+
+  if (modulesLoaded.has(id)) return Promise.resolve();
+
+  const pending = modulesInflight.get(id);
+  if (pending) return pending;
+
+  const load = moduleLoader;
+  const promise = load(module, lng)
+    .then((messages) => { install(lng, messages); modulesLoaded.add(id); })
+    .catch(() => { /* keep rendering: i18next falls back to the key */ })
+    .finally(() => { modulesInflight.delete(id); });
+
+  modulesInflight.set(id, promise);
+  return promise;
 }
 
 /** Resolves once the locale's messages are installed. De-duplicated, so calling it per navigation is free. */
@@ -90,9 +138,15 @@ export function ensureMessages(locale: Locale | string | undefined): Promise<voi
   return promise;
 }
 
-/** Load (if needed) then switch. Used on Inertia navigations, where PATCH /locale changes the language. */
+/**
+ * Load (if needed) then switch. Used on Inertia navigations, where PATCH /locale changes the language. Every
+ * module bundle this session has already shown is re-fetched in the new locale first, so the switch never
+ * leaves half the screen in raw keys.
+ */
 export function setLocale(locale: Locale): Promise<void> {
-  return ensureMessages(locale).then(() => { initI18n(locale); });
+  const bundles = [ensureMessages(locale), ...[...modulesSeen].map((module) => ensureModuleMessages(module, locale))];
+
+  return Promise.all(bundles).then(() => { initI18n(locale); });
 }
 
 export function currentLocale(): Locale {
@@ -104,6 +158,10 @@ export function resetMessagesForTests(): void {
   loaded.clear();
   inflight.clear();
   loader = null;
+  modulesSeen.clear();
+  modulesLoaded.clear();
+  modulesInflight.clear();
+  moduleLoader = null;
 }
 
 export const i18n = i18next;

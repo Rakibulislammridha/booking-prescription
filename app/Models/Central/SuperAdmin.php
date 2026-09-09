@@ -23,6 +23,9 @@ use LogicException;
  * @property string $email
  * @property string $password
  * @property bool $is_active
+ * @property string|null $two_factor_secret base32 TOTP secret (ENC); present but unconfirmed = enrolling
+ * @property array<int, string>|null $two_factor_recovery_codes SHA-256 digests of the single-use codes (ENC)
+ * @property CarbonImmutable|null $two_factor_confirmed_at
  * @property CarbonImmutable|null $last_login_at
  * @property string|null $last_login_ip
  * @property-read Collection<int, ImpersonationToken> $impersonationTokens
@@ -55,7 +58,9 @@ final class SuperAdmin extends Authenticatable
             'password' => 'hashed',
             'email_verified_at' => 'immutable_datetime',
             'two_factor_secret' => 'encrypted',
-            'two_factor_recovery_codes' => 'encrypted',
+            // SCHEMA §2.8 calls this an ENC JSON array and that is what it holds: the SHA-256 digests of the
+            // single-use recovery codes. `encrypted:array` keeps both halves of that promise in the cast.
+            'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at' => 'immutable_datetime',
             'is_active' => 'boolean',
             'last_login_at' => 'immutable_datetime',

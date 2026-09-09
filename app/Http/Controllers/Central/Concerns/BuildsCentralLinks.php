@@ -10,9 +10,13 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\URL;
 
 /**
- * Central pages are served on the bare platform host and are rendered by the SITE bundle, whose Ziggy group is
- * `site.*` + `api.*` — it does not carry `central.*`. Rather than widen a foundation-owned config, every central
- * page receives its URLs as a prop. It is also simply better: the page cannot build a URL that does not exist.
+ * URL helpers for the central (marketing / onboarding / invoice) pages on the bare platform host.
+ *
+ * `config/ziggy.php` now has a `central` group, so these pages DO receive `central.*` through Ziggy like every
+ * other surface and `route()` works on them. `centralLinks()` survives because it is a different thing: it is the
+ * small, named set of links the marketing shell renders on every page, passed once as a prop rather than resolved
+ * key by key in the markup. `tenantUrl()` and `signedInvoiceUrl()` cannot be Ziggy at all — one crosses to another
+ * HOST (the clinic's own), the other carries a signature that only the server can produce.
  */
 trait BuildsCentralLinks
 {

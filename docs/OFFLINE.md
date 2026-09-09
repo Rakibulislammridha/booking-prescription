@@ -390,6 +390,33 @@ unsynced rows is `local:<clientEventId>`; on `accepted` the row is re-keyed to
 the server id (delete + put inside one transaction) and every event referencing
 the local id is rewritten.
 
+### 5.3 Server-derived answers on a cached row (`hasVitals`, `holdExpiresAt`)
+
+A registered desk renders the board **out of this cache even while it is
+online** — `useDesk.refresh()` writes the server board into Dexie and re-renders
+from it — so anything the board shows has to be a field of `CachedSerial` or it
+cannot be shown at all. Two of them are answers the desk cannot recompute for
+itself, and each is cached with its staleness understood rather than assumed
+away:
+
+* **`hasVitals` / `vitalsAt` / `vitalsReviewed`** (from `SerialPresenter`'s
+  `vitals`, itself from Prescription's `VitalsStatusQuery`) — "has the compounder
+  been to this patient yet?" It *can* go stale: another desk may record a reading
+  while this device is offline. That is bounded by an existing decision — vitals
+  entry is online-only (§6.2) — so an offline desk can neither write a reading
+  nor act on the flag beyond walking the patient to the compounder twice; the
+  flag gates no write, and it only ever goes stale in the "not recorded yet"
+  direction, never the reverse (readings are not deleted). While `mode ===
+  'offline'` the board says so on the chip ("as of the last sync") instead of
+  presenting a cached answer as a live one.
+* **`appointmentStatus` / `holdExpiresAt`** — an advance-payment hold and the
+  deadline `booking:expire-holds` will act on. The deadline is absolute, so the
+  countdown stays correct offline by construction; only "it was paid meanwhile"
+  can be stale, and that resolves on the next sync. When the countdown reaches
+  zero the board refreshes itself, so a released number stops looking booked.
+
+Neither field is indexed: they are read with the row, never queried on.
+
 ---
 
 ## 6. The event log

@@ -6,6 +6,7 @@ namespace Tests\Concerns;
 
 use App\Domain\Clinic\Enums\Role;
 use App\Domain\Clinic\Services\ActiveBranch;
+use App\Domain\SaaS\Services\SuperTwoFactor;
 use App\Domain\Tenancy\Actions\ProvisionTenant;
 use App\Domain\Tenancy\Data\ProvisionTenantData;
 use App\Http\Middleware\SetActiveBranch;
@@ -73,9 +74,18 @@ trait WithTenants
         return $this;
     }
 
+    /**
+     * The central host, with the Postgres session PROVED to be on `public`.
+     *
+     * `Tenancy::end()` is called unconditionally on purpose. The context and the database session are two different
+     * things and they can disagree: a flushed context (Octane, a container rebuild, a test that ended a tenancy the
+     * long way round) leaves `Tenancy::check()` false while `search_path` is still `tenant_…`, and a conditional
+     * reset would then skip the one statement that matters and let a previous test's schema leak into a central
+     * one. `end()` with no tenant in the context does exactly one thing — issue the reset — so this is cheap.
+     */
     protected function asCentral(): static
     {
-        Tenancy::check() && Tenancy::end();
+        Tenancy::end();
         $this->withServerVariables(['HTTP_HOST' => 'super.bp.test']);
 
         return $this;
@@ -124,13 +134,18 @@ trait WithTenants
         return $patient;
     }
 
-    /** Guard 'super' on the central host. */
+    /**
+     * Guard 'super' on the central host, as a REAL operator looks: enrolled in two-factor (ARCHITECTURE §6.5,
+     * `saas.two_factor.required` defaults to true) with this session marked as having passed the challenge.
+     * Tests that care about the 2FA flow itself drive `/login` and `/two-factor/challenge` instead.
+     */
     protected function actingAsSuper(): SuperAdmin
     {
         $this->asCentral();
 
-        $admin = SuperAdmin::factory()->create();
+        $admin = SuperAdmin::factory()->withTwoFactor()->create();
         $this->actingAs($admin, 'super');
+        $this->withSession([SuperTwoFactor::SESSION_PASSED_AT => time()]);
 
         return $admin;
     }

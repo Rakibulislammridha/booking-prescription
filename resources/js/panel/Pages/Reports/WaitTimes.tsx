@@ -1,13 +1,12 @@
 // Average wait, average consultation and session overrun (BRIEF §5.L). The mean is shown next to p50 and p90,
 // because a queue is staffed for its bad days, not for its average one — and the number of samples the
 // consultation clamp excluded is on screen, so the exclusion is visible rather than hidden.
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { ChartCard } from '@panel/Components/Reports/ChartCard';
 import { DataTable, type Column } from '@panel/Components/Reports/DataTable';
 import { ExportMenu } from '@panel/Components/Reports/ExportMenu';
@@ -15,7 +14,6 @@ import { FilterBar, query } from '@panel/Components/Reports/FilterBar';
 import { Footnotes } from '@panel/Components/Reports/Footnotes';
 import { ReportTabs } from '@panel/Components/Reports/ReportTabs';
 import { StatCard } from '@panel/Components/Reports/StatCard';
-import { useChartTheme } from '@panel/Components/Reports/useChartTheme';
 import { formatBn } from '@shared/format/number';
 import { getLocale } from '@shared/locale';
 import type { PageProps } from '@shared/types/inertia';
@@ -36,10 +34,13 @@ type Props = PageProps<{
   cached: boolean;
 }>;
 
+// The two tables underneath carry the same numbers, so the ~97 KB gzip of recharts arrives after first paint and
+// only when the range actually has periods (Components/Charts/LazyChart.tsx).
+const WaitTrendChart = lazy(() => import('@panel/Components/Charts/WaitTimeCharts').then((m) => ({ default: m.WaitTrendChart })));
+
 export default function WaitTimes({ filters, scope, options, data, generated_at, cached }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
-  const chart = useChartTheme();
   const mins = (value: number | null): string => (value === null ? '—' : formatBn(value, locale));
   const totals = data.totals;
 
@@ -84,20 +85,9 @@ export default function WaitTimes({ filters, scope, options, data, generated_at,
         title={t('reports.wait_times.trend')}
         subtitle={t(`reports.granularity.${data.granularity}`)}
         chart={
-          <Box sx={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.by_period} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} minTickGap={20} />
-                <YAxis tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} unit={t('reports.unit.min_short')} />
-                <RTooltip contentStyle={chart.tooltip} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="wait_avg_minutes" name={t('reports.column.wait_avg')} stroke={chart.series[0]} dot={false} strokeWidth={2} connectNulls />
-                <Line type="monotone" dataKey="wait_p90_minutes" name={t('reports.column.wait_p90')} stroke={chart.warn} dot={false} strokeDasharray="4 3" connectNulls />
-                <Line type="monotone" dataKey="consult_avg_minutes" name={t('reports.column.consult_avg')} stroke={chart.series[4]} dot={false} strokeWidth={2} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={260} empty={data.by_period.length === 0} emptyLabel={t('reports.empty')}>
+            <WaitTrendChart rows={data.by_period} />
+          </LazyChart>
         }
       />
 

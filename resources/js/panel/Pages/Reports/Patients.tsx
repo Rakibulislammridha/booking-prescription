@@ -1,15 +1,14 @@
 // New vs returning patients and the follow-up compliance funnel (BRIEF §5.L). Both metrics are ambiguous until
 // somebody writes the definition down, so both carry theirs on screen: "new" is new to the CLINIC, and the
 // compliance rate is measured only on follow-ups whose date has already passed.
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { ChartCard } from '@panel/Components/Reports/ChartCard';
 import { DataTable, type Column } from '@panel/Components/Reports/DataTable';
 import { ExportMenu } from '@panel/Components/Reports/ExportMenu';
@@ -17,7 +16,6 @@ import { FilterBar, query } from '@panel/Components/Reports/FilterBar';
 import { Footnotes } from '@panel/Components/Reports/Footnotes';
 import { ReportTabs } from '@panel/Components/Reports/ReportTabs';
 import { StatCard } from '@panel/Components/Reports/StatCard';
-import { useChartTheme } from '@panel/Components/Reports/useChartTheme';
 import { formatBn } from '@shared/format/number';
 import { getLocale } from '@shared/locale';
 import type { PageProps } from '@shared/types/inertia';
@@ -35,10 +33,13 @@ type Props = PageProps<{
   cached: boolean;
 }>;
 
+// The funnel and both tables are plain MUI; only the mix chart costs recharts' ~97 KB gzip, and only when the
+// range has periods to draw (Components/Charts/LazyChart.tsx).
+const MixAreaChart = lazy(() => import('@panel/Components/Charts/PatientMixCharts').then((m) => ({ default: m.MixAreaChart })));
+
 export default function Patients({ filters, scope, options, data, generated_at, cached }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
-  const chart = useChartTheme();
   const totals = data.totals;
   const follow = data.follow_up;
   const pct = (value: number | null): string => (value === null ? '—' : `${formatBn(value, locale)}%`);
@@ -78,19 +79,9 @@ export default function Patients({ filters, scope, options, data, generated_at, 
         title={t('reports.patients.mix')}
         subtitle={`${t(`reports.granularity.${data.granularity}`)} · ${t('reports.note.patient_trend')}`}
         chart={
-          <Box sx={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.by_period} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} minTickGap={20} />
-                <YAxis tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} allowDecimals={false} />
-                <RTooltip contentStyle={chart.tooltip} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="new" name={t('reports.column.new')} stackId="p" stroke={chart.series[0]} fill={chart.series[0]} fillOpacity={0.2} />
-                <Area type="monotone" dataKey="returning" name={t('reports.column.returning')} stackId="p" stroke={chart.series[1]} fill={chart.series[1]} fillOpacity={0.2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={260} empty={data.by_period.length === 0} emptyLabel={t('reports.empty')}>
+            <MixAreaChart rows={data.by_period} />
+          </LazyChart>
         }
       >
         <DataTable

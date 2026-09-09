@@ -10,5 +10,10 @@ return [
         'panel' => ['panel.*', 'api.*'],
         'site' => ['site.*', 'api.*'],
         'super' => ['super.*'],
+        // The marketing/onboarding/invoice pages on the bare central domain. They are rendered by the SITE
+        // bundle but live on a host where no `site.*` or `api.*` route is registered, so they get their own
+        // group rather than borrowing one: a page that could name a route its host does not serve is a 404
+        // waiting to be written. `central.*` is the whole surface (routes/central/*.php).
+        'central' => ['central.*'],
     ],
 ];

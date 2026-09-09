@@ -2,9 +2,8 @@
 // period, doctor and specialty, with counts and trends. Diagnoses come from the ICD-10-coded `visits.diagnoses`
 // jsonb; drugs come from the prescription-line SNAPSHOTS, so last year's report keeps last year's brand names
 // whatever the catalog has done since.
-import { useState, type ReactNode } from 'react';
+import { lazy, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
@@ -13,8 +12,8 @@ import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import { router } from '@inertiajs/react';
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { ChartCard } from '@panel/Components/Reports/ChartCard';
 import { DataTable, type Column } from '@panel/Components/Reports/DataTable';
 import { ExportMenu } from '@panel/Components/Reports/ExportMenu';
@@ -22,7 +21,6 @@ import { FilterBar, query } from '@panel/Components/Reports/FilterBar';
 import { Footnotes } from '@panel/Components/Reports/Footnotes';
 import { ReportTabs } from '@panel/Components/Reports/ReportTabs';
 import { StatCard } from '@panel/Components/Reports/StatCard';
-import { useChartTheme } from '@panel/Components/Reports/useChartTheme';
 import { pivotTrend } from '@panel/lib/reports/trend';
 import { formatBn } from '@shared/format/number';
 import { getLocale } from '@shared/locale';
@@ -42,10 +40,13 @@ type Props = PageProps<{
   cached: boolean;
 }>;
 
+// Two cards, one chart component, one lazily loaded chunk (Components/Charts/LazyChart.tsx). The pivot below
+// stays in the page so an empty period is answered without fetching recharts' ~97 KB gzip at all.
+const TrendLineChart = lazy(() => import('@panel/Components/Charts/ClinicalCharts').then((m) => ({ default: m.TrendLineChart })));
+
 export default function Clinical({ filters, scope, options, data, generated_at, cached }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
-  const chart = useChartTheme();
   const [tab, setTab] = useState<'diagnoses' | 'generics' | 'brands'>('diagnoses');
   const dx = data.diagnoses;
   const drugs = data.drugs;
@@ -69,6 +70,8 @@ export default function Clinical({ filters, scope, options, data, generated_at, 
 
   const dxLabels = new Map(dx.rows.map((r) => [r.key, r.title]));
   const drugLabels = new Map(drugs.by_generic.map((r) => [r.key, r.name]));
+  const dxTrend = useMemo(() => pivotTrend(dx.trend, dx.trend_keys, 'visits'), [dx.trend, dx.trend_keys]);
+  const drugTrend = useMemo(() => pivotTrend(drugs.trend, drugs.trend_keys, 'items'), [drugs.trend, drugs.trend_keys]);
 
   const specialtySelect = (
     <TextField
@@ -100,20 +103,9 @@ export default function Clinical({ filters, scope, options, data, generated_at, 
         title={t('reports.clinical.diagnosis_trend')}
         subtitle={t(`reports.granularity.${dx.granularity}`)}
         chart={
-          <Box sx={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={pivotTrend(dx.trend, dx.trend_keys, 'visits')} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} minTickGap={20} />
-                <YAxis tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} allowDecimals={false} />
-                <RTooltip contentStyle={chart.tooltip} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                {dx.trend_keys.map((key, i) => (
-                  <Line key={key} type="monotone" dataKey={key} name={dxLabels.get(key) ?? key} stroke={chart.series[i % chart.series.length]} dot={false} strokeWidth={2} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={260} empty={dxTrend.length === 0} emptyLabel={t('reports.empty')}>
+            <TrendLineChart rows={dxTrend} seriesKeys={dx.trend_keys} labels={dxLabels} />
+          </LazyChart>
         }
       />
 
@@ -135,20 +127,9 @@ export default function Clinical({ filters, scope, options, data, generated_at, 
       <ChartCard
         title={t('reports.clinical.drug_trend')}
         chart={
-          <Box sx={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={pivotTrend(drugs.trend, drugs.trend_keys, 'items')} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} minTickGap={20} />
-                <YAxis tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} allowDecimals={false} />
-                <RTooltip contentStyle={chart.tooltip} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                {drugs.trend_keys.map((key, i) => (
-                  <Line key={key} type="monotone" dataKey={key} name={drugLabels.get(key) ?? key} stroke={chart.series[i % chart.series.length]} dot={false} strokeWidth={2} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={260} empty={drugTrend.length === 0} emptyLabel={t('reports.empty')}>
+            <TrendLineChart rows={drugTrend} seriesKeys={drugs.trend_keys} labels={drugLabels} />
+          </LazyChart>
         }
       />
 

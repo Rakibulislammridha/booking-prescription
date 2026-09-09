@@ -193,7 +193,8 @@ export default function Board({ board: initial, tenant_public_id, channel, print
               <SessionTile key={s.public_id} session={s} mode={desk.mode} blockRemaining={blockRemaining(s)} can={can} busy={busy}
                 onBook={(session, ch) => setBooking({ session, channel: ch })} onCallNext={doCallNext} onCheckIn={checkIn}
                 onCollect={(session, serial) => setCollect({ session, serial })} onPrint={print} onCancel={(session, serial) => setCancel({ session, serial })}
-                onVitals={(_session, serial) => openVitals(serial)} onKiosk={openKiosk} />
+                onVitals={(_session, serial) => openVitals(serial)} onKiosk={openKiosk}
+                onHoldExpired={() => { void desk.refresh(); }} />
             ))}
           </Stack>
         </Grid>
@@ -219,7 +220,7 @@ export default function Board({ board: initial, tenant_public_id, channel, print
           const code = serial?.display_code ?? local?.displayCode ?? '';
           setToast(t('reception.toast.booked', { code: formatBn(code, locale) }));
           if (serial) { void desk.refresh(); print(session, serial); }
-          else if (local) print(session, { public_id: local.publicId, display_code: local.displayCode, number: local.number, position: local.position, status: 'booked', priority: local.priority as DeskSerial['priority'], source: 'offline', pool: 'counter', patient_id: null, patient: { public_id: local.patientRef, name: local.patientName, mobile_masked: local.mobileMasked, age_text: null, sex: null, patient_code: '' }, appointment: { public_id: '', type: 'new', channel: 'offline', status: 'confirmed', fee_paisa: local.feePaisa ?? 0, list_fee_paisa: local.feePaisa ?? 0, fee_rule: 'new', payment_status: 'unpaid' }, appointment_id: null, slot_start_at: null, booked_at: '', checked_in_at: null, called_at: null, completed_at: null, no_show_at: null, cancelled_at: null, cancel_reason_code: null, passed_count: 0, skip_count: 0, eta: null });
+          else if (local) print(session, { public_id: local.publicId, display_code: local.displayCode, number: local.number, position: local.position, status: 'booked', priority: local.priority as DeskSerial['priority'], source: 'offline', pool: 'counter', patient_id: null, patient: { public_id: local.patientRef, name: local.patientName, mobile_masked: local.mobileMasked, age_text: null, sex: null, patient_code: '' }, appointment: { public_id: '', type: 'new', channel: 'offline', status: 'confirmed', fee_paisa: local.feePaisa ?? 0, list_fee_paisa: local.feePaisa ?? 0, fee_rule: 'new', payment_status: 'unpaid', hold_expires_at: null }, vitals: null, appointment_id: null, slot_start_at: null, booked_at: '', checked_in_at: null, called_at: null, completed_at: null, no_show_at: null, cancelled_at: null, cancel_reason_code: null, passed_count: 0, skip_count: 0, eta: null });
         }} /> : null}
       {collect !== null ? <CollectFeeDialog open serial={collect?.serial ?? null} offline={offline} busy={busy} error={error} onClose={() => setCollect(null)} onCollect={doCollect} /> : null}
       {cancel !== null ? <CancelDialog open serial={cancel?.serial ?? null} busy={busy} error={error} onClose={() => setCancel(null)} onCancel={doCancel} /> : null}

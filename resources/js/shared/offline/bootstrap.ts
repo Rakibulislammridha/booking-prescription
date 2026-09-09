@@ -9,7 +9,9 @@ import { localRef } from './types';
 export interface ServerSerial {
   public_id: string; display_code: string; number: number; position: number; status: string; priority: string; source: string;
   patient: { public_id: string; name: string; mobile_masked: string; age_text?: string | null } | null;
-  appointment: { public_id: string; fee_paisa: number; payment_status: string; type?: string } | null;
+  appointment: { public_id: string; fee_paisa: number; payment_status: string; type?: string; status?: string; hold_expires_at?: string | null } | null;
+  /** Prescription's answer for the rows that can have a reading; null/absent on the rows that cannot (see CachedSerial). */
+  vitals?: { recorded: boolean; readings: number; recorded_at: string | null; reviewed: boolean } | null;
   checked_in_at?: string | null;
 }
 
@@ -58,6 +60,8 @@ export function toCachedSerial(s: ServerSerial, sessionId: string): CachedSerial
     publicId: s.public_id, sessionId, number: s.number, displayCode: s.display_code, position: s.position, status: s.status, priority: s.priority, source: s.source,
     patientRef: s.patient?.public_id ?? '', patientName: s.patient?.name ?? '', mobileMasked: s.patient?.mobile_masked ?? '',
     appointmentId: s.appointment?.public_id ?? null, feePaisa: s.appointment?.fee_paisa ?? null, paymentStatus: s.appointment?.payment_status ?? null,
+    appointmentStatus: s.appointment?.status ?? null, holdExpiresAt: s.appointment?.hold_expires_at ?? null,
+    hasVitals: s.vitals?.recorded ?? false, vitalsAt: s.vitals?.recorded_at ?? null, vitalsReviewed: s.vitals?.reviewed ?? false, vitalsReadings: s.vitals?.readings ?? 0,
     checkedInAt: s.checked_in_at ?? null, local: false, updatedAt: Date.now(),
   };
 }

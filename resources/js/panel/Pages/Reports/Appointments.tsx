@@ -1,12 +1,11 @@
 // Appointments booked / completed / no-show by doctor, day and source (BRIEF §5.L). Every chart has the same
 // numbers as a table under it, and every ambiguous metric states its definition in a footnote.
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
-import Box from '@mui/material/Box';
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { ChartCard } from '@panel/Components/Reports/ChartCard';
 import { DataTable, type Column } from '@panel/Components/Reports/DataTable';
 import { ExportMenu } from '@panel/Components/Reports/ExportMenu';
@@ -14,7 +13,6 @@ import { FilterBar, query } from '@panel/Components/Reports/FilterBar';
 import { Footnotes } from '@panel/Components/Reports/Footnotes';
 import { ReportTabs } from '@panel/Components/Reports/ReportTabs';
 import { StatCard } from '@panel/Components/Reports/StatCard';
-import { useChartTheme } from '@panel/Components/Reports/useChartTheme';
 import { formatBn } from '@shared/format/number';
 import { getLocale } from '@shared/locale';
 import type { PageProps } from '@shared/types/inertia';
@@ -33,10 +31,15 @@ type Props = PageProps<{
   cached: boolean;
 }>;
 
+// One chunk for all three drawings, fetched after first paint and only for the cards that have rows
+// (Components/Charts/LazyChart.tsx): recharts is ~97 KB gzip, more than half of what this page used to cost.
+const ByPeriodChart = lazy(() => import('@panel/Components/Charts/AppointmentCharts').then((m) => ({ default: m.ByPeriodChart })));
+const ByDoctorChart = lazy(() => import('@panel/Components/Charts/AppointmentCharts').then((m) => ({ default: m.ByDoctorChart })));
+const BySourceChart = lazy(() => import('@panel/Components/Charts/AppointmentCharts').then((m) => ({ default: m.BySourceChart })));
+
 export default function Appointments({ filters, scope, options, data, generated_at, cached }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
-  const chart = useChartTheme();
   const totals = data.totals;
   const pct = (value: number | null): string => (value === null ? '—' : `${formatBn(value, locale)}%`);
   const channelSlices = data.by_channel_group.map((row) => ({ ...row, label: t(`reports.channel.${row.channel_group}`) }));
@@ -81,21 +84,9 @@ export default function Appointments({ filters, scope, options, data, generated_
         title={t('reports.appointments.by_period')}
         subtitle={t(`reports.granularity.${data.granularity}`)}
         chart={
-          <Box sx={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.by_period} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} minTickGap={20} />
-                <YAxis tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} allowDecimals={false} />
-                <RTooltip contentStyle={chart.tooltip} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="completed" name={t('reports.column.completed')} stackId="a" fill={chart.good} />
-                <Bar dataKey="no_show" name={t('reports.column.no_show')} stackId="a" fill={chart.bad} />
-                <Bar dataKey="cancelled" name={t('reports.column.cancelled')} stackId="a" fill={chart.series[3]} />
-                <Bar dataKey="open" name={t('reports.column.open')} stackId="a" fill={chart.series[1]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={260} empty={data.by_period.length === 0} emptyLabel={t('reports.empty')}>
+            <ByPeriodChart rows={data.by_period} />
+          </LazyChart>
         }
       >
         <DataTable
@@ -114,19 +105,9 @@ export default function Appointments({ filters, scope, options, data, generated_
       <ChartCard
         title={t('reports.appointments.by_doctor')}
         chart={
-          <Box sx={{ height: Math.max(180, data.by_doctor.length * 42) }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart layout="vertical" data={data.by_doctor} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} allowDecimals={false} />
-                <YAxis type="category" dataKey="doctor_name" width={150} tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} />
-                <RTooltip contentStyle={chart.tooltip} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="completed" name={t('reports.column.completed')} stackId="a" fill={chart.good} />
-                <Bar dataKey="no_show" name={t('reports.column.no_show')} stackId="a" fill={chart.bad} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={Math.max(180, data.by_doctor.length * 42)} empty={data.by_doctor.length === 0} emptyLabel={t('reports.empty')}>
+            <ByDoctorChart rows={data.by_doctor} />
+          </LazyChart>
         }
       >
         <DataTable columns={doctorColumns} rows={data.by_doctor} rowKey={(r) => String(r.doctor_id)} />
@@ -136,19 +117,9 @@ export default function Appointments({ filters, scope, options, data, generated_
         title={t('reports.appointments.by_source')}
         subtitle={t('reports.appointments.by_source_hint')}
         chart={
-          <Box sx={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <RTooltip contentStyle={chart.tooltip} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                {/* recharts reads the slice label from `nameKey`, not from a Cell's `name`, so the translated
-                    label has to be a field on the datum. */}
-                <Pie data={channelSlices} dataKey="booked" nameKey="label" innerRadius={45} outerRadius={80} paddingAngle={2}>
-                  {channelSlices.map((row, i) => <Cell key={row.channel_group} fill={chart.series[i % chart.series.length]} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={220} empty={channelSlices.length === 0} emptyLabel={t('reports.empty')}>
+            <BySourceChart slices={channelSlices} />
+          </LazyChart>
         }
       >
         <DataTable columns={sourceColumns} rows={data.by_source} rowKey={(r) => r.source} />

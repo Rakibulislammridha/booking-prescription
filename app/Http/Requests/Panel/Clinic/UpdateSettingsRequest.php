@@ -29,7 +29,11 @@ final class UpdateSettingsRequest extends FormRequest
     /** @return array<string, array<int, mixed>> */
     public function rules(): array
     {
-        return ['values' => ['required', 'array']];
+        return [
+            'values' => ['sometimes', 'array'],
+            'remove' => ['sometimes', 'array'],
+            'remove.*' => ['string'],
+        ];
     }
 
     /** @return array<int, callable> */
@@ -67,5 +71,26 @@ final class UpdateSettingsRequest extends FormRequest
         }
 
         return $out;
+    }
+
+    /**
+     * Keys the operator asked to REMOVE, back to the registry default.
+     *
+     * Its own list rather than a magic value inside `values`, because the one key kind that needs removing is a
+     * `secret`, and there a blank field means "unchanged" — after ConvertEmptyStringsToNull an untouched password
+     * box and a deliberate deletion are byte-for-byte the same input. A key that also appears in `values` with a
+     * real value is a contradictory payload; the write wins and the removal is dropped.
+     *
+     * @return array<int, string>
+     */
+    public function removals(): array
+    {
+        $submitted = is_array($this->input('remove')) ? $this->input('remove') : [];
+        $written = array_filter($this->values(), fn (mixed $v) => $v !== null && $v !== '');
+
+        return array_values(array_filter(
+            array_map(fn (mixed $key) => (string) $key, $submitted),
+            fn (string $key) => SettingsRegistry::has($key) && ! array_key_exists($key, $written),
+        ));
     }
 }

@@ -256,6 +256,8 @@ export interface SettingDefinition {
   options: string[] | null;
   min: number | null;
   max: number | null;
+  /** A credential: encrypted at rest, and `values[key]` carries a mask (`••••1234`) rather than the value. */
+  secret: boolean;
 }
 
 export interface SettingGroup {
@@ -844,10 +846,20 @@ export interface QueuePatientCard {
 // queue:end
 
 // reception:start
+/** Prescription's VitalsStatus: `null` on a board row that cannot have a reading (not arrived, already finished). */
+export interface DeskVitals {
+  recorded: boolean;
+  readings: number;
+  recorded_at: string | null;
+  reviewed: boolean;
+}
+
 /** SerialPresenter — SerialResource + patient + appointment: the board, the bootstrap and every accepted replay result. */
 export interface DeskSerial extends Omit<Serial, 'patient'> {
   patient: { public_id: string; name: string; mobile_masked: string; age_text: string | null; sex: PatientGender | null; patient_code: string } | null;
-  appointment: { public_id: string; type: AppointmentType; channel: BookingChannel; status: AppointmentStatus; fee_paisa: number; list_fee_paisa: number; fee_rule: FeeRule; payment_status: PaymentStatus } | null;
+  /** `hold_expires_at` is set only while an advance-payment hold is still sweepable (pending + unpaid). */
+  appointment: { public_id: string; type: AppointmentType; channel: BookingChannel; status: AppointmentStatus; fee_paisa: number; list_fee_paisa: number; fee_rule: FeeRule; payment_status: PaymentStatus; hold_expires_at: string | null } | null;
+  vitals: DeskVitals | null;
 }
 
 /** One session on today's board (BoardBuilder). */

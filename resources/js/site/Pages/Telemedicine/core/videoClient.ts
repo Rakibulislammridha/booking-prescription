@@ -17,6 +17,8 @@ export interface VideoCredentials {
   /** null ⇒ no video service is configured; the client runs in local-preview mode. */
   server_url: string | null;
   join_url?: string | null;
+  /** The provider's own participant number where it has one — Agora addresses users by uint32, not by name. */
+  uid?: number | null;
 }
 
 export interface VideoClientHandlers {
@@ -151,6 +153,110 @@ export function createJitsiVideoClient(container: HTMLElement, handlers: VideoCl
   };
 }
 
+/**
+ * LiveKit: the ONE npm dependency this module has, and it is imported here and nowhere else, always dynamically.
+ * `livekit-client` is ~90 KB gzip — more than the entire 95 KB first-load budget of the site route that uses it
+ * (REALTIME.md §8) — so a static import anywhere in `resources/js/site/**` would blow that budget for every page
+ * on the site at once. Behind `import()` it is a chunk of its own that only a patient who actually presses
+ * "Join" on a LiveKit-configured clinic ever downloads; `scripts/check-site-deps.sh` enforces that it is reached
+ * this way and no other.
+ */
+async function loadLiveKit(): Promise<typeof import('livekit-client')> {
+  return import('livekit-client');
+}
+
+type LiveKitModule = Awaited<ReturnType<typeof loadLiveKit>>;
+type LiveKitRoom = InstanceType<LiveKitModule['Room']>;
+
+/**
+ * LiveKit's own vocabulary for how a connection is doing is four words; ours is the packet-loss/RTT/bitrate shape
+ * `callMachine.qualityFromStats()` grades. This is the translation, chosen so each LiveKit word lands in the
+ * band the machine already means by it (`good` → fair, `poor` → poor), and it is the only place the two meet.
+ */
+const LIVEKIT_QUALITY: Record<string, number> = { excellent: 0, good: 4, poor: 12, lost: 30 };
+
+/**
+ * The LiveKit transport, behind the same five-method `VideoClient` the local and Jitsi clients implement — the
+ * call machine, the controls and the pre-flight are untouched by it, which is the point of the seam.
+ *
+ * It publishes the tracks the PRE-FLIGHT already opened rather than asking for the camera a second time: the
+ * patient granted permission once, on a screen that explained why, and a second prompt mid-join is how a
+ * consultation gets abandoned. Remote media is handed up as an ordinary `MediaStream`, so `VideoStage` attaches
+ * it to a `<video>` exactly as it attaches the local preview.
+ */
+export function createLiveKitVideoClient(handlers: VideoClientHandlers = {}): VideoClient {
+  let room: LiveKitRoom | null = null;
+  let stream: MediaStream | null = null;
+  let remote: MediaStream | null = null;
+
+  const dropRemote = (): void => {
+    remote = null;
+    handlers.onRemote?.(false, null);
+  };
+
+  return {
+    kind: 'livekit',
+    async connect(credentials, local) {
+      stream = local;
+      handlers.onState?.('connecting');
+
+      const { Room, RoomEvent } = await loadLiveKit();
+      const next = new Room({ adaptiveStream: true, dynacast: true });
+      room = next;
+
+      next
+        .on(RoomEvent.Connected, () => handlers.onState?.('connected'))
+        // A LiveKit reconnect is not a finished call: the machine keeps the mic/camera choices and counts attempts.
+        .on(RoomEvent.Reconnecting, () => handlers.onState?.('reconnecting'))
+        .on(RoomEvent.Reconnected, () => handlers.onState?.('connected'))
+        .on(RoomEvent.Disconnected, () => handlers.onState?.('disconnected'))
+        .on(RoomEvent.TrackSubscribed, (track) => {
+          remote ??= new MediaStream();
+          remote.addTrack(track.mediaStreamTrack);
+          handlers.onRemote?.(true, remote);
+        })
+        .on(RoomEvent.TrackUnsubscribed, (track) => {
+          remote?.removeTrack(track.mediaStreamTrack);
+          if ((remote?.getTracks().length ?? 0) === 0) dropRemote();
+        })
+        .on(RoomEvent.ParticipantDisconnected, () => dropRemote())
+        .on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+          if (participant.isLocal) handlers.onQuality?.({ packetLossPct: LIVEKIT_QUALITY[String(quality)] ?? 0 });
+        });
+
+      await next.connect(credentials.server_url ?? '', credentials.token);
+
+      for (const track of local?.getTracks() ?? []) {
+        await next.localParticipant.publishTrack(track);
+      }
+    },
+    setMicrophone(enabled) {
+      stream?.getAudioTracks().forEach((t) => { t.enabled = enabled; });
+      room?.localParticipant.audioTrackPublications.forEach((publication) => {
+        void (enabled ? publication.track?.unmute() : publication.track?.mute());
+      });
+    },
+    setCamera(enabled) {
+      stream?.getVideoTracks().forEach((t) => { t.enabled = enabled; });
+      room?.localParticipant.videoTrackPublications.forEach((publication) => {
+        void (enabled ? publication.track?.unmute() : publication.track?.mute());
+      });
+    },
+    localStream() {
+      return stream;
+    },
+    remoteStream() {
+      return remote;
+    },
+    async disconnect() {
+      await room?.disconnect();
+      room = null;
+      remote = null;
+      handlers.onState?.('disconnected');
+    },
+  };
+}
+
 export interface LoadVideoClientOptions {
   credentials: VideoCredentials;
   container?: HTMLElement | null;
@@ -165,10 +271,19 @@ export interface LoadVideoClientOptions {
 export async function loadVideoClient({ credentials, container, handlers = {} }: LoadVideoClientOptions): Promise<VideoClient> {
   if (!credentials.server_url) return createLocalVideoClient(handlers);
 
-  // LiveKit: the SERVER driver is complete (scoped JWTs, Twirp REST, signed webhooks), but the browser half
-  // needs the `livekit-client` npm package, and package.json is foundation-owned (CONVENTIONS §2.1) — it is
-  // listed as a [foundation] need. Until it lands, a LiveKit-configured clinic degrades to local preview rather
-  // than to a broken page, and the fallback is the same one a failed SDK download takes.
+  // LiveKit. The SDK is downloaded HERE rather than inside `connect()` so that a patient on a bad connection who
+  // cannot fetch 90 KB degrades to local preview — the fallback below — instead of watching a join fail. The
+  // second `loadLiveKit()` inside the client resolves from the module cache and costs nothing.
+  if (credentials.provider === 'livekit') {
+    try {
+      await loadLiveKit();
+
+      return createLiveKitVideoClient(handlers);
+    } catch (error) {
+      handlers.onError?.(error);
+    }
+  }
+
   if (credentials.provider === 'jitsi' && container) {
     try {
       return createJitsiVideoClient(container, handlers);

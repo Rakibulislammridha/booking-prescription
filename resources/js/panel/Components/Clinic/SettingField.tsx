@@ -1,7 +1,8 @@
 // One input, chosen by the registry entry rather than by hand: `bool` is a switch, a `string` with `options` is a
-// select, `int`/`number` are numeric with the registry's own min/max on the element. Adding a key to
-// SettingsRegistry therefore adds a working, validated field to the page with no frontend change at all.
+// select, `int`/`number` are numeric with the registry's own min/max on the element, and `secret` is a credential.
+// Adding a key to SettingsRegistry therefore adds a working, validated field to the page with no frontend change.
 import { useTranslation } from 'react-i18next';
+import Button from '@mui/material/Button';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
@@ -14,12 +15,14 @@ interface Props {
   settingKey: string;
   definition: SettingDefinition;
   value: SettingValue;
+  /** For a `secret` key: the server's masked presence indicator (`••••1234`), or '' when nothing is stored. */
+  mask?: string;
   error?: string;
   disabled?: boolean;
   onChange: (value: SettingValue) => void;
 }
 
-export function SettingField({ settingKey, definition, value, error, disabled = false, onChange }: Props) {
+export function SettingField({ settingKey, definition, value, mask = '', error, disabled = false, onChange }: Props) {
   const { t, i18n } = useTranslation();
   // A key documented in SCHEMA Appendix B has a written label and (sometimes) help text. A key added to the
   // registry since then still renders: it falls back to the dotted key as its label and simply has no help line.
@@ -29,6 +32,37 @@ export function SettingField({ settingKey, definition, value, error, disabled = 
   const label = i18n.exists(labelKey) ? t(labelKey) : settingKey;
   const help = i18n.exists(helpKey) ? t(helpKey) : '';
   const defaultHint = t('clinic.settings.default_hint', { value: String(definition.default) });
+
+  // A credential. The plaintext never comes down from the server, so the box always starts empty and an empty
+  // box means "leave the stored value alone" — the server enforces the same rule, this only says so out loud.
+  // `null` is the explicit removal, which is why Remove is a separate affordance and not just clearing the field.
+  if (definition.secret) {
+    const stored = mask !== '';
+    const removing = value === null;
+
+    return (
+      <Stack spacing={0.5}>
+        <TextField
+          fullWidth size="small" type="password" label={label} disabled={disabled || removing}
+          value={typeof value === 'string' ? value : ''}
+          autoComplete="new-password"
+          onChange={(e) => onChange(e.target.value)}
+          error={Boolean(error)}
+          helperText={error ?? (removing
+            ? t('clinic.settings.secret.removing')
+            : stored ? t('clinic.settings.secret.stored', { mask }) : (help || t('clinic.settings.secret.unset')))}
+          slotProps={{ htmlInput: { spellCheck: false, 'aria-label': label } }}
+        />
+        {stored && !disabled ? (
+          <Stack direction="row" spacing={1}>
+            <Button size="small" onClick={() => onChange(removing ? '' : null)}>
+              {removing ? t('common.actions.cancel') : t('clinic.settings.secret.remove')}
+            </Button>
+          </Stack>
+        ) : null}
+      </Stack>
+    );
+  }
 
   if (definition.type === 'bool') {
     return (

@@ -229,6 +229,7 @@ final class HandleInertiaRequests extends Middleware
         return match (true) {
             str_starts_with($name, 'super.') => 'super',
             str_starts_with($name, 'panel.') => 'panel',
+            str_starts_with($name, 'central.') => 'central',
             default => 'site',
         };
     }

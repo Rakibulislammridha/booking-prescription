@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConnection, type ConnectionMode } from '@shared/connection/store';
 import { useChannel } from '@shared/realtime/useChannel';
 import {
-  applyBlocks, applyBoard, applyBootstrap, BlockIssuer, cachePatients, EventLog, META_KEYS, ReceptionDB, SyncEngine, useConflicts,
+  applyBlocks, applyBoard, applyBootstrap, BlockIssuer, cachePatients, canHaveVitals, EventLog, META_KEYS, ReceptionDB, SyncEngine, useConflicts,
   type BootstrapPayload, type CachedBlock, type CachedSerial, type CachedSession, type ConflictResolution, type PrintTemplate, type ServerBoard,
 } from '@shared/offline';
 import { ulid } from '@shared/ulid';
@@ -77,7 +77,10 @@ export function boardFromCache(sessions: CachedSession[], serials: CachedSerial[
     source: s.source as DeskSerial['source'], pool: 'counter', patient_id: null, appointment_id: null, slot_start_at: null, booked_at: '', checked_in_at: s.checkedInAt ?? null,
     called_at: null, completed_at: null, no_show_at: null, cancelled_at: null, cancel_reason_code: null, passed_count: 0, skip_count: 0, eta: null,
     patient: s.patientRef ? { public_id: s.patientRef, name: s.patientName, mobile_masked: s.mobileMasked, age_text: null, sex: null, patient_code: '' } : null,
-    appointment: s.appointmentId || s.feePaisa !== null ? { public_id: s.appointmentId ?? '', type: 'new', channel: s.local ? 'offline' : 'counter', status: 'confirmed', fee_paisa: s.feePaisa ?? 0, list_fee_paisa: s.feePaisa ?? 0, fee_rule: 'new', payment_status: (s.paymentStatus ?? 'unpaid') as DeskSerial['appointment'] extends infer A ? A extends { payment_status: infer P } ? P : never : never } : null,
+    appointment: s.appointmentId || s.feePaisa !== null ? { public_id: s.appointmentId ?? '', type: 'new', channel: s.local ? 'offline' : 'counter', status: (s.appointmentStatus ?? 'confirmed') as NonNullable<DeskSerial['appointment']>['status'], fee_paisa: s.feePaisa ?? 0, list_fee_paisa: s.feePaisa ?? 0, fee_rule: 'new', payment_status: (s.paymentStatus ?? 'unpaid') as DeskSerial['appointment'] extends infer A ? A extends { payment_status: infer P } ? P : never : never, hold_expires_at: s.holdExpiresAt ?? null } : null,
+    // Rebuilt from the cache, staleness and all — the row shows it as "as of the last sync" while offline
+    // (shared/offline/types.ts CachedSerial documents why the flag is cached at all).
+    vitals: canHaveVitals(s.status) ? { recorded: s.hasVitals ?? false, readings: s.vitalsReadings ?? 0, recorded_at: s.vitalsAt ?? null, reviewed: s.vitalsReviewed ?? false } : null,
   });
   return {
     ...base,

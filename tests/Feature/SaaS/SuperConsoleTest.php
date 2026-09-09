@@ -16,7 +16,6 @@ use App\Models\Central\Plan;
 use App\Models\Central\PlanFeature;
 use App\Models\Central\Subscription;
 use App\Models\Central\SubscriptionInvoice;
-use App\Models\Central\SuperAdmin;
 use Tests\Feature\SaaS\Concerns\ControlsPlanLimits;
 use Tests\TestCase;
 
@@ -301,8 +300,7 @@ final class SuperConsoleTest extends TestCase
         $tenant = $this->tenant('a');
         $this->post(route('super.tenants.suspend', ['tenant' => $tenant->public_id], false), ['reason' => 'by the first operator']);
 
-        $second = SuperAdmin::factory()->create();
-        $this->actingAs($second, 'super');
+        $second = $this->actingAsSuper();
         $this->post(route('super.tenants.reactivate', ['tenant' => $tenant->public_id], false), ['reason' => 'by the second operator']);
 
         $this->assertSame($first->id, AuditLogCentral::query()->where('tenant_id', $tenant->id)->where('action', 'suspend')->value('super_admin_id'));

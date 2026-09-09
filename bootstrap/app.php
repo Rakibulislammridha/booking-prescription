@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domain\SaaS\Http\Middleware\EnsureSuperTwoFactor;
 use App\Domain\Shared\Exceptions\DomainException;
 use App\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use App\Http\Middleware\AssignRequestId;
@@ -36,9 +37,12 @@ return Application::configure(basePath: dirname(__DIR__))
             $central = config('tenancy.central_domain');
 
             // 1. super — host-constrained, registered FIRST so it wins over unconstrained site routes.
+            //    EnsureSuperTwoFactor is on the whole group (ARCHITECTURE §6.5): the console that can impersonate
+            //    into any clinic's records is not reachable without a second factor, and an operator who has not
+            //    enrolled is held on the enrolment screen. The login pair, the challenge and that screen opt out.
             foreach (glob(base_path('routes/super/*.php')) ?: [] as $file) {
                 Route::domain('super.'.$central)
-                    ->middleware(['web', 'central', 'auth:super', 'idle:super'])
+                    ->middleware(['web', 'central', 'auth:super', 'idle:super', EnsureSuperTwoFactor::class])
                     ->name('super.')
                     ->group($file);
             }

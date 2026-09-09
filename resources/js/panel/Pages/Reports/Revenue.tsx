@@ -1,15 +1,14 @@
 // Revenue by doctor, branch and payment method (BRIEF §5.L). Every figure comes from Billing's own query
 // objects — the same ones the billing screen reads — so the owner's dashboard and the accountant's screen can
 // never quote different money for the same day. The deeper collection screen is linked, not rebuilt.
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { ChartCard } from '@panel/Components/Reports/ChartCard';
 import { DataTable, type Column } from '@panel/Components/Reports/DataTable';
 import { ExportMenu } from '@panel/Components/Reports/ExportMenu';
@@ -17,7 +16,6 @@ import { FilterBar, query } from '@panel/Components/Reports/FilterBar';
 import { Footnotes } from '@panel/Components/Reports/Footnotes';
 import { ReportTabs } from '@panel/Components/Reports/ReportTabs';
 import { StatCard } from '@panel/Components/Reports/StatCard';
-import { useChartTheme } from '@panel/Components/Reports/useChartTheme';
 import { RouterLink } from '@panel/Layouts/RouterLink';
 import { formatBdt } from '@shared/format/money';
 import { formatBn } from '@shared/format/number';
@@ -38,10 +36,14 @@ type Props = PageProps<{
   cached: boolean;
 }>;
 
+// The four tables under the charts hold the same money, so recharts' ~97 KB gzip is fetched after first paint and
+// only for the cards that have rows (Components/Charts/LazyChart.tsx).
+const ByDayChart = lazy(() => import('@panel/Components/Charts/RevenueCharts').then((m) => ({ default: m.ByDayChart })));
+const ByMethodChart = lazy(() => import('@panel/Components/Charts/RevenueCharts').then((m) => ({ default: m.ByMethodChart })));
+
 export default function Revenue({ filters, scope, options, data, generated_at, cached }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
-  const chart = useChartTheme();
   const collection = data.collection;
   const commission = data.commission;
   const methodSlices = collection.by_method.map((row) => ({ ...row, label: t(`billing.method.${row.key}`, { defaultValue: row.key ?? '—' }) }));
@@ -92,18 +94,9 @@ export default function Revenue({ filters, scope, options, data, generated_at, c
       <ChartCard
         title={t('reports.revenue.by_day')}
         chart={
-          <Box sx={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={collection.by_day.map((d) => ({ ...d, net: d.net_paisa / 100 }))} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} minTickGap={20} />
-                <YAxis tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} />
-                <RTooltip contentStyle={chart.tooltip} formatter={(value) => formatBdt(Math.round(Number(value ?? 0) * 100), locale)} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="net" name={t('reports.column.net')} fill={chart.series[0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={260} empty={collection.by_day.length === 0} emptyLabel={t('reports.empty')}>
+            <ByDayChart rows={collection.by_day} locale={locale} />
+          </LazyChart>
         }
       >
         <DataTable
@@ -124,18 +117,9 @@ export default function Revenue({ filters, scope, options, data, generated_at, c
           <ChartCard
             title={t('reports.revenue.by_method')}
             chart={
-              <Box sx={{ height: 220 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <RTooltip contentStyle={chart.tooltip} formatter={(value) => formatBdt(Math.round(Number(value ?? 0)), locale)} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    {/* The slice label comes from `nameKey`, so the translated method name is a field. */}
-                    <Pie data={methodSlices} dataKey="net_paisa" nameKey="label" innerRadius={45} outerRadius={80} paddingAngle={2}>
-                      {methodSlices.map((row, i) => <Cell key={row.key ?? String(i)} fill={chart.series[i % chart.series.length]} />)}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </Box>
+              <LazyChart height={220} empty={methodSlices.length === 0} emptyLabel={t('reports.empty')}>
+                <ByMethodChart slices={methodSlices} locale={locale} />
+              </LazyChart>
             }
           >
             <DataTable columns={groupColumns(t('reports.column.method'), (k) => t(`billing.method.${k}`, { defaultValue: k }))} rows={collection.by_method} rowKey={(r, i) => r.key ?? String(i)} />

@@ -1,16 +1,15 @@
 // The peak-hour heatmap for staffing (BRIEF §5.L). Weekday × clinic-local hour, defaulting to ARRIVALS — the
 // moment a patient is physically at the desk is the one a rota is written against.
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import { router } from '@inertiajs/react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { ChartCard } from '@panel/Components/Reports/ChartCard';
 import { DataTable, type Column } from '@panel/Components/Reports/DataTable';
 import { ExportMenu } from '@panel/Components/Reports/ExportMenu';
@@ -19,7 +18,6 @@ import { Footnotes } from '@panel/Components/Reports/Footnotes';
 import { Heatmap } from '@panel/Components/Reports/Heatmap';
 import { ReportTabs } from '@panel/Components/Reports/ReportTabs';
 import { StatCard } from '@panel/Components/Reports/StatCard';
-import { useChartTheme } from '@panel/Components/Reports/useChartTheme';
 import { formatBn } from '@shared/format/number';
 import { getLocale } from '@shared/locale';
 import { route } from '@shared/routes';
@@ -40,10 +38,13 @@ type Props = PageProps<{
 
 const METRICS: PeakMetric[] = ['arrivals', 'bookings', 'consultations'];
 
+// The heatmap above is plain MUI and keeps working on its own; only the hour-of-day bars need recharts, so its
+// ~97 KB gzip lands after first paint and never at all for a range with nothing in it (LazyChart).
+const ByHourChart = lazy(() => import('@panel/Components/Charts/PeakHourCharts').then((m) => ({ default: m.ByHourChart })));
+
 export default function PeakHours({ filters, scope, options, data, generated_at, cached }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
-  const chart = useChartTheme();
 
   const metricSelect = (
     <TextField
@@ -106,17 +107,9 @@ export default function PeakHours({ filters, scope, options, data, generated_at,
       <ChartCard
         title={t('reports.peak_hours.by_hour')}
         chart={
-          <Box sx={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={hourly} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                <XAxis dataKey="hour" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} interval={1} />
-                <YAxis tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} allowDecimals={false} />
-                <RTooltip contentStyle={chart.tooltip} />
-                <Bar dataKey="count" name={t(`reports.metric.${data.metric}`)} fill={chart.series[0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={220} empty={data.total === 0} emptyLabel={t('reports.empty')}>
+            <ByHourChart rows={hourly} metricLabel={t(`reports.metric.${data.metric}`)} />
+          </LazyChart>
         }
       >
         <DataTable columns={dailyColumns} rows={data.daily_peak} rowKey={(r) => String(r.weekday)} />

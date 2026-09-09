@@ -6,6 +6,7 @@ namespace App\Domain\Telemedicine\Services;
 
 use App\Domain\Telemedicine\Contracts\VideoProvider;
 use App\Domain\Telemedicine\Enums\TelemedicineProvider;
+use App\Domain\Telemedicine\Providers\AgoraProvider;
 use App\Domain\Telemedicine\Providers\JitsiProvider;
 use App\Domain\Telemedicine\Providers\LiveKitProvider;
 use App\Domain\Telemedicine\Providers\NullVideoProvider;
@@ -52,8 +53,16 @@ final class VideoProviderManager
         $driver = match ($name) {
             'livekit' => new LiveKitProvider($credentials->withProvider(TelemedicineProvider::Livekit), $this->http, $timeout),
             'jitsi' => new JitsiProvider($credentials->withProvider(TelemedicineProvider::Jitsi)),
-            // Agora is named by BRIEF §5.K but ships unimplemented: its token format is a binary packing, not a
-            // JWT, and nothing in the product needs it while LiveKit and Jitsi cover paid and self-hosted.
+            // Agora's token is an AccessToken2 binary packing rather than a JWT, so it could not share the `Jwt`
+            // helper — but the account-level RESTful credential its banning endpoint needs is a PLATFORM secret,
+            // never a clinic's, which is why it is read from config here and not from `ProviderCredentials`.
+            'agora' => new AgoraProvider(
+                $credentials->withProvider(TelemedicineProvider::Agora),
+                $this->http,
+                $timeout,
+                (string) config('telemedicine.providers.agora.rest_key', ''),
+                (string) config('telemedicine.providers.agora.rest_secret', ''),
+            ),
             default => null,
         };
 

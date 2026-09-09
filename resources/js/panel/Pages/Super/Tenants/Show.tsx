@@ -4,7 +4,7 @@
 // negotiating an exception, chasing money, fixing DNS, moving data, and reading what was done. Everything
 // destructive (suspend, cancel, void, restore) sits behind a dialog that asks for a typed reason, because the
 // reason is what the audit row will carry and "why is this clinic suspended" is the question support gets asked.
-import { useEffect, useState, type FormEvent, type ReactNode, type SyntheticEvent } from 'react';
+import { lazy, useEffect, useState, type FormEvent, type ReactNode, type SyntheticEvent } from 'react';
 import { router, useForm } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
@@ -32,7 +32,6 @@ import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { useTheme } from '@mui/material/styles';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -40,8 +39,8 @@ import LaunchIcon from '@mui/icons-material/Launch';
 import LoginIcon from '@mui/icons-material/Login';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import StarIcon from '@mui/icons-material/Star';
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { StatusChip, HealthChip } from '@panel/Components/Super/StatusChip';
@@ -476,11 +475,14 @@ function LimitRow({ tenant, featureKey, label, effective, overridden }: {
 
 // ── Page ────────────────────────────────────────────────────────────────────────────────────────────────
 
+// recharts is ~97 KB gzip and this screen is six tabs of forms and tables — the trend is one card on one of
+// them. Lazily loaded, and skipped entirely for a clinic with no history yet (Components/Charts/LazyChart.tsx).
+const TenantHistoryChart = lazy(() => import('@panel/Components/Charts/SuperCharts').then((m) => ({ default: m.TenantHistoryChart })));
+
 export default function Show({ tenant, plans, feature_labels, metric_labels, toggles, limit_keys, history, invoices, domains, backups, audit }: Props) {
   const { t } = useTranslation();
   const shared = useSharedProps();
   const locale = getLocale();
-  const theme = useTheme();
   const [tab, setTab] = useState<TabKey>('overview');
   const [suspendOpen, setSuspendOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -707,25 +709,9 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="subtitle1" component="h3" gutterBottom>{t('super.tenants.appointments_trend')}</Typography>
-                <Box sx={{ height: 220 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={history.appointments} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                      <CartesianGrid stroke={theme.palette.divider} strokeDasharray="3 3" />
-                      <XAxis dataKey="period" tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} />
-                      <YAxis tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} width={46} allowDecimals={false} />
-                      <RTooltip
-                        contentStyle={{
-                          backgroundColor: theme.palette.background.paper,
-                          border: `1px solid ${theme.palette.divider}`,
-                          borderRadius: 6,
-                          color: theme.palette.text.primary,
-                          fontSize: 12,
-                        }}
-                      />
-                      <Line type="monotone" dataKey="value" name={metric_labels.appointments ?? 'appointments'} stroke={theme.palette.primary.main} strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Box>
+                <LazyChart height={220} empty={history.appointments.length === 0}>
+                  <TenantHistoryChart points={history.appointments} label={metric_labels.appointments ?? 'appointments'} />
+                </LazyChart>
               </CardContent>
             </Card>
 

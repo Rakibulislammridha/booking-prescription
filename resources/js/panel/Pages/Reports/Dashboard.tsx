@@ -1,23 +1,21 @@
 // The clinic owner's Sunday morning (BRIEF §5.L). Tiles are always TODAY — that is the page's promise — while
 // the range in the filter bar drives the trend strip underneath. The money tile only exists for a scope that
 // may see money; a doctor's dashboard never even queries the clinic's revenue.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { ChartCard } from '@panel/Components/Reports/ChartCard';
 import { DataTable, type Column } from '@panel/Components/Reports/DataTable';
 import { FilterBar } from '@panel/Components/Reports/FilterBar';
 import { Footnotes } from '@panel/Components/Reports/Footnotes';
 import { ReportTabs } from '@panel/Components/Reports/ReportTabs';
 import { StatCard } from '@panel/Components/Reports/StatCard';
-import { useChartTheme } from '@panel/Components/Reports/useChartTheme';
 import { fetchDashboard } from '@panel/api/reports';
 import { formatBdt } from '@shared/format/money';
 import { formatBn } from '@shared/format/number';
@@ -43,10 +41,13 @@ type Props = PageProps<{
 /** Keep the tiles current while the page stays open on a screen at the desk. */
 const REFRESH_MS = 60_000;
 
+// recharts is ~97 KB gzip — more than the tiles, the table and this page's own code together. It arrives after
+// first paint, and only when the range actually has periods to draw (Components/Charts/LazyChart.tsx).
+const TrendAreaChart = lazy(() => import('@panel/Components/Charts/DashboardCharts').then((m) => ({ default: m.TrendAreaChart })));
+
 export default function Dashboard({ filters, scope, options, data, trend, generated_at, cached }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
-  const chart = useChartTheme();
   const [live, setLive] = useState<{ data: ReportDashboard; generated_at: string; cached: boolean }>({ data, generated_at, cached });
   const initial = useRef(true);
 
@@ -68,6 +69,7 @@ export default function Dashboard({ filters, scope, options, data, trend, genera
 
   const today = live.data;
   const arrived = today.appointments.completed + today.live.waiting + today.live.in_consultation;
+  const trendRows = trend.by_period ?? [];
 
   const sessionColumns: Column<DashboardSessionRow>[] = [
     { key: 'doctor', label: t('reports.column.doctor'), bn: true, render: (r) => r.doctor_name ?? '—' },
@@ -134,20 +136,9 @@ export default function Dashboard({ filters, scope, options, data, trend, genera
         title={t('reports.dashboard.trend')}
         subtitle={t('reports.export.subtitle', { from: filters.from, to: filters.to })}
         chart={
-          <Box sx={{ height: 240 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend.by_period ?? []} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} minTickGap={24} />
-                <YAxis tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} allowDecimals={false} />
-                <RTooltip contentStyle={chart.tooltip} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="booked" name={t('reports.column.booked')} stroke={chart.series[0]} fill={chart.series[0]} fillOpacity={0.14} />
-                <Area type="monotone" dataKey="completed" name={t('reports.column.completed')} stroke={chart.good} fill={chart.good} fillOpacity={0.12} />
-                <Area type="monotone" dataKey="no_show" name={t('reports.column.no_show')} stroke={chart.bad} fill={chart.bad} fillOpacity={0.12} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </Box>
+          <LazyChart height={240} empty={trendRows.length === 0} emptyLabel={t('reports.empty')}>
+            <TrendAreaChart rows={trendRows} />
+          </LazyChart>
         }
       />
 

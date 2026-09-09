@@ -24,6 +24,9 @@ final class SuperLoginTest extends TestCase
 
     public function test_super_admin_can_log_in_and_the_login_is_recorded_centrally(): void
     {
+        // The password half, on its own. `saas.two_factor.required` is off here so an operator with no second
+        // factor can reach the console: the challenge, the forced enrolment and the lockout are SuperTwoFactorTest.
+        config(['saas.two_factor.required' => false]);
         $this->asCentral();
         $admin = SuperAdmin::factory()->create(['email' => 'root@bp.test', 'password' => 'secret-123']);
 

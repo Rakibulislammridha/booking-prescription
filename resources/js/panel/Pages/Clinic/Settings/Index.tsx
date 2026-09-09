@@ -53,7 +53,16 @@ export default function Index({ registry, groups, values, branding, can }: Props
   const [tab, setTab] = useState(0);
   const logoInput = useRef<HTMLInputElement | null>(null);
 
-  const settingsForm = useForm<SettingsFormData>({ values: { ...values } });
+  // `values` carries a MASK for every `secret` key (`••••1234`), never the credential. The form must therefore
+  // start those fields EMPTY — an empty submit is the server's "keep what is stored" — or a save that nobody
+  // meant to touch would write the mask itself into the row.
+  const blankSecrets = (from: Record<string, SettingValue>): Record<string, SettingValue> => {
+    const out: Record<string, SettingValue> = { ...from };
+    for (const [key, definition] of Object.entries(registry)) if (definition.secret) out[key] = '';
+    return out;
+  };
+
+  const settingsForm = useForm<SettingsFormData>({ values: blankSecrets(values) });
   const brandingForm = useForm<BrandingFormData>({
     name: branding.name,
     name_bn: branding.name_bn ?? '',
@@ -72,6 +81,18 @@ export default function Index({ registry, groups, values, branding, can }: Props
   const setValue = (key: string, value: SettingValue): void => settingsForm.setData('values', { ...settingsForm.data.values, [key]: value });
 
   const saveSettings = (): void => {
+    // A secret marked for removal (its local value is `null`) travels in its OWN list. The server treats a blank
+    // credential as "unchanged" — it has to, because Laravel turns an untouched password box into `null` before
+    // the request is read — so deleting one needs a signal an empty input cannot forge.
+    settingsForm.transform((data) => {
+      const values: Record<string, SettingValue> = {};
+      const remove: string[] = [];
+      for (const [key, value] of Object.entries(data.values)) {
+        if (registry[key]?.secret && value === null) remove.push(key);
+        else values[key] = value;
+      }
+      return { values, remove };
+    });
     settingsForm.put(route('panel.clinic.settings.update'), { preserveScroll: true });
   };
   const saveBranding = (): void => {
@@ -109,6 +130,7 @@ export default function Index({ registry, groups, values, branding, can }: Props
                       settingKey={key}
                       definition={definition}
                       value={settingsForm.data.values[key] ?? null}
+                      mask={definition.secret ? String(values[key] ?? '') : undefined}
                       error={errorFor(key)}
                       disabled={!can.manage}
                       onChange={(value) => setValue(key, value)}
@@ -120,7 +142,7 @@ export default function Index({ registry, groups, values, branding, can }: Props
             {can.manage ? (
               <Stack direction="row" spacing={1} sx={{ mt: 3 }}>
                 <Button variant="contained" onClick={saveSettings} disabled={settingsForm.processing}>{t('common.actions.save')}</Button>
-                <Button onClick={() => settingsForm.setData('values', { ...values })} disabled={settingsForm.processing}>{t('common.actions.cancel')}</Button>
+                <Button onClick={() => settingsForm.setData('values', blankSecrets(values))} disabled={settingsForm.processing}>{t('common.actions.cancel')}</Button>
               </Stack>
             ) : null}
           </CardContent>

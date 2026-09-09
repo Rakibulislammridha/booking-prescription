@@ -489,14 +489,17 @@ with services up, search/realtime groups) is green on a fresh database — see �
   the barrel. Theme tokens only (`sx={{ p: 2, color: 'text.secondary' }}`), no hard-coded colours.
 * Data grids: MUI `Table` + our `DataTable` component in `panel/Components/Shared`; the Pro grid is not licensed.
 * Drag-and-drop: `@dnd-kit` only in `panel/Components/Serials/QueueList.tsx` (owned by S) and the pad
-  designer (F). Charts: `recharts` only under `panel/Pages/{Reports,Super}/**`, `panel/Components/Reports/**` and
-  `panel/Components/Patients/VitalsTrendCharts.tsx` (BRIEF §5.H's vitals trend), and it must be reached through
-  `React.lazy` from any page outside the Reports section.
+  designer (F). Charts: `recharts` only in `panel/Components/Charts/**` (except `LazyChart.tsx`, which pages
+  import statically) and `panel/Components/Patients/VitalsTrendCharts.tsx` (BRIEF §5.H's vitals trend). **No page
+  imports recharts.** A chart is a component in `Components/Charts/`, reached through `React.lazy` and wrapped in
+  `<LazyChart height={…} empty={rows.length === 0}>`: the ~97 KB gzip chunk is fetched after first paint and, for
+  a range with no rows, not at all — the card says so in words instead.
 * **Panel payload budget.** `scripts/check-panel-budget.sh` (`npm run check:panel`, `composer check-panel`) is the
   sibling of the site's guard and enforces both halves of the rules above: the barrel-import / recharts / dnd-kit /
   date-picker rules by walking `resources/js/panel`, and a first-load budget per route read from
-  `public/build/manifest.json` (entry closure + heavier panel locale chunk + the route's page chunk). Two numbers:
-  **≤ 445 KB gzip for any panel route** and **≤ 380 KB gzip for the clinical routes** — `Reception/*`,
+  `public/build/manifest.json` (entry closure + the heavier panel BASE locale chunk + the route's MODULE locale
+  chunk, ARCHITECTURE §7.5 + the route's page chunk). Two numbers:
+  **≤ 355 KB gzip for any panel route** and **≤ 345 KB gzip for the clinical routes** — `Reception/*`,
   `Prescription/*`, `Queue/*`, `Patients/*`, `Dashboard/*` — which are the screens BRIEF §8 means by "usable on a
   low-end device". Both are set from measured reality with headroom; lowering them is welcome, raising one needs a
   reason in the PR. Anything a route does not need at first paint (dialogs, the drawing canvas, the handwriting
@@ -519,6 +522,12 @@ with services up, search/realtime groups) is green on a fresh database — see �
   i18next, react-i18next, dayjs (the site build resolves `@shared/format/date` to the Intl implementation),
   qrcode.react, ziggy-js, dexie (portal cache only), axios, @fontsource/noto-sans-bengali. The list lives in the
   script; changing it means changing this line in the same PR.
+* One package is allowed **only behind `import()`**: `livekit-client`, the video SDK of the telemedicine room
+  (BRIEF §5.K). At ~90 KB gzip it is larger than the whole per-route budget below, so it is reached from
+  `site/Pages/Telemedicine/core/videoClient.ts` and nowhere else, always dynamically — a patient who never
+  presses "Join" never downloads it, and a clinic on Jitsi or on no provider at all never downloads it either.
+  `check-site-deps.sh` fails a STATIC import of it (`LAZY_ONLY`), and the budget below is the other half of the
+  guarantee: if it ever lands in a first load, the route's number says so.
 * Budget per route: **≤ 95 KB gzip of first-load JS** (REALTIME.md §8), also enforced by
   `scripts/check-site-deps.sh` — after `npm run build` it reads `public/build/manifest.json` and adds the entry's
   static-import closure + the route's page chunk + the (heavier) locale chunk, which is what a visitor downloads

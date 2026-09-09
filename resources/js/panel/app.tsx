@@ -15,8 +15,9 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { I18nextProvider } from 'react-i18next';
 import { bootShared, syncSharedOnNavigate } from '@shared/inertia';
-import { ensureMessages, i18n, registerMessageLoader } from '@shared/i18n';
-import { loadPanelMessages } from '@shared/lang/panel';
+import { ensureMessages, ensureModuleMessages, i18n, registerMessageLoader, registerModuleLoader } from '@shared/i18n';
+import { loadPanelMessages, loadPanelModuleMessages } from '@shared/lang/panel';
+import { panelModuleForPage } from '@shared/lang/surfaces';
 import { documentLocale } from '@shared/locale';
 import { bootConnection } from '@shared/connection/boot';
 import type { SharedProps, Locale } from '@shared/types/shared-props';
@@ -28,8 +29,13 @@ type PageModule = { default: React.ComponentType<Record<string, unknown>> };
 
 const appName = import.meta.env.VITE_APP_NAME ?? 'Clinic';
 
-// One locale per visit (ARCHITECTURE §7.5): loaded in parallel with the page chunk, awaited before the first render.
+// One locale per visit, split two ways (ARCHITECTURE §7.5). The BASE chunk — the shell's own copy, ~3 KB gzip —
+// starts here, at module evaluation, so it is already in flight while the browser fetches the page chunk. The
+// MODULE chunk (`reception`, `reports`, …) starts inside resolve() below, which is the first moment the page's
+// name is known and still the same tick in which Inertia requests the page chunk: two parallel requests, never
+// a second round trip. Shipping all ~2 900 keys to every route instead cost 51 KB gzip on the reception desk.
 registerMessageLoader(loadPanelMessages);
+registerModuleLoader(loadPanelModuleMessages);
 const messagesReady = ensureMessages(documentLocale());
 
 // No LocalizationProvider here on purpose: @mui/x-date-pickers is ~12 KB gzip of the panel's shared first load
@@ -53,6 +59,7 @@ void createInertiaApp<SharedProps>({
   resolve: (name) => Promise.all([
     resolvePageComponent<PageModule>(`./Pages/${name}.tsx`, import.meta.glob<PageModule>('./Pages/**/*.tsx')),
     messagesReady,
+    ensureModuleMessages(panelModuleForPage(name), documentLocale()),
   ]).then(([m]) => m.default),
   setup({ el, App, props }) {
     const shared = props.initialPage.props;

@@ -101,6 +101,50 @@ final class DeskVitalsTest extends TestCase
                 ->where('vitals.recorded_by.name', $receptionist->name));
     }
 
+    /**
+     * The board is where the desk decides who to send to the compounder next, so it has to say which of the people
+     * already in the waiting room have been done — without Reception reading the Prescription module's tables
+     * (the answer comes from VitalsStatusQuery) and without an answer at all on the rows the question is not about.
+     */
+    public function test_the_board_says_which_checked_in_patients_already_have_vitals(): void
+    {
+        $doctor = $this->doctorWithTemplate();
+        $session = $this->openSession(10, 10, 5, $doctor);
+        $done = $this->allocate($session, patientId: Patient::factory()->create()->id);
+        $due = $this->allocate($session, patientId: Patient::factory()->create()->id);
+        $notArrived = $this->allocate($session, patientId: Patient::factory()->create()->id);
+
+        $this->actingAsStaff(Role::Receptionist);
+        $this->post($this->url('panel.serials.check-in', ['serial' => $done->public_id]))->assertOk();
+        $this->post($this->url('panel.serials.check-in', ['serial' => $due->public_id]))->assertOk();
+
+        $this->post($this->url('panel.reception.vitals.open', ['serial' => $done->public_id]))->assertRedirect();
+        $visit = Visit::query()->where('serial_id', $done->id)->firstOrFail();
+        $this->postJson($this->url('panel.prescription.vitals.store', ['visit' => $visit->public_id]), [
+            'bp_systolic' => 132, 'bp_diastolic' => 86, 'pulse_bpm' => 80,
+        ])->assertCreated();
+
+        // The board orders serials by position, so the three rows are in the order they were allocated.
+        $board = $this->getJson($this->url('panel.reception.board.data'))->assertOk();
+        $board->assertJsonPath('sessions.0.serials.0.public_id', $done->public_id)
+            ->assertJsonPath('sessions.0.serials.0.vitals.recorded', true)
+            ->assertJsonPath('sessions.0.serials.0.vitals.readings', 1)
+            ->assertJsonPath('sessions.0.serials.0.vitals.reviewed', false);  // the compounder does not tick the doctor review
+
+        $this->assertNotNull($board->json('sessions.0.serials.0.vitals.recorded_at'), 'the desk can say when it was taken');
+
+        $board->assertJsonPath('sessions.0.serials.1.public_id', $due->public_id)
+            ->assertJsonPath('sessions.0.serials.1.vitals.recorded', false)   // checked in, nobody has taken a reading yet
+            ->assertJsonPath('sessions.0.serials.2.public_id', $notArrived->public_id)
+            ->assertJsonPath('sessions.0.serials.2.vitals', null);            // not arrived: not part of the question
+
+        // The doctor reviewing the reading is a state the desk can see too.
+        Vital::query()->where('visit_id', $visit->id)->firstOrFail()->forceFill(['reviewed_by_doctor_at' => now()])->save();
+        $this->actingAsStaff(Role::Receptionist);
+        $this->getJson($this->url('panel.reception.board.data'))->assertOk()
+            ->assertJsonPath('sessions.0.serials.0.vitals.reviewed', true);
+    }
+
     public function test_opening_the_vitals_screen_twice_reuses_the_one_visit_of_the_serial(): void
     {
         $doctor = $this->doctorWithTemplate();

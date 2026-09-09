@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Panel\Clinic;
 
+use App\Domain\Clinic\Actions\ForgetSetting;
 use App\Domain\Clinic\Actions\UpdateBranding;
 use App\Domain\Clinic\Actions\UpdateSetting;
 use App\Domain\Clinic\Services\ClinicUploads;
@@ -63,13 +64,17 @@ final class SettingsController extends Controller
         ]);
     }
 
-    public function update(UpdateSettingsRequest $request, UpdateSetting $update): RedirectResponse
+    public function update(UpdateSettingsRequest $request, UpdateSetting $update, ForgetSetting $forget): RedirectResponse
     {
         $actor = Actor::fromRequest($request);
 
-        DB::transaction(function () use ($request, $update, $actor): void {
+        DB::transaction(function () use ($request, $update, $forget, $actor): void {
             foreach ($request->values() as $key => $value) {
                 $update->handle($key, $value, $actor);
+            }
+
+            foreach ($request->removals() as $key) {
+                $forget->handle($key);
             }
         });
 
@@ -91,7 +96,12 @@ final class SettingsController extends Controller
     /**
      * The registry, wire-shaped: one entry per key with everything the input needs to validate itself.
      *
-     * @return array<string, array{type: string, default: mixed, options: array<int, string>|null, min: int|float|null, max: int|float|null}>
+     * `secret` travels with the definition so the field renders itself as a credential (password input, "leave
+     * blank to keep", a Remove affordance) for the same reason every other flag does: adding a key to the
+     * registry must not need a frontend change. The VALUE of a secret is never in this payload — `values` carries
+     * `Settings::all()`, which masks them, and `is_set` is derived from that mask on the client.
+     *
+     * @return array<string, array{type: string, default: mixed, options: array<int, string>|null, min: int|float|null, max: int|float|null, secret: bool}>
      */
     private static function registry(): array
     {
@@ -104,6 +114,7 @@ final class SettingsController extends Controller
                 'options' => $definition['options'] ?? null,
                 'min' => $definition['min'] ?? null,
                 'max' => $definition['max'] ?? null,
+                'secret' => ($definition['secret'] ?? false) === true,
             ];
         }
 

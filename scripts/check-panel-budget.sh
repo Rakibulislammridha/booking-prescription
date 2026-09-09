@@ -7,9 +7,11 @@
 # clinic hardware over clinic wifi. This script is that guard.
 #
 #   1. FIRST-LOAD JAVASCRIPT, measured exactly the way the site script measures it, from public/build/manifest.json:
-#      the panel entry's static-import closure + the heavier panel locale chunk + the route's own page chunk (and
-#      ITS static imports). Dynamic imports — the realtime chunk, dialogs behind React.lazy, other routes' pages —
-#      are not first load, which is the whole point of splitting them.
+#      the panel entry's static-import closure + the heavier panel BASE locale chunk + the route's MODULE locale
+#      chunk + the route's own page chunk (and ITS static imports). Both locale chunks are requested in the same
+#      tick as the page chunk (panel/app.tsx `resolve()`), so both are genuinely first load. Everything else that
+#      is dynamic — the realtime chunk, the recharts chart components behind React.lazy, dialogs, other routes'
+#      pages and other modules' locale slices — is not, which is the whole point of splitting them.
 #
 #      Two budgets, because the panel is two products wearing one shell:
 #        PANEL_BUDGET_KB — every panel route. Set from the measured worst route plus headroom, not from a wish.
@@ -32,8 +34,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-PANEL_BUDGET_KB=445
-DESK_BUDGET_KB=380
+# Measured, not wished for. September 2026, after recharts was moved behind React.lazy (Components/Charts/*) and
+# the panel's ~2 900 translation keys were split into a ~4 KB base + one module slice per route:
+#   worst panel route     Telemedicine/Console  ~327 KB   (was 441 KB, Reports/Dashboard)
+#   worst clinical route  Reception/Board       ~335 KB   (was 372 KB)
+# The clinical routes are now the heaviest on the panel — the back-office reports lost a whole recharts — so the
+# two numbers are close. They stay two numbers, and DESK stays the smaller of them, because the desk is the screen
+# BRIEF §8 is about: the next 20 KB has to be justified there before it is anywhere else.
+PANEL_BUDGET_KB=355
+DESK_BUDGET_KB=345
 BUILD=0
 REQUIRE_BUILD=0
 
@@ -41,7 +50,7 @@ for arg in "$@"; do
   case "$arg" in
     --build) BUILD=1 ;;
     --require-build) REQUIRE_BUILD=1 ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     *) echo "check-panel-budget: unknown option $arg" >&2; exit 2 ;;
   esac
 done
@@ -78,12 +87,14 @@ const RULES = [
     why: "barrel import — use '@mui/material/<Component>' / '@mui/icons-material/<Icon>' (CONVENTIONS §7.3)",
   },
   {
+    // recharts may live ONLY in the files that are reached through React.lazy — Components/Charts/* (behind
+    // Components/Charts/LazyChart.tsx, which must stay recharts-free because pages import it statically) and the
+    // patient vitals trend, which Patients/Show already lazies. A page that imports it directly puts ~97 KB gzip
+    // back into a first load, which is exactly the regression this rule exists to stop.
     test: (spec) => spec === 'recharts' || spec.startsWith('recharts/'),
-    allow: (rel) => rel.startsWith('resources/js/panel/Pages/Reports/')
-      || rel.startsWith('resources/js/panel/Pages/Super/')
-      || rel.startsWith('resources/js/panel/Components/Reports/')
+    allow: (rel) => (rel.startsWith('resources/js/panel/Components/Charts/') && rel !== 'resources/js/panel/Components/Charts/LazyChart.tsx')
       || rel === 'resources/js/panel/Components/Patients/VitalsTrendCharts.tsx',
-    why: 'recharts is ~95 KB gzip — allowed only in Reports/Super pages, their components, and the patient vitals trend (CONVENTIONS §7.3)',
+    why: 'recharts is ~97 KB gzip — allowed only in the lazily loaded chart components under Components/Charts/ and the patient vitals trend (CONVENTIONS §7.3)',
   },
   {
     test: (spec) => spec.startsWith('@dnd-kit/'),
@@ -146,11 +157,23 @@ if (!fs.existsSync(manifestPath)) {
     };
     const gzipped = (file) => zlib.gzipSync(fs.readFileSync(path.join(ROOT, 'public/build', file)), { level: 9 }).length;
 
-    // The heavier locale: a Bangla clinic must fit the budget in Bangla.
-    const localeChunks = Object.keys(manifest).filter((k) => /^bp-lang\/lang-panel-/.test(k));
-    const localeKey = localeChunks.sort((a, b) => gzipped(manifest[b].file) - gzipped(manifest[a].file))[0] ?? null;
+    // The heavier locale: a Bangla clinic must fit the budget in Bangla. Two chunks now, not one — the panel's
+    // BASE slice (`bp-lang/lang-panel-<locale>`, on every route) and, per route, the MODULE slice its page's
+    // directory maps to (`bp-lang/lang-panel-reception-bn`, …). Both are requested in the same tick as the page
+    // chunk by panel/app.tsx's resolve(), so both are first load; the twelve OTHER module slices are not.
+    const heavier = (keys) => keys.sort((a, b) => gzipped(manifest[b].file) - gzipped(manifest[a].file))[0] ?? null;
+    const baseLocaleKey = heavier(Object.keys(manifest).filter((k) => /^bp-lang\/lang-panel-(en|bn)$/.test(k)));
+    const moduleLocaleKey = (module) => heavier(Object.keys(manifest).filter((k) => new RegExp(`^bp-lang/lang-panel-${module}-(en|bn)$`).test(k)));
     const base = closure(ENTRY, new Set());
-    if (localeKey !== null) closure(localeKey, base);
+    if (baseLocaleKey !== null) closure(baseLocaleKey, base);
+
+    // Page directory → module lang bundle. Mirrors panelModuleForPage() in resources/js/shared/lang/surfaces.ts;
+    // a directory that is not here is a page the base slice covers on its own (Auth, Dashboard, Suspended).
+    const PAGE_MODULES = {
+      Billing: 'billing', Catalog: 'catalog', Clinic: 'clinic', Notifications: 'notifications',
+      Patients: 'patients', Prescription: 'prescription', Queue: 'queue', Reception: 'reception',
+      Reports: 'reports', SaaS: 'saas', Scheduling: 'scheduling', Super: 'super', Telemedicine: 'telemedicine',
+    };
 
     // Every page file on disk is a route. Most are keyed in the manifest by their source path; a page that is ALSO
     // imported statically by another page (Prescription/Writer, which Telemedicine/Console embeds) is hoisted into
@@ -177,10 +200,16 @@ if (!fs.existsSync(manifestPath)) {
         failures.push(`${page}: no chunk in the manifest — the page is not reachable from the panel entry`);
         continue;
       }
+      const name = page.replace('resources/js/panel/Pages/', '');
+      const module = PAGE_MODULES[name.split('/')[0]];
       const chunks = closure(key, new Set(base));
+      if (module !== undefined) {
+        const langKey = moduleLocaleKey(module);
+        if (langKey === null) failures.push(`${page}: no bp-lang/lang-panel-${module}-* chunk in the manifest — the module's slice was not emitted`);
+        else closure(langKey, chunks);
+      }
       const js = [...chunks].map((k) => manifest[k].file).filter((f) => f.endsWith('.js'));
       const bytes = js.reduce((total, file) => total + gzipped(file), 0);
-      const name = page.replace('resources/js/panel/Pages/', '');
       const desk = DESK_ROUTES.some((prefix) => name.startsWith(prefix));
       rows.push([name, bytes, js.length, desk]);
 
@@ -198,7 +227,7 @@ if (!fs.existsSync(manifestPath)) {
     }
     const worst = rows[0];
     const worstDesk = rows.find((r) => r[3]);
-    notes.push(`first-load budgets: ${(PANEL_BUDGET / 1024).toFixed(0)} KB panel / ${(DESK_BUDGET / 1024).toFixed(0)} KB clinical routes` + (localeKey ? ` (locale chunk ${localeKey})` : ''));
+    notes.push(`first-load budgets: ${(PANEL_BUDGET / 1024).toFixed(0)} KB panel / ${(DESK_BUDGET / 1024).toFixed(0)} KB clinical routes` + (baseLocaleKey ? ` (base locale chunk ${baseLocaleKey} + the route's module slice)` : ''));
     notes.push(`worst panel route ${worst[0]} at ${(worst[1] / 1024).toFixed(1)} KB` + (worstDesk ? `; worst clinical route ${worstDesk[0]} at ${(worstDesk[1] / 1024).toFixed(1)} KB` : ''));
   }
 }

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Telemedicine;
 
+use App\Domain\Telemedicine\Data\RoomSpec;
 use App\Domain\Telemedicine\Data\TokenRequest;
 use App\Domain\Telemedicine\Enums\ParticipantRole;
 use App\Domain\Telemedicine\Enums\TelemedicineProvider;
+use App\Domain\Telemedicine\Providers\AgoraProvider;
 use App\Domain\Telemedicine\Providers\JitsiProvider;
 use App\Domain\Telemedicine\Providers\LiveKitProvider;
 use App\Domain\Telemedicine\Providers\NullVideoProvider;
+use App\Domain\Telemedicine\Services\AgoraAccessToken;
 use App\Domain\Telemedicine\Services\Jwt;
 use App\Domain\Telemedicine\Services\ProviderCredentials;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -24,6 +27,11 @@ final class TokenScopeTest extends TestCase
     private const SECRET = 'livekit-secret';
 
     private const ROOM = 't9001-01jabcdefghjkmnpqrstvwxyz0';
+
+    /** Agora ids are 32 hex characters; anything else is not a credential (AgoraAccessToken::isCredential). */
+    private const AGORA_APP_ID = '970ca35de60c44645bbae8a215061b33';
+
+    private const AGORA_CERTIFICATE = '5cfd2fd1755d40ecb72977518be15d3b';
 
     private function liveKit(): LiveKitProvider
     {
@@ -148,6 +156,94 @@ final class TokenScopeTest extends TestCase
         $this->assertNull($doctor->serverUrl, 'no server ⇒ the client runs local preview');
         $this->assertTrue(Jwt::decode($doctor->token, 'app-key')['video']['roomAdmin']);
         $this->assertFalse(Jwt::decode($patient->token, 'app-key')['video']['roomAdmin']);
+    }
+
+    /**
+     * Agora, whose credential is an AccessToken2 binary packing rather than a JWT — so the scope is asserted by
+     * DECODING the token back into its services and privilege maps, not by reading claims.
+     */
+    private function agora(): AgoraProvider
+    {
+        return new AgoraProvider(
+            new ProviderCredentials(TelemedicineProvider::Agora, '', self::AGORA_APP_ID, self::AGORA_CERTIFICATE),
+            new HttpFactory,
+        );
+    }
+
+    public function test_the_agora_driver_scopes_by_service_privilege_channel_and_uid(): void
+    {
+        $token = $this->agora()->mintToken($this->request(ParticipantRole::Doctor));
+        $decoded = AgoraAccessToken::parse($token->token);
+
+        $this->assertNotNull($decoded);
+        $this->assertTrue(AgoraAccessToken::verify($token->token, self::AGORA_CERTIFICATE), 'signed with the App Certificate');
+        $this->assertSame(self::AGORA_APP_ID, $decoded->appId);
+        $this->assertSame(self::AGORA_APP_ID, $token->serverUrl, 'the Web SDK takes an App ID where LiveKit takes a URL');
+        $this->assertSame(900, $decoded->expireSeconds, 'a duration from the issue time, not a timestamp');
+
+        $rtc = $decoded->service(AgoraAccessToken::SERVICE_RTC);
+        $this->assertNotNull($rtc);
+        $this->assertSame(self::ROOM, $rtc['channel'], 'one token, one channel');
+        $this->assertSame((string) AgoraProvider::uidFor('doctor-abc123'), $rtc['uid']);
+        $this->assertSame(AgoraProvider::uidFor('doctor-abc123'), $token->uid);
+        $this->assertSame([1 => 900, 2 => 900, 3 => 900, 4 => 900], $rtc['privileges'], 'join + publish audio, video and data, each expiring with the token');
+
+        // Recording was allowed for this request, so the doctor also gets the streaming service.
+        $this->assertTrue($decoded->hasService(AgoraAccessToken::SERVICE_STREAMING));
+        $this->assertSame([1 => 900, 2 => 900], $decoded->privileges(AgoraAccessToken::SERVICE_STREAMING));
+    }
+
+    public function test_an_agora_patient_token_can_never_grant_doctor_privileges(): void
+    {
+        // recordingAllowed: true — the clinic HAS enabled recording, and it still must not reach the patient.
+        $token = $this->agora()->mintToken($this->request(ParticipantRole::Patient, recordingAllowed: true));
+        $decoded = AgoraAccessToken::parse($token->token);
+
+        $this->assertNotNull($decoded);
+        $this->assertCount(1, $decoded->services, 'a patient token carries the RTC service and nothing else');
+        $this->assertFalse($decoded->hasService(AgoraAccessToken::SERVICE_STREAMING), 'a patient must not be able to push the consultation out of the channel');
+        $this->assertSame([], $decoded->privileges(AgoraAccessToken::SERVICE_STREAMING));
+
+        $rtc = $decoded->service(AgoraAccessToken::SERVICE_RTC);
+        $this->assertNotNull($rtc);
+        $this->assertTrue($decoded->grants(AgoraAccessToken::SERVICE_RTC, AgoraAccessToken::PRIVILEGE_PUBLISH_AUDIO_STREAM), 'a patient must still be audible');
+        $this->assertTrue($decoded->grants(AgoraAccessToken::SERVICE_RTC, AgoraAccessToken::PRIVILEGE_PUBLISH_VIDEO_STREAM), 'a patient must still be visible');
+        $this->assertSame(self::ROOM, $rtc['channel']);
+        $this->assertNotSame((string) AgoraProvider::uidFor('doctor-abc123'), $rtc['uid'], "a patient's token is not the doctor's token");
+
+        // There is no roomAdmin equivalent to assert the absence of: Agora has no moderation privilege at all,
+        // so NO token this driver mints — patient or doctor — can evict anyone. Kicking is an account-level
+        // REST call the server makes, which is a stronger guarantee than LiveKit's roomAdmin flag, not a weaker one.
+        $this->assertSame([AgoraAccessToken::SERVICE_RTC], array_column($decoded->services, 'type'));
+    }
+
+    public function test_agora_recording_is_refused_to_the_doctor_when_the_clinic_disallows_it(): void
+    {
+        $token = $this->agora()->mintToken($this->request(ParticipantRole::Doctor, recordingAllowed: false));
+        $decoded = AgoraAccessToken::parse($token->token);
+
+        $this->assertNotNull($decoded);
+        $this->assertFalse($decoded->hasService(AgoraAccessToken::SERVICE_STREAMING));
+        $this->assertTrue($decoded->grants(AgoraAccessToken::SERVICE_RTC, AgoraAccessToken::PRIVILEGE_JOIN_CHANNEL), 'the consultation still happens');
+    }
+
+    public function test_the_agora_driver_is_unconfigured_unless_both_ids_are_agora_ids(): void
+    {
+        $this->assertTrue($this->agora()->isConfigured());
+
+        foreach ([['', ''], ['half', self::AGORA_CERTIFICATE], [self::AGORA_APP_ID, 'not-a-certificate'], [self::AGORA_APP_ID, self::AGORA_CERTIFICATE.'0']] as [$key, $secret]) {
+            $driver = new AgoraProvider(new ProviderCredentials(TelemedicineProvider::Agora, '', $key, $secret), new HttpFactory);
+            $this->assertFalse($driver->isConfigured(), 'a half-pasted credential must fall back to the null driver');
+        }
+    }
+
+    public function test_agora_creates_no_room_because_a_channel_exists_when_someone_joins(): void
+    {
+        $room = $this->agora()->createRoom(new RoomSpec(self::ROOM));
+
+        $this->assertSame(self::ROOM, $room->roomName);
+        $this->assertNull($room->sid, 'there is no channel until a participant joins one');
+        $this->assertSame(self::AGORA_APP_ID, $room->url);
     }
 
     public function test_identities_are_role_prefixed_so_a_provider_callback_can_be_attributed(): void

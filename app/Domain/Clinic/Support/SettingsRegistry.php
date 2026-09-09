@@ -9,11 +9,26 @@ use App\Domain\Clinic\Exceptions\UnknownSettingKey;
 
 /**
  * The closed registry of tenant settings keys (SCHEMA.md Appendix B). A missing row means the default.
+ *
+ * A definition may carry `'secret' => true`. That is not a UI hint — it is a storage contract, and everything
+ * downstream reads it:
+ *
+ *   · `App\Domain\Clinic\Services\Settings::set()` ENCRYPTS the value before it reaches `settings.value`,
+ *     which is plain `jsonb` and no place for a gateway credential;
+ *   · `Settings::all()` returns a MASK (`••••1234`), never the plaintext, so the generic settings screen — and
+ *     anything else that dumps every key — cannot leak one to a browser;
+ *   · a blank submit means "keep what is stored" — clearing is the explicit `ForgetSetting` action, because an
+ *     empty text box and a deliberate removal must not be the same request;
+ *   · `App\Domain\Clinic\Actions\UpdateSetting` writes `[redacted]` into the audit row instead of the value.
+ *
+ * Mark every credential. The rule is "would this let someone spend our money or read our data if it leaked" —
+ * `telemedicine.api_key` counts even though it is the tame half of the pair, because a key and a secret that are
+ * protected differently are protected as well as the weaker one.
  */
 final class SettingsRegistry
 {
     /**
-     * @return array<string, array{type: string, default: mixed, options?: array<int, string>, pattern?: string, min?: int|float, max?: int|float}>
+     * @return array<string, array{type: string, default: mixed, options?: array<int, string>, pattern?: string, min?: int|float, max?: int|float, secret?: bool}>
      */
     public static function all(): array
     {
@@ -50,28 +65,40 @@ final class SettingsRegistry
             'notifications.quiet_hours_end' => ['type' => 'string', 'default' => '08:00', 'pattern' => '/^([01]\d|2[0-3]):[0-5]\d$/'],
             'security.session_timeout_minutes' => ['type' => 'int', 'default' => 120, 'min' => 5],
             // Telemedicine (BRIEF §5.K). `provider` = 'default' follows config('telemedicine.default'); the rest
-            // override config/telemedicine.php per clinic. `api_secret` holds a Laravel-ENCRYPTED string written
-            // by App\Domain\Telemedicine\Services\TelemedicineSettings::storeSecret() — `settings.value` is plain
-            // jsonb and a video API secret does not belong there in clear text.
-            'telemedicine.provider' => ['type' => 'string', 'default' => 'default', 'options' => ['default', 'livekit', 'jitsi', 'null']],
+            // override config/telemedicine.php per clinic. The credential pair is `secret`, so the Settings
+            // service encrypts it at rest and masks it on the way out no matter which screen writes it — the
+            // module's own TelemedicineSettings::storeSecret() and the generic registry screen now agree.
+            'telemedicine.provider' => ['type' => 'string', 'default' => 'default', 'options' => ['default', 'agora', 'livekit', 'jitsi', 'null']],
             'telemedicine.host' => ['type' => 'string', 'default' => ''],
-            'telemedicine.api_key' => ['type' => 'string', 'default' => ''],
-            'telemedicine.api_secret' => ['type' => 'string', 'default' => ''],
+            'telemedicine.api_key' => ['type' => 'string', 'default' => '', 'secret' => true],
+            'telemedicine.api_secret' => ['type' => 'string', 'default' => '', 'secret' => true],
             'telemedicine.recording_enabled' => ['type' => 'bool', 'default' => false],
             'telemedicine.max_minutes' => ['type' => 'int', 'default' => 45, 'min' => 5, 'max' => 240],
             // OCR naming of uploaded reports (PRESCRIPTION.md §8). `ocr_driver` = 'default' follows
             // config('patients.ocr.driver'), which ships as 'null' — no cloud engine, no request leaves the
-            // clinic, and PDFs that carry a text layer are still read locally. `ocr_api_key` holds a Laravel-
-            // ENCRYPTED string written by App\Domain\Patients\Services\OcrSettings::storeApiKey(): `settings.value`
-            // is plain jsonb and a billable API key does not belong there in clear text.
+            // clinic, and PDFs that carry a text layer are still read locally. `ocr_api_key` is `secret`: the
+            // Settings service encrypts it at rest and never hands the plaintext back to a browser, whether it
+            // was written by OcrSettings::storeApiKey() or by the generic settings screen.
             'patients.ocr_driver' => ['type' => 'string', 'default' => 'default', 'options' => ['default', 'null', 'google']],
-            'patients.ocr_api_key' => ['type' => 'string', 'default' => ''],
+            'patients.ocr_api_key' => ['type' => 'string', 'default' => '', 'secret' => true],
         ];
     }
 
     public static function has(string $key): bool
     {
         return array_key_exists($key, self::all());
+    }
+
+    /** A credential: encrypted at rest, masked on the wire, redacted in audit rows. */
+    public static function isSecret(string $key): bool
+    {
+        return (self::all()[$key]['secret'] ?? false) === true;
+    }
+
+    /** @return array<int, string> every secret key, for a sweep or an assertion */
+    public static function secretKeys(): array
+    {
+        return array_keys(array_filter(self::all(), fn (array $d) => ($d['secret'] ?? false) === true));
     }
 
     /** @return array<string, mixed> */
@@ -92,7 +119,7 @@ final class SettingsRegistry
     }
 
     /**
-     * @return array{type: string, default: mixed, options?: array<int, string>, pattern?: string, min?: int|float, max?: int|float}
+     * @return array{type: string, default: mixed, options?: array<int, string>, pattern?: string, min?: int|float, max?: int|float, secret?: bool}
      */
     public static function definition(string $key): array
     {
@@ -103,6 +130,12 @@ final class SettingsRegistry
     public static function validate(string $key, mixed $value): mixed
     {
         $def = self::definition($key);
+
+        // A blank credential field is not a type error, it is "unchanged" — and after ConvertEmptyStringsToNull
+        // it arrives as null. `Settings::set()` is where that means something; here it just has to pass.
+        if ($value === null && ($def['secret'] ?? false) === true) {
+            return null;
+        }
 
         $ok = match ($def['type']) {
             'int' => is_int($value) || (is_string($value) && preg_match('/^-?\d+$/', $value) === 1),

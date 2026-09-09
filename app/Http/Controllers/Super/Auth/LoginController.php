@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Super\Auth;
 
 use App\Domain\Audit\Enums\CentralAuditAction;
+use App\Domain\SaaS\Services\CentralAudit;
+use App\Domain\SaaS\Services\SuperTwoFactor;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Super\Auth\Concerns\CompletesSuperLogin;
 use App\Http\Requests\Super\Auth\LoginRequest;
-use App\Models\Central\AuditLogCentral;
 use App\Models\Central\SuperAdmin;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Auth\UserProvider;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,10 +23,23 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Super-admin login on super.{central} (guard super). Renders panel page Super/Auth/Login. TOTP is the SaaS module's.
+ * Super-admin login on super.{central} (guard super). Renders panel page Super/Auth/Login.
+ *
+ * The password is only the FIRST half for an enrolled operator (ARCHITECTURE §6.5). Rather than logging them in
+ * and then fencing the session off, a correct password parks a half-finished login in the session
+ * (`SuperTwoFactor::SESSION_PENDING`) and nobody is authenticated until `TwoFactorChallengeController` says so —
+ * a session that has not passed the challenge is a guest, which is a much stronger statement than a middleware
+ * check, and it is why an unchallenged session cannot mint an impersonation token.
  */
 final class LoginController extends Controller
 {
+    use CompletesSuperLogin;
+
+    public function __construct(
+        private readonly SuperTwoFactor $twoFactor,
+        private readonly CentralAudit $audit,
+    ) {}
+
     public function create(): Response
     {
         return Inertia::render('Super/Auth/Login', ['status' => session('status')]);
@@ -31,29 +47,39 @@ final class LoginController extends Controller
 
     public function store(LoginRequest $request): RedirectResponse
     {
-        $key = 'super-login:'.Str::lower($request->credentials()['email']).'|'.$request->ip();
+        $credentials = $request->credentials();
+        $key = 'super-login:'.Str::lower($credentials['email']).'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             throw ValidationException::withMessages(['email' => __('auth.throttle', ['seconds' => RateLimiter::availableIn($key)])]);
         }
 
-        $guard = Auth::guard('super');
+        $admin = $this->retrieve($credentials);
 
-        if (! $guard->attempt($request->credentials() + ['is_active' => true], $request->remember())) {
+        if (! $admin instanceof SuperAdmin) {
             RateLimiter::hit($key, 60);
 
             throw ValidationException::withMessages(['email' => __('auth.failed')]);
         }
 
         RateLimiter::clear($key);
+
+        if ($this->twoFactor->enabled($admin)) {
+            // Deliberately NOT logged in. The pending marker carries an id and a timestamp and nothing else —
+            // it is not a session for the console, it is a receipt for the password half, and it expires.
+            $request->session()->put(SuperTwoFactor::SESSION_PENDING, [
+                'id' => $admin->id,
+                'remember' => $request->remember(),
+                'at' => CarbonImmutable::now()->getTimestamp(),
+            ]);
+
+            return redirect()->route('super.two-factor.challenge');
+        }
+
+        Auth::guard('super')->login($admin, $request->remember());
         $request->session()->regenerate();
 
-        /** @var SuperAdmin $admin */
-        $admin = $guard->user();
-        $admin->forceFill(['last_login_at' => CarbonImmutable::now(), 'last_login_ip' => $request->ip()])->saveQuietly();
-        $this->auditCentral($request, $admin, CentralAuditAction::Login);
-
-        return redirect()->intended(route('super.dashboard', absolute: false));
+        return $this->completeSuperLogin($request, $admin, $this->audit);
     }
 
     public function destroy(Request $request): RedirectResponse
@@ -61,7 +87,7 @@ final class LoginController extends Controller
         $admin = $request->user('super');
 
         if ($admin instanceof SuperAdmin) {
-            $this->auditCentral($request, $admin, CentralAuditAction::Logout);
+            $this->audit->record(CentralAuditAction::Logout, null, $admin, superAdminId: $admin->id);
         }
 
         Auth::guard('super')->logout();
@@ -71,17 +97,22 @@ final class LoginController extends Controller
         return redirect()->route('super.login');
     }
 
-    private function auditCentral(Request $request, SuperAdmin $admin, CentralAuditAction $action): void
+    /**
+     * The `super` provider, asked directly rather than through `attempt()`: `attempt()` would log the operator in
+     * before we have decided whether they are allowed to be logged in yet.
+     *
+     * @param  array{email: string, password: string}  $credentials
+     */
+    private function retrieve(array $credentials): ?SuperAdmin
     {
-        AuditLogCentral::query()->create([
-            'super_admin_id' => $admin->id,
-            'action' => $action,
-            'auditable_type' => $admin->getMorphClass(),
-            'auditable_id' => $admin->id,
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'request_id' => $request->attributes->get('request_id'),
-            'occurred_at' => CarbonImmutable::now(),
-        ]);
+        /** @var UserProvider $provider */
+        $provider = Auth::createUserProvider('super_admins');
+        $admin = $provider->retrieveByCredentials(['email' => $credentials['email'], 'is_active' => true]);
+
+        if (! $admin instanceof SuperAdmin || ! $provider->validateCredentials($admin, $credentials)) {
+            return null;
+        }
+
+        return $admin;
     }
 }

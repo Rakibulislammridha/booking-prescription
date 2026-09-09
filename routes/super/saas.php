@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\SaaS\Http\Middleware\EnsureSuperAdminIsActive;
+use App\Domain\SaaS\Http\Middleware\EnsureSuperTwoFactor;
 use App\Http\Controllers\Api\Tenancy\PingController;
 use App\Http\Controllers\Super\AuditController;
 use App\Http\Controllers\Super\Catalog\ReconciliationController;
@@ -18,9 +19,12 @@ use Illuminate\Support\Facades\Route;
 // on. `routes/api/*` is registered inside the `tenant` group, so on super.{central} that ping 404s — which the
 // ConnectionIndicator faithfully reports as a red OFFLINE bar across a console that is perfectly online, and logs
 // a failed request on every beat. The super host answers the same tiny document instead (tenant: null); it is
-// registered before the api group by bootstrap/app.php's ordering, and opts out of auth because a heartbeat must
-// answer whether or not anybody is signed in.
-Route::get('api/ping', PingController::class)->withoutMiddleware('auth:super')->middleware('throttle:60,1')->name('ping');
+// registered before the api group by bootstrap/app.php's ordering, and opts out of auth AND of the two-factor
+// gate because a heartbeat must answer whether or not anybody is signed in — an operator held on the enrolment
+// screen is online, and a 403 there would paint that screen with the same false OFFLINE bar.
+Route::get('api/ping', PingController::class)
+    ->withoutMiddleware(['auth:super', EnsureSuperTwoFactor::class])
+    ->middleware('throttle:60,1')->name('ping');
 
 Route::middleware(EnsureSuperAdminIsActive::class)->group(function (): void {
     Route::get('plans', [PlanController::class, 'index'])->name('plans.index');

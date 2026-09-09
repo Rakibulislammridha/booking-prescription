@@ -75,6 +75,15 @@ const ALLOWED = [
   '@fontsource/noto-sans-bengali',
 ];
 
+// Packages that may be reached ONLY through `import()`. They are far too big to sit in a first load — bigger,
+// in livekit-client's case, than the entire 95 KB budget — so a static import of one is a failure even though
+// the package is a legitimate dependency of the site. The budget below is the second half of the guarantee: a
+// lazily imported package lands in its own chunk and is not counted, and if that ever stops being true the
+// route's first-load number says so.
+const LAZY_ONLY = {
+  'livekit-client': 'the LiveKit browser SDK is ~90 KB gzip; it must be reached through `import()` from the video client, never statically (CONVENTIONS §7.4)',
+};
+
 // Named so the failure says WHY, not just "not allowed".
 const PANEL_ONLY = {
   '@mui/': 'MUI is the panel toolkit',
@@ -122,6 +131,7 @@ function walk(file) {
   while ((m = IMPORT_RE.exec(src)) !== null) {
     const spec = m[1] || m[2] || m[3];
     if (!spec) continue;
+    const dynamic = m[2] !== undefined;                     // `import('…')`, the only form LAZY_ONLY accepts
     const local = resolveLocal(spec, file);
     if (local !== null) { walk(local); continue; }
     if (spec.startsWith('.') || spec.startsWith('@panel') || spec.startsWith('@site') || spec.startsWith('@shared') || spec.startsWith('@lang')) {
@@ -129,6 +139,12 @@ function walk(file) {
       continue;
     }
     if (isAllowed(spec)) continue;
+    const lazy = Object.entries(LAZY_ONLY).find(([p]) => spec === p || spec.startsWith(p + '/'));
+    if (lazy) {
+      if (dynamic) continue;
+      failures.push(`${rel}: imports '${spec}' statically — ${lazy[1]}`);
+      continue;
+    }
     const reason = Object.entries(PANEL_ONLY).find(([p]) => spec === p || spec.startsWith(p));
     failures.push(reason
       ? `${rel}: imports '${spec}' — ${reason[1]}; the site bundle must not carry it (CONVENTIONS §7.4)`
@@ -147,7 +163,7 @@ function seed(dir) {
 }
 
 seed(path.join(ROOT, 'resources/js/site'));
-notes.push(`dependencies: ${visited.size} files reachable from resources/js/site, ${ALLOWED.length} packages allowed`);
+notes.push(`dependencies: ${visited.size} files reachable from resources/js/site, ${ALLOWED.length} packages allowed, ${Object.keys(LAZY_ONLY).length} allowed only behind import()`);
 
 // ---------------------------------------------------------------- 2. first-load budget
 
@@ -178,7 +194,14 @@ if (!fs.existsSync(manifestPath)) {
     const base = closure(ENTRY, new Set());
     if (localeKey !== null) closure(localeKey, base);
 
-    const pages = Object.keys(manifest).filter((k) => k.startsWith('resources/js/site/Pages/')).sort();
+    // A ROUTE is a page component: `.tsx` under site/Pages. The `.ts` modules that live beside them
+    // (Telemedicine/core/*) are not routes, and measuring them here would be actively misleading — the panel
+    // build imports those same modules, both passes write a manifest entry under the identical source-path key,
+    // and the panel's entry wins the merge (vite.config.ts `{ ...site, ...panel }`). Their closure is then the
+    // PANEL's vendor chunk on top of the SITE's entry: two different applications added together, a number no
+    // visitor ever downloads. Every one of them is reached through `import()` and is therefore not a first load
+    // on either surface anyway.
+    const pages = Object.keys(manifest).filter((k) => k.startsWith('resources/js/site/Pages/') && k.endsWith('.tsx')).sort();
     if (pages.length === 0) failures.push('no site page chunks in the manifest — the build looks wrong');
 
     const rows = [];

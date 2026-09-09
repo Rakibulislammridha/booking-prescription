@@ -9,12 +9,15 @@ use App\Domain\Shared\Actor;
 use App\Domain\Telemedicine\Actions\JoinCall;
 use App\Domain\Telemedicine\Data\ProviderWebhookEvent;
 use App\Domain\Telemedicine\Data\RoomSpec;
+use App\Domain\Telemedicine\Data\TokenRequest;
 use App\Domain\Telemedicine\Enums\ParticipantRole;
 use App\Domain\Telemedicine\Enums\TelemedicineProvider;
 use App\Domain\Telemedicine\Exceptions\VideoProviderFailed;
+use App\Domain\Telemedicine\Providers\AgoraProvider;
 use App\Domain\Telemedicine\Providers\JitsiProvider;
 use App\Domain\Telemedicine\Providers\LiveKitProvider;
 use App\Domain\Telemedicine\Providers\NullVideoProvider;
+use App\Domain\Telemedicine\Services\AgoraAccessToken;
 use App\Domain\Telemedicine\Services\Jwt;
 use App\Domain\Telemedicine\Services\ProviderCredentials;
 use App\Domain\Telemedicine\Services\TelemedicineSettings;
@@ -209,6 +212,125 @@ final class ProviderDriverTest extends TestCase
 
         config(['telemedicine.default' => 'null']);
         $this->assertInstanceOf(NullVideoProvider::class, app(VideoProviderManager::class)->driver());
+    }
+
+    // ---------------------------------------------------------------- Agora
+    //
+    // Agora has no room API and no participant API: a channel exists when someone joins it, and the only server
+    // verb the module needs is the documented Kick-User ("banning rule") endpoint. It is authenticated with the
+    // ACCOUNT's RESTful Customer ID/Secret over HTTP Basic — a platform credential, never a clinic's — which is
+    // why the manager reads it from config while the App ID/Certificate come from the tenant settings path.
+
+    private const AGORA_APP_ID = '970ca35de60c44645bbae8a215061b33';
+
+    private const AGORA_CERTIFICATE = '5cfd2fd1755d40ecb72977518be15d3b';
+
+    private function agora(string $customerId = 'customer-id', string $customerSecret = 'customer-secret'): AgoraProvider
+    {
+        return new AgoraProvider(
+            new ProviderCredentials(TelemedicineProvider::Agora, '', self::AGORA_APP_ID, self::AGORA_CERTIFICATE, maxMinutes: 45),
+            app(HttpFactory::class),
+            10,
+            $customerId,
+            $customerSecret,
+        );
+    }
+
+    public function test_agora_revoke_and_close_hit_the_documented_kick_endpoint(): void
+    {
+        Http::fake(['api.agora.io/*' => Http::response(['status' => 'success', 'id' => 41])]);
+
+        $this->agora()->revoke('t9001-room', 'patient-abc');
+        $this->agora()->closeRoom('t9001-room');
+
+        Http::assertSent(function ($request): bool {
+            if ($request['uid'] === 0) {
+                return false;
+            }
+
+            $this->assertSame('https://api.agora.io/dev/v1/kicking-rule', $request->url());
+            $this->assertSame(self::AGORA_APP_ID, $request['appid']);
+            $this->assertSame('t9001-room', $request['cname']);
+            $this->assertSame(AgoraProvider::uidFor('patient-abc'), $request['uid'], 'the same uid the token was minted for');
+            $this->assertNotSame(0, $request['uid'], '0 would ban the whole channel');
+            $this->assertSame(['join_channel'], $request['privileges']);
+            $this->assertSame(45, $request['time'], 'minutes: bounded by the clinic call cap, never a permanent ban');
+            $this->assertSame('Basic '.base64_encode('customer-id:customer-secret'), $request->header('Authorization')[0]);
+
+            return true;
+        });
+
+        // Closing a room bans every user of the channel, because Agora cannot delete a channel that is still live.
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/dev/v1/kicking-rule') && $r['cname'] === 't9001-room' && $r['uid'] === 0);
+    }
+
+    public function test_an_agora_provider_error_becomes_a_domain_failure_that_leaks_no_credentials(): void
+    {
+        Http::fake(['api.agora.io/*' => Http::response(['message' => 'invalid customer id'], 401)]);
+
+        try {
+            $this->agora()->closeRoom('t9001-room');
+            $this->fail('expected VideoProviderFailed');
+        } catch (VideoProviderFailed $e) {
+            $this->assertSame('telemedicine.provider_failed', $e->code());
+            $this->assertSame(502, $e->status());
+            $this->assertSame('agora', $e->driver);
+            $this->assertSame('closeRoom', $e->operation);
+            $this->assertStringContainsString('invalid customer id', $e->getMessage());
+            $this->assertStringNotContainsString(self::AGORA_CERTIFICATE, $e->getMessage());
+            $this->assertStringNotContainsString('customer-secret', $e->getMessage());
+        }
+    }
+
+    public function test_agora_kicking_is_a_logged_no_op_without_the_account_rest_credential(): void
+    {
+        Http::fake();
+
+        // A platform that configured tokens but not the RESTful credential must not blow up the doctor's "end
+        // call": the 15-minute token TTL is then the revocation story, exactly as it is on Jitsi.
+        $this->agora(customerId: '', customerSecret: '')->closeRoom('t9001-room');
+        $this->agora(customerId: '', customerSecret: '')->revoke('t9001-room', 'doctor-abc');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_agora_mints_a_token_without_ever_calling_agora(): void
+    {
+        Http::fake();
+
+        $token = $this->agora()->mintToken(TokenRequest::forRole('t9001-room', ParticipantRole::Doctor, 'doctor-abc', 'Dr Rahman', 900, recordingAllowed: true));
+
+        $this->assertSame(TelemedicineProvider::Agora, $token->provider);
+        $this->assertTrue(AgoraAccessToken::verify($token->token, self::AGORA_CERTIFICATE));
+        Http::assertNothingSent();
+    }
+
+    public function test_the_manager_resolves_the_agora_driver_from_the_settings_path(): void
+    {
+        config([
+            'telemedicine.default' => 'agora',
+            'telemedicine.providers.agora' => ['host' => '', 'key' => self::AGORA_APP_ID, 'secret' => self::AGORA_CERTIFICATE, 'rest_key' => 'cid', 'rest_secret' => 'csecret'],
+        ]);
+
+        $driver = app(VideoProviderManager::class)->driver();
+
+        $this->assertInstanceOf(AgoraProvider::class, $driver);
+        $this->assertSame(TelemedicineProvider::Agora, $driver->key());
+
+        // A clinic overriding only the App ID/Certificate rows still resolves Agora — the credential path is the
+        // ordinary one; only the account-level RESTful secret comes from config.
+        app(Settings::class)->set(TelemedicineSettings::KEY_API_KEY, self::AGORA_APP_ID);
+        app(TelemedicineSettings::class)->storeSecret(self::AGORA_CERTIFICATE);
+        $this->assertInstanceOf(AgoraProvider::class, app(VideoProviderManager::class)->driver());
+    }
+
+    public function test_the_manager_falls_back_to_the_null_driver_when_the_agora_credentials_are_not_agora_credentials(): void
+    {
+        foreach ([['', ''], ['not-an-app-id', self::AGORA_CERTIFICATE], [self::AGORA_APP_ID, 'nope']] as [$key, $secret]) {
+            config(['telemedicine.default' => 'agora', 'telemedicine.providers.agora' => ['host' => '', 'key' => $key, 'secret' => $secret]]);
+
+            $this->assertInstanceOf(NullVideoProvider::class, app(VideoProviderManager::class)->driver(), $key.'/'.$secret);
+        }
     }
 
     public function test_tenant_settings_override_the_platform_configuration_and_the_secret_is_encrypted_at_rest(): void

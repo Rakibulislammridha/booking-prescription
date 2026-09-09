@@ -20,6 +20,8 @@ final readonly class JoinToken
         public CarbonImmutable $expiresAt,
         public ?string $serverUrl = null,
         public ?string $joinUrl = null,
+        /** The provider's own participant number where it has one (Agora addresses users by uint32, not by name). */
+        public ?int $uid = null,
     ) {}
 
     /** @return array<string, mixed> the wire shape the join page receives */
@@ -34,6 +36,7 @@ final readonly class JoinToken
             'expires_at' => $this->expiresAt->toIso8601String(),
             'server_url' => $this->serverUrl,
             'join_url' => $this->joinUrl,
+            'uid' => $this->uid,
         ];
     }
 }

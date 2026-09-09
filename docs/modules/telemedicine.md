@@ -39,6 +39,7 @@ join (that is the plan gate, the guard, the signature and the room status, in th
 |---|---|---|---|
 | `LiveKitProvider` | HS256 JWT, `video` grant object | Twirp REST (`/twirp/livekit.RoomService/*`) | `Authorization` JWT whose `sha256` claim is the base64 digest of the raw body |
 | `JitsiProvider` | HS256 JWT, `context.user.moderator` | none — a Jitsi room exists when someone joins | none (self-hosted Jitsi has no first-party webhook); the client beacons stand in |
+| `AgoraProvider` | AccessToken2 **007 binary packing**, per-service privilege maps | none — a channel exists when someone joins; closing is a banning rule | none (Agora's Notification Centre is a separate product with its own secret); the client beacons stand in |
 | `NullVideoProvider` | HS256 JWT signed with `APP_KEY`, same claims and TTL | logged | none |
 
 **Grants are a function of the role and nothing else** (`TokenRequest::forRole`): both roles publish and
@@ -49,8 +50,27 @@ request shape in which a patient asks for a doctor's token.
 request under Octane. A driver whose credentials are incomplete is replaced by the null driver rather than being
 called and failing — which is also why the suite never reaches a real service.
 
-Agora is named by BRIEF §5.K but is **not implemented**: its token format is a binary packing rather than a JWT,
-and LiveKit + Jitsi already cover the paid and the self-hosted case. The enum keeps the value.
+**Agora** (added later, `AgoraProvider` + `Services/AgoraAccessToken`). Its credential is an **AccessToken2
+version 007** structure, not a JWT, which is why it could not reuse `Jwt` and why it was left out at first: little
+-endian primitives (uint16, uint32, uint16-length-prefixed strings, maps as count + ascending entries), a services
+map, per-privilege expiries measured as SECONDS FROM the issue time, HMAC-SHA256 over the packed message with a
+signing key derived from `issuedAt` and `salt`, then deflate + base64 behind a `007` prefix. `AgoraAccessToken`
+both builds and *parses*, so the suite decodes a minted token field by field, and two vectors from Agora's own
+reference implementation are asserted to produce the identical signed bytes.
+
+Agora scopes differently from the other two because its token format simply has fewer knobs, and the difference is
+in the module's favour: there is **no `roomAdmin` equivalent at all** — moderation is an account-level REST call,
+never a privilege inside a participant's credential, so no token this driver mints can evict anyone. Both roles
+get the RTC service (join + publish audio/video/data); only a doctor whose clinic enabled recording additionally
+gets the **streaming service (type 3)**, Agora's nearest equivalent of `roomRecord`. A patient token carries one
+service and can never carry that one.
+
+Rooms: Agora has no "create room" — `createRoom()` is a documented no-op that only reports the App ID the Web SDK
+needs. `revoke()`/`closeRoom()` use the documented Kick-User (banning rule) endpoint,
+`POST {base}/dev/v1/kicking-rule`, with the account's RESTful Customer ID/Secret over HTTP Basic — a PLATFORM
+credential, so it comes from `config('telemedicine.providers.agora.rest_*')` and never from a tenant settings row.
+Without it the driver logs and does nothing rather than throwing on the doctor's "end call": the 15-minute token
+TTL is then the revocation story, as it is on Jitsi.
 
 ## 3. Identity, links and tokens
 
@@ -98,9 +118,18 @@ token yet (`GET /telemedicine/room/{room}/state`).
    site components would render unstyled there. What the surfaces share is the part that must not diverge — the
    call machine, the pre-flight and the video client in `@site/Pages/Telemedicine/core/**`, which carry no
    styling and are covered by one Vitest suite.
-7. **The LiveKit browser SDK is not wired.** The server driver is complete; the client half needs the
-   `livekit-client` npm package and `package.json` is foundation-owned. Until it lands, a LiveKit-configured
-   clinic degrades to local preview — the same fallback a failed SDK download takes.
-8. **Issuing navigates away from the console** to the ordinary prescription page (the ordinary post-issue
+7. **The LiveKit browser SDK is wired** (`livekit-client`, pinned exact). It is imported from
+   `core/videoClient.ts` and nowhere else, and only through `import()`: at ~90 KB gzip it is bigger than the
+   site's entire 95 KB per-route budget, so it lives in a chunk that only a patient pressing "Join" on a
+   LiveKit clinic downloads. CONVENTIONS §7.4 and `scripts/check-site-deps.sh` (`LAZY_ONLY`) now fail a static
+   import of it. The transport sits behind the existing `VideoClient` seam — the call machine, the pre-flight and
+   the controls are untouched — and it publishes the tracks the PRE-FLIGHT already opened rather than prompting
+   for the camera a second time. A failed SDK download still degrades to local preview.
+8. **`SettingsRegistry` cannot yet select Agora.** `telemedicine.provider` has `options` `['default', 'livekit',
+   'jitsi', 'null']`; `agora` needs adding there before a clinic can pick it from the settings screen
+   (`Settings::set` validates against that list). The driver, `TelemedicineSettings::driverName()` and the
+   manager all accept `agora` today, so `TELEMEDICINE_PROVIDER=agora` and a directly written row both work.
+   The file is foundation-owned (SaaS/Clinic), so this is a one-word [foundation] need, not a change made here.
+9. **Issuing navigates away from the console** to the ordinary prescription page (the ordinary post-issue
    behaviour). The serial is already completed by then; the doctor steps back into the console to hang up, and
    `EndCall` is idempotent on an already-completed serial.

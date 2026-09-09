@@ -72,13 +72,21 @@ final class DemoDataSeeder extends Seeder
             }
         }
 
-        foreach ([['reception@demo.test', 'রিসেপশন ডেস্ক', Role::Receptionist, $main], ['reception-mirpur@demo.test', 'মিরপুর রিসেপশন', Role::Receptionist, $mirpur], ['accounts@demo.test', 'হিসাব বিভাগ', Role::Accountant, $main]] as [$email, $name, $role, $branch]) {
+        // The compounder is a Receptionist by role — that is the role RoleMatrix gives `prescriptions.vitals.record`
+        // — but a separate person, because BRIEF §5.G.2's handoff is only legible in the demo if the vitals were
+        // taken by someone other than the doctor and the front desk (VitalsDemoSeeder records as this user).
+        foreach ([['reception@demo.test', 'রিসেপশন ডেস্ক', Role::Receptionist, $main], ['reception-mirpur@demo.test', 'মিরপুর রিসেপশন', Role::Receptionist, $mirpur], ['compounder@demo.test', 'কম্পাউন্ডার', Role::Receptionist, $main], ['accounts@demo.test', 'হিসাব বিভাগ', Role::Accountant, $main]] as [$email, $name, $role, $branch]) {
             $user = User::query()->updateOrCreate(
                 ['email' => $email],
                 ['name' => $name, 'password' => Hash::make('password'), 'default_branch_id' => $branch->id, 'locale' => 'bn', 'is_active' => true, 'email_verified_at' => now()],
             );
             $user->syncRoles([$role->value]);
         }
+
+        // A clinic that already has visits (a demo tenant re-seeded, or `tenants:seed --class=DemoDataSeeder` on a
+        // running one) gets its vitals history too; on a brand-new tenant there are no visits yet and this is a
+        // no-op. Idempotent either way.
+        (new VitalsDemoSeeder)->run();
 
         foreach ([['2026-12-16', 'Victory Day', 'বিজয় দিবস'], ['2026-03-26', 'Independence Day', 'স্বাধীনতা দিবস'], ['2026-02-21', 'International Mother Language Day', 'আন্তর্জাতিক মাতৃভাষা দিবস']] as [$date, $en, $bn]) {
             Holiday::query()->updateOrCreate(['holiday_date' => $date, 'branch_id' => null], ['name' => $en, 'name_bn' => $bn]);

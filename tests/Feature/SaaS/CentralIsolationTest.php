@@ -25,18 +25,6 @@ use Tests\TestCase;
  */
 final class CentralIsolationTest extends TestCase
 {
-    /**
-     * `WithTenants::asCentral()` only resets the search path when `Tenancy::check()` is true, so a session left on
-     * a tenant schema by an earlier test (the context flushed, the Postgres session not) survives into this one.
-     * These assertions are about what a SUPER REQUEST leaves behind, so the precondition is established here
-     * rather than inherited: `Tenancy::end()` issues the explicit reset even with no tenant in the context.
-     */
-    protected function setUp(): void
-    {
-        parent::setUp();
-        Tenancy::end();
-    }
-
     public function test_every_saas_console_request_runs_with_no_tenancy_and_a_public_search_path(): void
     {
         $this->actingAsSuper();

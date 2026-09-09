@@ -142,4 +142,50 @@ final class PatientIdentityTest extends TestCase
         $this->expectException(CannotMergeSelf::class);
         app(MergePatients::class)->handle($winner, $winner, Actor::system());
     }
+
+    /**
+     * A clinical trail has to answer "which records moved", not just "how many": after the repoint the moved rows
+     * look exactly like the winner's own, so the audit row names them by primary key (as ranges, MergePatients).
+     */
+    public function test_the_merge_audit_names_the_rows_that_moved_not_just_how_many(): void
+    {
+        $this->actingAsStaff('hospital_admin');
+        $winner = Patient::factory()->create();
+        $loser = Patient::factory()->create();
+        $allergies = PatientAllergy::factory()->count(3)->for($loser)->create();
+        AuditLog::view($loser);
+
+        app(MergePatients::class)->handle($winner, $loser, Actor::system());
+
+        $row = AuditLog::query()->where('patient_id', $winner->id)->where('action', 'update')
+            ->whereNotNull('context->repointed_ids')->latest('id')->firstOrFail();
+        $context = $row->context;
+
+        $this->assertSame($loser->id, $context['loser_id']);
+        $this->assertSame($loser->public_id, $context['loser_public_id']);
+        $this->assertNotNull($context['merged_at']);
+        $this->assertSame(3, $context['repointed']['patient_allergies']);
+        $this->assertSame(3, $context['repointed_ids']['patient_allergies']['count']);
+
+        // Three rows written back to back: one inclusive range, and it is the exact set.
+        $ids = $allergies->pluck('id')->sort()->values();
+        $this->assertSame([[$ids->first(), $ids->last()]], $context['repointed_ids']['patient_allergies']['ranges']);
+        $this->assertArrayNotHasKey('truncated_ranges', $context['repointed_ids']['patient_allergies']);
+        $this->assertArrayHasKey('audit_logs', $context['repointed_ids'], 'the unbounded tables are named too');
+    }
+
+    public function test_row_ids_are_range_encoded_and_truncation_is_explicit(): void
+    {
+        $this->assertSame(['ranges' => [[3, 5], [9, 9]]], MergePatients::ranges([3, 4, 5, 9]));
+        $this->assertSame(['ranges' => []], MergePatients::ranges([]));
+
+        // Scattered beyond the cap: what is kept is exact, what is dropped is counted, and the tail is bounded by
+        // the highest id — so nobody has to guess how much of the set is missing.
+        $scattered = range(1, (MergePatients::ID_RANGE_CAP + 20) * 2, 2);
+        $out = MergePatients::ranges($scattered);
+
+        $this->assertCount(MergePatients::ID_RANGE_CAP, $out['ranges']);
+        $this->assertSame(20, $out['truncated_ranges']);
+        $this->assertSame(max($scattered), $out['id_max']);
+    }
 }

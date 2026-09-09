@@ -32,6 +32,30 @@ final class SettingsRegistryTest extends TestCase
         }
     }
 
+    /**
+     * The `secret` flag is a storage contract, not a UI hint (SettingsRegistry's docblock): it decides whether the
+     * value is encrypted at rest, masked on the wire and redacted in audit rows. A credential added without it
+     * would render as a plain text input and land in `settings.value` in clear text, which is the bug this closes.
+     */
+    public function test_every_credential_carries_the_secret_flag_and_nothing_else_does(): void
+    {
+        $this->assertSame(['telemedicine.api_key', 'telemedicine.api_secret', 'patients.ocr_api_key'], SettingsRegistry::secretKeys());
+
+        foreach (SettingsRegistry::secretKeys() as $key) {
+            $this->assertTrue(SettingsRegistry::isSecret($key));
+            $this->assertSame('string', SettingsRegistry::definition($key)['type'], 'a credential is free text, never an option list');
+            $this->assertSame('', SettingsRegistry::default($key), 'a credential has no default worth shipping');
+        }
+
+        // A blank credential is "unchanged", not a type error — it is what an untouched password field posts.
+        $this->assertNull(SettingsRegistry::validate('telemedicine.api_secret', null));
+        $this->assertSame('', SettingsRegistry::validate('telemedicine.api_secret', ''));
+
+        foreach (['telemedicine.host', 'telemedicine.provider', 'queue.display_voice', 'security.session_timeout_minutes'] as $key) {
+            $this->assertFalse(SettingsRegistry::isSecret($key), "{$key} is not a credential");
+        }
+    }
+
     public function test_validate_casts_and_bounds(): void
     {
         $this->assertSame(7, SettingsRegistry::validate('queue.auto_noshow_after', '7'));

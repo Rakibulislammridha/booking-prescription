@@ -27,4 +27,30 @@ return [
         'plaintext_environments' => ['local', 'testing'],
     ],
 
+    // Super-admin two-factor authentication (ARCHITECTURE §6.5). The super console is the one credential that can
+    // impersonate into any clinic's patient records, so the default is REQUIRED and enrolment is forced before the
+    // console can be used — an operator can postpone a password change, not this.
+    'two_factor' => [
+
+        // Turn it off only for a platform that has some other second factor in front of super.{central} (an SSO
+        // proxy, a VPN). `false` still lets an operator enrol voluntarily; it only stops the forced enrolment.
+        'required' => (bool) env('SUPER_2FA_REQUIRED', true),
+
+        // Shown as the account issuer in the authenticator app; empty follows config('app.name').
+        'issuer' => (string) env('SUPER_2FA_ISSUER', ''),
+
+        // Single-use recovery codes minted at confirmation. Eight is enough for a lost phone plus a bad week.
+        'recovery_codes' => 8,
+
+        // Challenge lockout: attempts per admin+IP before the challenge refuses to look at another code, and how
+        // long the lock lasts. Five is generous for a six-digit code and brutal for a brute-forcer: at 5 per 15
+        // minutes a 10^6 space needs six years.
+        'challenge_attempts' => 5,
+        'challenge_decay_seconds' => 900,
+
+        // How long the password half of the login stays valid while the operator reaches for their phone. Past
+        // this the half-finished login is discarded and they start again — a pending challenge is a credential.
+        'pending_ttl_seconds' => 300,
+    ],
+
 ];

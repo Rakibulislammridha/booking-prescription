@@ -24,6 +24,8 @@ use App\Models\Tenant\SessionInstance;
 use App\Support\Scheduling\RegistersSchedule;
 use App\Tenancy\Facades\Tenancy;
 use Illuminate\Console\Scheduling\Schedule as Scheduler;
+use Illuminate\Testing\TestResponse;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\Feature\Billing\Concerns\BillingFixtures;
 use Tests\TestCase;
 
@@ -137,6 +139,61 @@ final class ExpireAdvancePaymentHoldsTest extends TestCase
         $cancelledAt = $held->cancelled_at;
         $this->artisan('booking:expire-holds', ['--minutes' => 30])->assertExitCode(0)->expectsOutputToContain('0 unpaid hold(s) released');
         $this->assertEquals($cancelledAt, $held->refresh()->cancelled_at);
+    }
+
+    /**
+     * The desk has to be able to tell "this number is held until the money arrives, and may vanish" from "this
+     * patient is booked and coming" — so the board carries the hold's own deadline, and it stops carrying one the
+     * moment the hold is settled or swept (SerialPresenter::holdExpiresAt mirrors the command's predicate).
+     */
+    public function test_the_board_carries_the_holds_deadline_until_it_is_paid_or_swept(): void
+    {
+        $session = $this->advanceSession();
+        $held = $this->hold($session, '01712000009', '01J8ZK4V2Q3W5X6Y7Z8A9B0E09');
+        $minutes = app(AdvancePaymentPolicy::class)->holdMinutes();
+
+        $this->actingAsStaff(Role::Receptionist);
+
+        // The hold is the session's only serial, so it is the board's first row.
+        $this->board()
+            ->assertJsonPath('sessions.0.serials.0.public_id', Serial::query()->findOrFail($held->serial_id)->public_id)
+            ->assertJsonPath('sessions.0.serials.0.appointment.status', 'pending')
+            ->assertJsonPath('sessions.0.serials.0.appointment.payment_status', 'unpaid')
+            // the countdown the desk shows is the window the sweep actually uses
+            ->assertJsonPath('sessions.0.serials.0.appointment.hold_expires_at', $held->created_at?->toImmutable()->addMinutes($minutes)->toIso8601ZuluString());
+
+        // Paid: nothing is being held any more, so there is no deadline to count down.
+        app(RecordCashPayment::class)->handle($held->refresh(), $held->fee_paisa, 'C-HOLD-'.$held->id, $this->staffActor());
+        $this->assertSame(AppointmentStatus::Confirmed, $held->refresh()->status);
+        $this->board()->assertJsonPath('sessions.0.serials.0.appointment.hold_expires_at', null);
+    }
+
+    public function test_a_swept_hold_stops_looking_like_a_booking_on_the_board(): void
+    {
+        $session = $this->advanceSession();
+        $held = $this->hold($session, '01712000010', '01J8ZK4V2Q3W5X6Y7Z8A9B0E10');
+
+        $this->actingAsStaff(Role::Receptionist);
+        $this->assertNotNull($this->board()->json('sessions.0.serials.0.appointment.hold_expires_at'));
+
+        $this->travel(app(AdvancePaymentPolicy::class)->holdMinutes() + 1)->minutes();
+        $this->artisan('booking:expire-holds')->assertExitCode(0);
+
+        $this->board()
+            // the number is back with the clinic, and a cancelled hold has no deadline left to show
+            ->assertJsonPath('sessions.0.serials.0.status', SerialStatus::Cancelled->value)
+            ->assertJsonPath('sessions.0.serials.0.appointment.status', AppointmentStatus::Cancelled->value)
+            ->assertJsonPath('sessions.0.serials.0.appointment.hold_expires_at', null);
+    }
+
+    /**
+     * The JSON the desk board polls (panel.reception.board.data).
+     *
+     * @return TestResponse<Response>
+     */
+    private function board(): TestResponse
+    {
+        return $this->getJson(route('panel.reception.board.data', absolute: false))->assertOk();
     }
 
     public function test_it_is_a_no_op_on_a_clinic_with_nothing_to_expire(): void

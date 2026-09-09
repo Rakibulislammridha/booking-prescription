@@ -3,7 +3,14 @@ declare module 'ziggy-js' {
   interface RouteList {
     "super.login": [],
     "super.login.store": [],
+    "super.two-factor.challenge": [],
+    "super.two-factor.challenge.store": [],
     "super.logout": [],
+    "super.two-factor.show": [],
+    "super.two-factor.store": [],
+    "super.two-factor.confirm": [],
+    "super.two-factor.recovery-codes": [],
+    "super.two-factor.destroy": [],
     "super.dashboard": [],
     "super.catalog.promotions.index": [],
     "super.catalog.promotions.show": [

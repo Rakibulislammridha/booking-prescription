@@ -21,6 +21,13 @@ enum CentralAuditAction: string
     case CatalogPromote = 'catalog_promote';
     case SettingsChange = 'settings_change';
     case View = 'view';
+    // Super-admin 2FA (ARCHITECTURE §6.5). Distinct actions rather than a `settings_change` with a payload: the
+    // question an incident asks is "when did this account's second factor change and how many codes failed", and
+    // that has to be answerable with a WHERE on `action`, not by reading JSON.
+    case TwoFactorEnabled = 'two_factor_enabled';
+    case TwoFactorDisabled = 'two_factor_disabled';
+    case TwoFactorFailed = 'two_factor_failed';
+    case TwoFactorRecoveryUsed = 'two_factor_recovery_used';
 
     /** @return array<int, string> */
     public static function values(): array

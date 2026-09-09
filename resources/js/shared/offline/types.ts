@@ -24,6 +24,20 @@ export interface CachedSerial {
   publicId: string; sessionId: string; number: number; displayCode: string; position: number; status: string; priority: string; source: string;
   patientRef: string; patientName: string; mobileMasked: string; appointmentId: string | null; feePaisa: number | null; paymentStatus: string | null;
   clientEventId?: string; blockId?: string; local: boolean; cashCollected?: number; receiptNo?: string; checkedInAt?: string | null; updatedAt: number;
+  // A registered desk renders the board from THIS cache even while it is online (useDesk.refresh writes the server
+  // board here and re-renders from it), so anything the board shows has to live here or it cannot be shown at all.
+  //
+  // `hasVitals` therefore IS cached, deliberately, and can go stale: another desk or the compounder's own screen may
+  // record a reading while this device is offline, and this row will keep saying "vitals due". The blast radius is
+  // bounded by an existing decision — vitals entry is online-only (OFFLINE §6.2), so an offline desk can neither
+  // write a reading nor act on the flag beyond walking the patient to the compounder a second time; the flag gates
+  // no write, and it can only ever be stale in the "not recorded yet" direction, never the reverse (readings are
+  // never deleted). The board shows it as "as of the last sync" while offline instead of pretending it is live.
+  //
+  // `holdExpiresAt` is an absolute deadline, so the countdown stays correct offline by construction; only "it was
+  // paid meanwhile" can be stale, which the desk resolves the moment it syncs.
+  hasVitals?: boolean; vitalsAt?: string | null; vitalsReviewed?: boolean; vitalsReadings?: number;
+  appointmentStatus?: string | null; holdExpiresAt?: string | null;
 }
 
 export interface CachedBlock {
@@ -73,6 +87,14 @@ export const RESOLUTIONS_BY_REASON: Record<string, ConflictResolution[]> = {
   unknown_serial: ['discard'],
   dependency_unresolved: [],
 };
+
+/**
+ * The serial states the desk asks "vitals recorded?" about — the mirror of SerialPresenter::VITALS_STATES. A booked
+ * patient has not arrived (nobody could have taken a reading) and a finished one is past the question, so those rows
+ * carry no answer at all rather than a "no" the receptionist would read as "still due".
+ */
+export const VITALS_STATES: ReadonlySet<string> = new Set(['checked_in', 'in_consultation']);
+export const canHaveVitals = (status: string): boolean => VITALS_STATES.has(status);
 
 export const LOCAL_PREFIX = 'local:';
 export const isLocalRef = (ref: string | null | undefined): boolean => typeof ref === 'string' && ref.startsWith(LOCAL_PREFIX);
