@@ -84,6 +84,21 @@ final class PatientSearch
     private function viaDatabase(string $query, int $limit, ?User $for): Collection
     {
         $q = $this->base($for);
+        self::applyTerm($q, $query);
+
+        return $q->orderByRaw('last_visit_at desc nulls last')->orderByDesc('id')->limit($limit)->get();
+    }
+
+    /**
+     * The Postgres matcher on its own — mobile (E.164 or a run of digits, Bangla digits included), patient code,
+     * public id, else name via the trigram index — so a list that is searched "by patient" (the prescriptions
+     * index) matches exactly what the patients index matches, without a second copy of these rules.
+     *
+     * @param  Builder<Patient>  $q
+     */
+    public static function applyTerm(Builder $q, string $query): void
+    {
+        $query = trim($query);
         $ascii = MobileNumber::tryNormalize($query);
         $digits = preg_replace('/\D/', '', str_replace(['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'], ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], $query)) ?? '';
 
@@ -96,10 +111,8 @@ final class PatientSearch
         } elseif ($digits !== '' && strlen($digits) >= 4 && strlen($digits) >= strlen($query) - 3) {
             $q->where('mobile', 'like', '%'.ltrim(preg_replace('/^(00)?88/', '', $digits) ?? '', '+').'%');
         } else {
-            $q->where('name_normalized', 'ilike', '%'.mb_strtolower(trim($query)).'%');
+            $q->where('name_normalized', 'ilike', '%'.mb_strtolower($query).'%');
         }
-
-        return $q->orderByRaw('last_visit_at desc nulls last')->orderByDesc('id')->limit($limit)->get();
     }
 
     /** @return Builder<Patient> */

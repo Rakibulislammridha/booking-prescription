@@ -13,6 +13,7 @@ use App\Http\Controllers\Panel\Prescription\FavouriteController;
 use App\Http\Controllers\Panel\Prescription\InvestigationCatalogController;
 use App\Http\Controllers\Panel\Prescription\IssueController;
 use App\Http\Controllers\Panel\Prescription\PrescriptionController;
+use App\Http\Controllers\Panel\Prescription\PrescriptionIndexController;
 use App\Http\Controllers\Panel\Prescription\PrintController;
 use App\Http\Controllers\Panel\Prescription\SearchController;
 use App\Http\Controllers\Panel\Prescription\ShorthandHelpController;
@@ -25,6 +26,12 @@ use Illuminate\Support\Facades\Route;
 // Prescription module, panel surface (names panel.prescription.*). {visit} / {prescription} bind by public_id
 // (CONVENTIONS §5); templates, snippets, favourites, vitals, catalog rows bind their bigint id (panel URLs only).
 // The writer's XHR endpoints return JSON from the panel surface — the documented exception of CONVENTIONS §5.
+
+// The sidebar's list. Named `panel.prescriptions.index` outside the module's `prescription.` group on purpose: the
+// shell's nav entry has pointed at that name (and matched `panel.prescription*` for its selected state) since it
+// shipped, and the name reads as the resource it lists.
+Route::get('prescriptions', PrescriptionIndexController::class)->name('prescriptions.index');
+
 Route::name('prescription.')->group(function (): void {
     // --- visits -------------------------------------------------------------------------------------------------
     Route::post('serials/{serial:public_id}/visit', [VisitController::class, 'start'])->name('visits.start');

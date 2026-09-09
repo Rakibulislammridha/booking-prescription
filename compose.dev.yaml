@@ -1,0 +1,85 @@
+# Local override: `docker compose -f compose.yaml -f compose.dev.yaml up -d`
+#
+# Purpose: run the SAME image and topology as production on a laptop, with ports published, the edge Caddy and its
+# TLS gate switched off (browse http://demo.bp.localhost:8000 directly — *.localhost resolves to 127.0.0.1), and the
+# repository's ordinary `.env` usable unchanged: the host names it carries (127.0.0.1) are overridden below with the
+# compose service names. Vite's dev server still runs on the HOST (`npm run dev`) because the image ships a
+# production build — this override is for parity, not for hot reload.
+#
+# It does not bind-mount the source tree: Octane caches the Vite manifest and the config in the worker, so an
+# edited file would not be seen anyway (ARCHITECTURE §7.2). Rebuild the image (`docker compose build app`) instead.
+
+services:
+  caddy:
+    profiles: [edge]        # hidden unless COMPOSE_PROFILES=edge — no TLS locally
+  tls-ask:
+    profiles: [edge]
+
+  init:
+    environment: &dev-env
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://bp.localhost:8000
+      APP_CENTRAL_DOMAIN: bp.localhost
+      DB_HOST: postgres
+      CATALOG_DB_HOST: postgres
+      REDIS_HOST: valkey
+      MEILISEARCH_HOST: http://meilisearch:7700
+      AWS_ENDPOINT: http://minio:9000
+      AWS_USE_PATH_STYLE_ENDPOINT: "true"
+      REVERB_HOST: localhost
+      REVERB_PORT: "8080"
+      REVERB_SCHEME: http
+      OCTANE_HTTPS: "false"
+      TRUSTED_PROXIES: ""
+      SESSION_SECURE_COOKIE: "false"
+      LOG_LEVEL: debug
+      BILLING_GATEWAY_DRIVER: log
+      NOTIFICATIONS_FORCE_LOG_DRIVER: "true"
+
+  app:
+    environment:
+      <<: *dev-env
+      OCTANE_WORKERS: "2"
+      OCTANE_MAX_REQUESTS: "50"
+      OCTANE_LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  horizon:
+    environment: *dev-env
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  scheduler:
+    environment: *dev-env
+
+  reverb:
+    environment: *dev-env
+    ports:
+      - "8080:8080"
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  valkey:
+    ports:
+      - "6379:6379"
+
+  meilisearch:
+    environment:
+      MEILI_ENV: development
+    ports:
+      - "7700:7700"
+
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"

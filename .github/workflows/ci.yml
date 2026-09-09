@@ -1,0 +1,188 @@
+# The definition-of-done gate (docs/CONVENTIONS.md §9) on every push and pull request.
+#
+#   frontend  npm ci → typecheck → vitest → npm run build (two Vite passes) → the two payload budgets
+#   backend   composer → pint → phpstan (custom rules) → lang:check → php artisan test (ALL suites and groups,
+#             including `concurrency`, which spawns real `php artisan serials:hammer` processes, and `search`/
+#             `realtime`/`browsershot`, which need Meilisearch, Valkey and Chrome)
+#
+# Test environment = exactly what scripts/test-agent.sh 1 exports (CONVENTIONS §6.1): booking_test_1 /
+# catalog_test_1 / SCOUT_PREFIX=test1_ / REDIS_DB=1. phpunit.xml sets the rest without force="true", so these real
+# environment variables win over both phpunit.xml and the .env copied from .env.example (needed only for APP_KEY).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PHP_VERSION: "8.4"
+  NODE_VERSION: "22"
+  PUPPETEER_SKIP_DOWNLOAD: "1"   # Browsershot uses the runner's Google Chrome (CHROME_PATH default)
+
+jobs:
+  frontend:
+    name: Frontend gate (typecheck, vitest, build, budgets)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Vitest
+        run: npm run test
+
+      - name: Build (site pass, then panel pass)
+        run: npm run build
+
+      - name: Site dependency + first-load budget (95 KB gzip per route)
+        run: scripts/check-site-deps.sh --require-build
+
+      - name: Panel dependency rules + first-load budgets
+        run: scripts/check-panel-budget.sh --require-build
+
+  backend:
+    name: Backend gate (pint, phpstan, lang:check, full test suite)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: root            # matches .env.example / BRIEF §3 dev credentials
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: booking_test_1
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U root -d booking_test_1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      valkey:
+        image: valkey/valkey:8.1-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+      meilisearch:
+        image: getmeili/meilisearch:v1.53
+        env:
+          MEILI_MASTER_KEY: bp-dev-master-key-0123456789abcdef
+          MEILI_ENV: development
+          MEILI_NO_ANALYTICS: "true"
+        ports:
+          - 7700:7700
+        options: >-
+          --health-cmd "curl -fsS http://127.0.0.1:7700/health"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      # scripts/test-agent.sh 1 (CONVENTIONS §6.1)
+      DB_DATABASE: booking_test_1
+      CATALOG_DB_DATABASE: catalog_test_1
+      SCOUT_PREFIX: test1_
+      REDIS_DB: "1"
+      # Services on the runner's loopback (ports mapped above).
+      DB_HOST: 127.0.0.1
+      DB_USERNAME: root
+      DB_PASSWORD: password
+      CATALOG_DB_HOST: 127.0.0.1
+      CATALOG_DB_USERNAME: root
+      CATALOG_DB_PASSWORD: password
+      CATALOG_ADMIN_DB_USERNAME: root
+      CATALOG_ADMIN_DB_PASSWORD: password
+      REDIS_HOST: 127.0.0.1
+      MEILISEARCH_HOST: http://127.0.0.1:7700
+      MEILISEARCH_KEY: bp-dev-master-key-0123456789abcdef
+      # Browsershot (`browsershot` group): the runner image ships Google Chrome at /usr/bin/google-chrome and
+      # Node on PATH; puppeteer comes from `npm ci`. `node`/`npm` mean "use PATH" (PdfRenderer).
+      CHROME_PATH: /usr/bin/google-chrome
+      NODE_BINARY: node
+      NPM_BINARY: npm
+      PATIENTS_PDFTOTEXT_BIN: /usr/bin/pdftotext
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          # The image's list (Dockerfile) minus nothing: the suite must run on the platform production runs on.
+          extensions: pdo_pgsql, pgsql, redis, intl, gd, zip, bcmath, sodium, pcntl, posix, mbstring, opcache
+          coverage: none
+          tools: composer:v2
+        env:
+          COMPOSER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Composer cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: composer install
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: npm ci (puppeteer for the browsershot group)
+        run: npm ci --no-audit --no-fund
+
+      - name: System tools the suite shells out to (pg_dump 16 for tenants:backup, pdftotext/pdftoppm for PDFs)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends postgresql-client-16 poppler-utils
+          pg_dump --version
+          pdftotext -v 2>&1 | head -1
+          google-chrome --version
+
+      - name: Environment (.env only supplies APP_KEY; everything else comes from phpunit.xml and the job env)
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      - name: Second database (catalog_test_1)
+        env:
+          PGPASSWORD: password
+        run: psql -h 127.0.0.1 -U root -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE catalog_test_1'
+
+      - name: Pint
+        run: vendor/bin/pint --test
+
+      - name: PHPStan (level 6 + project rules)
+        run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+
+      - name: lang:check
+        run: php artisan lang:check
+
+      - name: Full test suite (Unit, Feature, Concurrency; all groups)
+        run: php artisan test --no-interaction

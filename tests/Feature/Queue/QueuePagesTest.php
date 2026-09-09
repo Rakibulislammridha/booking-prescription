@@ -212,7 +212,7 @@ final class QueuePagesTest extends TestCase
         $this->issueMany($session, 2);
         $this->actingAsStaff(Role::Receptionist, $branch);
 
-        $this->get('/panel/queue')
+        $this->get('/panel/queue/today')
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Queue/Today')

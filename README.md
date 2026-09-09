@@ -1,59 +1,118 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Booking to Prescription
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Multi-tenant SaaS for the complete outpatient (OPD) journey of hospitals and clinics in Bangladesh:
 
-## About Laravel
+**patient books → serial issued → reception checks in and collects the fee → vitals recorded → doctor writes the
+prescription → printed / PDF / SMS delivered → follow-up auto-drafted.**
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Two things carry it (docs/BRIEF.md §1): the **live queue** — a patient watches their serial move on a cheap Android
+phone instead of sitting in a corridor — and the **prescription writer** — a doctor finishes a routine prescription
+in under a minute, with Bangla typography that prints correctly on a preprinted pad. Around them: online and
+counter booking with a serial engine proven under parallel load, an offline-capable reception PWA, a patient
+mini-EMR, bKash/Nagad/SSLCommerz payments, SMS/WhatsApp/push notifications, a telemedicine add-on, reports, and a
+SaaS control plane (plans, limits, subscriptions, custom domains, impersonation, encrypted per-tenant backups).
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Stack (locked — docs/BRIEF.md §2)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+| Layer | Choice |
+|---|---|
+| Backend | PHP 8.4, Laravel 12, **Octane on FrankenPHP**, Horizon (7 queues), Reverb (WebSockets) with a polling fallback |
+| Frontend | Inertia + React 19; MUI for the staff panel, Tailwind (preact-compat build, ≤ 95 KB gzip per route) for the public site; PWA for the reception desk (Dexie/IndexedDB, Workbox) |
+| Data | PostgreSQL 16 — `booking` (schema-per-tenant: `public` + `tenant_<id>`) and `catalog` (shared DGDA drug/ICD reference, **SELECT-only at runtime**) |
+| Search | Meilisearch (drug, ICD-10 and patient autocomplete) |
+| Cache / queues / sessions | Redis protocol — Valkey in production, Dragonfly on the dev box |
+| PDF | Browsershot + headless Chrome with Noto Sans/Serif Bengali. DomPDF is banned |
+| Storage | S3-compatible (`uploads`, `pdfs`, `backups` disks); tenant dumps encrypted with libsodium before upload |
+| Infra | VPS + Docker Compose (`compose.yaml`), Caddy edge with on-demand TLS, GitHub Actions |
 
-## Learning Laravel
+## Local setup (about five minutes once the services are installed)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Generic path. (The dev box this was built on has two PHP installs and runs Dragonfly/Meilisearch from
+`~/.local/bin` — see `scripts/dev-services.sh` and `docs/ARCHITECTURE.md` §0; that is a local quirk, not a
+requirement.)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+**Needs:** PHP 8.4 with `pdo_pgsql pgsql redis intl gd zip bcmath sodium pcntl posix mbstring opcache` (no imagick),
+Composer 2, PostgreSQL 16, a Redis-compatible server (Redis 7 / Valkey 8 / Dragonfly), Meilisearch 1.x, Node 22+,
+Google Chrome or Chromium, `pg_dump`/`pg_restore`/`psql` 16, `pdftotext` (poppler), and the Noto Sans Bengali +
+Noto Serif Bengali fonts installed system-wide (`fonts-noto-core` on Debian/Ubuntu).
 
-## Laravel Sponsors
+```bash
+git clone <repo> booking-prescription && cd booking-prescription
+composer install
+npm ci                                   # PUPPETEER_SKIP_DOWNLOAD=1 npm ci if you have a system Chrome
+cp .env.example .env && php artisan key:generate
+# .env: DB_*/CATALOG_DB_* (create the two empty databases `booking` and `catalog` first), REDIS_*, MEILISEARCH_*,
+#       CHROME_PATH, NODE_BINARY/NPM_BINARY (or `node`/`npm` for PATH)
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+php artisan migrate                      # central `public` schema
+php artisan catalog:migrate --seed       # catalog database + the bundled development sample (via the real importer)
+php artisan catalog:index-search --fresh # Meilisearch catalog indexes
+php artisan db:seed                      # plans + super admin + the `demo` tenant with demo data (idempotent)
 
-### Premium Partners
+php artisan octane:start --server=frankenphp --host=127.0.0.1 --port=8000   # downloads the frankenphp binary on first run; add --watch only after `npm i -D chokidar`
+php artisan horizon                      # queues
+php artisan reverb:start --host=127.0.0.1 --port=8080                                # WebSockets
+npm run dev                              # Vite (both surfaces from one dev server)
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+`*.localhost` resolves to 127.0.0.1 without touching `/etc/hosts`, so with `APP_CENTRAL_DOMAIN=bp.localhost`:
 
-## Contributing
+| URL | What |
+|---|---|
+| http://demo.bp.localhost:8000/panel | staff panel of the demo clinic |
+| http://demo.bp.localhost:8000 | its public booking site; http://queue.demo.bp.localhost:8000/… the live queue |
+| http://super.bp.localhost:8000 | platform console (Horizon at `/horizon`) |
+| http://bp.localhost:8000 | central marketing / sign-up |
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+**Demo credentials** (seeders; development only):
 
-## Code of Conduct
+| Account | Login | Password |
+|---|---|---|
+| Hospital admin, demo clinic | `admin@demo.test` | `password` |
+| Doctor, demo clinic | `rahman@demo.test` | `password` |
+| Super admin | `super@bp.localhost` | `password` — the console requires TOTP: on first login it holds you on the enrolment screen; scan the QR with any authenticator and keep the recovery codes. `SUPER_2FA_REQUIRED=false` in `.env` makes enrolment optional locally (config/saas.php). If the dev database already has the account enrolled, use that authenticator or clear `two_factor_*` on the row (docs/OPERATIONS.md §3.6) |
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Same stack in containers: `docker compose -f compose.yaml -f compose.dev.yaml up -d` (image built from
+`Dockerfile`; see docs/DEPLOYMENT.md §3).
 
-## Security Vulnerabilities
+## Tests and quality gates
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Every engineer gets an isolated database pair (`booking_test_N` / `catalog_test_N`, N = 1–16), a Meilisearch
+prefix and a Redis database (docs/CONVENTIONS.md §6):
 
-## License
+```bash
+scripts/test-agent.sh 1                                     # whole suite: Unit, Feature, Concurrency (real parallel processes)
+scripts/test-agent.sh 1 --exclude-group=concurrency,search  # quick loop
+scripts/test-agent.sh 1 --group=concurrency                 # serial engine, block leases, coupon/plan limits under load (~10 min)
+npm run test                                                # Vitest (jsdom)
+npm run typecheck                                           # tsc
+vendor/bin/pint --test && vendor/bin/phpstan analyse --memory-limit=1G && php artisan lang:check
+npm run build && scripts/check-site-deps.sh --require-build && scripts/check-panel-budget.sh --require-build
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+`.github/workflows/ci.yml` runs exactly that gate on every push and pull request (Postgres 16, Valkey and
+Meilisearch as services; the concurrency group included). `.github/workflows/docker-image.yml` builds and pushes the
+production image on `v*` tags.
+
+## Documentation
+
+| File | What it is |
+|---|---|
+| `docs/BRIEF.md` | the product brief: mission, locked decisions, modules, definition of done |
+| `docs/ARCHITECTURE.md` | system shape, tenancy (schema-per-tenant), HTTP wiring, queues, scheduler, frontend, cross-cutting concerns |
+| `docs/CONVENTIONS.md` | ownership map, migrations, PHP/JS conventions, test harness, definition of done, gates |
+| `docs/SCHEMA.md` | every table and column, both databases |
+| `docs/SERIAL_ENGINE.md` | the serial/queue-number engine and its invariants |
+| `docs/REALTIME.md` | live queue, Reverb channels, polling fallback, rendering budgets |
+| `docs/OFFLINE.md` | the reception PWA's offline model and replay |
+| `docs/PRESCRIPTION.md` | the prescription writer, safety checks, rendering and PDF |
+| `docs/CATALOG.md` | the drug/ICD catalog, read-only enforcement, Meilisearch indexes, DGDA import |
+| `docs/modules/saas.md`, `docs/modules/telemedicine.md` | module notes where behaviour deviates from the docs above |
+| `docs/DEPLOYMENT.md` | **production runbook**: image, compose, environment variables, DNS, TLS, Postgres roles, first boot, backups and restore drill, deploys, monitoring |
+| `docs/OPERATIONS.md` | **day 2**: tenants, key rotation, stuck queues, re-indexing, the schedule and what a missed run costs, logs, known limitations |
+
+## Layout
+
+`app/Domain/<Module>` (actions, services, events), `app/Tenancy` (schema switching), `app/Http/Controllers/{Panel,Site,Api,Super,Central}`,
+`resources/js/{panel,site,shared}`, `database/migrations/{,tenant,catalog}`, `routes/{panel,site,api,super,central}`,
+`tests/{Unit,Feature,Concurrency}`, `docker/` + `compose*.yaml` + `Dockerfile` (production), `scripts/` (dev services, test isolation, budgets, deploy).

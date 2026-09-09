@@ -1866,6 +1866,22 @@ export interface IssuedPrescription extends PrescriptionBrief {
   delivered_channels: string[];
   voided: { at: string; reason: string | null } | null;
 }
+/** One row of GET /panel/prescriptions (PrescriptionRowResource): a finder row — labels and status, never the snapshot. */
+export interface PrescriptionIndexRow {
+  id: string;
+  version: number;
+  status: PrescriptionStatus;
+  language: PrescriptionLanguage;
+  issued_at: string | null;
+  created_at: string | null;
+  verification_code: string | null;
+  pdf_status: 'ready' | 'pending';
+  items_count: number;
+  diagnosis: string | null;
+  visit_id: string;
+  patient: { public_id: string; patient_code: string; name: string; mobile_local: string; age_text: string | null; gender: string | null } | null;
+  doctor: { public_id: string; name: string; name_bn: string | null } | null;
+}
 /** prescriptions.snapshot (§6.2) — base keys of SCHEMA §5.3.2 plus the additive ones. */
 export interface PrescriptionSnapshot {
   schema: 1;

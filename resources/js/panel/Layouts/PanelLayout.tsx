@@ -91,7 +91,8 @@ const NAV: NavItem[] = [
   { key: 'queue', routeName: 'panel.queue.index', icon: <QueueIcon />, pattern: 'panel.queue.*' },
   { key: 'scheduling', routeName: 'panel.scheduling.index', icon: <ScheduleIcon />, pattern: 'panel.scheduling.*', permission: 'scheduling.schedules.manage' },
   { key: 'patients', routeName: 'panel.patients.index', icon: <PatientsIcon />, pattern: 'panel.patients.*', permission: 'patients.view' },
-  { key: 'prescriptions', routeName: 'panel.prescriptions.index', icon: <PrescriptionIcon />, pattern: 'panel.prescriptions.*' },
+  // `panel.prescription*`: the list is `panel.prescriptions.index`, the writer / show / templates are `panel.prescription.*`.
+  { key: 'prescriptions', routeName: 'panel.prescriptions.index', icon: <PrescriptionIcon />, pattern: 'panel.prescription*' },
   { key: 'custom_brands', routeName: 'panel.catalog.custom-brands.index', icon: <CustomBrandsIcon />, pattern: 'panel.catalog.*', permission: 'catalog.custom-brands.manage' },
   { key: 'billing', routeName: 'panel.billing.index', icon: <BillingIcon />, pattern: 'panel.billing.*', permission: 'billing.invoices.view' },
   { key: 'notifications', routeName: 'panel.notifications.index', icon: <NotificationsIcon />, pattern: 'panel.notifications.*', permission: 'notifications.templates.manage' },

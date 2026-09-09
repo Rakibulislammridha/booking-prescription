@@ -1198,6 +1198,7 @@ declare module 'ziggy-js' {
             "binding": "public_id"
         }
     ],
+    "panel.prescriptions.index": [],
     "panel.prescription.visits.start": [
         {
             "name": "serial",
@@ -1510,6 +1511,7 @@ declare module 'ziggy-js' {
     "panel.prescription.search.investigations": [],
     "panel.prescription.search.doctors": [],
     "panel.prescription.help.shorthand": [],
+    "panel.queue.index": [],
     "panel.queue.today": [],
     "panel.queue.today.data": [],
     "panel.queue.doctor": [],

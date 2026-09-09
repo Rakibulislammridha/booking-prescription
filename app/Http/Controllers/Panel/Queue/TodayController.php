@@ -20,9 +20,10 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * `panel.queue.today` — today's queues at the active branch in one view (now serving, waiting, delay), each row a
- * link into the doctor screen. Live over the reception channel's `board.updated`; polled in degraded mode through
- * `panel.queue.today.data`.
+ * `panel.queue.today` (GET /panel/queue/today) — today's queues at the active branch in one view (now serving,
+ * waiting, delay), each row a link into the doctor screen. Live over the reception channel's `board.updated`;
+ * polled in degraded mode through `panel.queue.today.data`. `panel.queue.index` (GET /panel/queue) lands here for
+ * everyone who is not a doctor.
  */
 final class TodayController extends Controller
 {

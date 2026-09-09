@@ -7,6 +7,7 @@ namespace App\Domain\SaaS;
 use App\Domain\Catalog\Events\CatalogReconciliationCompleted;
 use App\Domain\Notifications\Events\NotificationDeadLettered;
 use App\Domain\Prescription\Events\PrescriptionIssued;
+use App\Domain\SaaS\Console\CreateSuperAdminCommand;
 use App\Domain\SaaS\Console\DunSubscriptionsCommand;
 use App\Domain\SaaS\Console\LimitHammerCommand;
 use App\Domain\SaaS\Console\PruneImpersonationTokensCommand;
@@ -93,6 +94,7 @@ final class SaaSServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                CreateSuperAdminCommand::class,
                 RenewSubscriptionsCommand::class,
                 DunSubscriptionsCommand::class,
                 RecountUsageCommand::class,

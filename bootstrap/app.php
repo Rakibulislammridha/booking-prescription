@@ -20,6 +20,7 @@ use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Laravel\Pennant\Middleware\EnsureFeaturesAreActive;
@@ -47,12 +48,18 @@ return Application::configure(basePath: dirname(__DIR__))
                     ->group($file);
             }
 
-            // 2. central marketing — bare central domain (and www.).
+            // 2. central marketing — the bare central domain is canonical. Registering the same files a
+            //    second time for `www.` gave every route a duplicate name, which `route:cache` refuses
+            //    ("Another route has already been assigned name [central.…]"), so www. is a 301 instead.
             foreach (glob(base_path('routes/central/*.php')) ?: [] as $file) {
-                foreach ([$central, 'www.'.$central] as $host) {
-                    Route::domain($host)->middleware(['web', 'central'])->name('central.')->group($file);
-                }
+                Route::domain($central)->middleware(['web', 'central'])->name('central.')->group($file);
             }
+
+            Route::domain('www.'.$central)->middleware('central')->any('{path?}', function (Request $request) use ($central) {
+                $target = $request->getScheme().'://'.$central.($request->getPort() && ! in_array($request->getPort(), [80, 443], true) ? ':'.$request->getPort() : '');
+
+                return redirect()->away($target.$request->getRequestUri(), 301);
+            })->where('path', '.*')->name('central.www');
 
             // 3. api — tenant host, Sanctum (stateful cookies for same-origin, device bearer tokens for the PWA's event-log replay).
             foreach (glob(base_path('routes/api/*.php')) ?: [] as $file) {

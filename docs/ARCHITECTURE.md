@@ -1705,4 +1705,4 @@ npm run dev
 ```
 
 Production runs the same four processes under systemd (no Docker on the dev box; the production
-VPS uses the Docker Compose in `deploy/`, out of scope for this document).
+VPS uses `compose.yaml` + `docker/` at the repo root — see `docs/DEPLOYMENT.md`).
