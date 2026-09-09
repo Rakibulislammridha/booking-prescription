@@ -241,7 +241,7 @@ listed there too.
 | Variable | Meaning |
 |---|---|
 | `BP_BACKUP_KEY` [S] | base64 of 32 raw bytes. XChaCha20-Poly1305 key for every `tenants:backup` object (`BackupCipher`). Platform-wide. Empty in production = backups fail with `status = failed` and the reason recorded on the `tenant_backups` row. **Losing it makes every dump written with it unreadable; there is no recovery path by design.** Store it beside `APP_KEY` and off the VPS |
-| `SUPER_2FA_REQUIRED` | `true` (default). The super console forces TOTP enrolment before anything else is reachable; set `false` only behind another second factor (SSO/VPN) — enrolment stays possible, just not compulsory (config/saas.php) |
+| `SUPER_2FA_REQUIRED` | `true` (default). Seeds the DEFAULT of the console's `security.super_two_factor` platform setting (SCHEMA §2.19): `true` → `required` (TOTP enrolment forced before anything else is reachable), `false` → `optional` (enrolment possible, not compulsory). Once an operator has set the policy under Platform settings in the console — including `disabled` — the stored row wins and this variable is ignored; it never needs a restart to change (ARCHITECTURE §6.5, config/saas.php) |
 | `SUPER_2FA_ISSUER` | name in the authenticator app; empty = `APP_NAME` |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` [S], `VAPID_SUBJECT` | one P-256 pair per deployment (`npx web-push generate-vapid-keys`). Empty = the push channel logs instead of sending. Rotating the pair invalidates every browser subscription (OPERATIONS §3.5) |
 | `MAIL_MAILER`=`smtp`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` [S], `MAIL_SCHEME`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | transactional mail |

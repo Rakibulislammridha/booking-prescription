@@ -299,7 +299,7 @@ the dev box cannot enforce it.
 
 * `public` — control plane (SCHEMA.md §2): `tenants, plans, plan_features, subscriptions,
   subscription_invoices, subscription_payments, domains, super_admins, feature_flags (Pennant),
-  usage_counters, tenant_backups, catalog_reconciliation_reports, audit_logs_central,
+  usage_counters, tenant_backups, catalog_reconciliation_reports, audit_logs_central, platform_settings,
   personal_access_tokens, password_reset_tokens, impersonation_tokens, failed_jobs, job_batches, migrations`.
 * `tenant_<id>` — one schema per tenant, created by `tenants:create`. Contains every table in
   BRIEF §4 "tenant schema" plus `roles, permissions, model_has_roles, model_has_permissions,
@@ -910,7 +910,7 @@ Model class names are exactly the `**Model**` lines of SCHEMA.md (one model per 
 table SCHEMA.md does not list). Central (`app/Models/Central`, columns per SCHEMA.md §2): `Tenant` (implements `FeatureScopeable`;
 `schema_name` column = `tenant_{id}`, filled by provisioning), `Domain`, `Plan`, `PlanFeature`, `Subscription`,
 `SubscriptionInvoice`, `SubscriptionPayment`, `SuperAdmin` (Authenticatable), `UsageCounter`, `TenantBackup`,
-`CatalogReconciliationReport`, `CustomBrandPromotion`, `AuditLogCentral` (`audit_logs_central`), `PersonalAccessToken`, `ImpersonationToken`.
+`CatalogReconciliationReport`, `CustomBrandPromotion`, `AuditLogCentral` (`audit_logs_central`), `PersonalAccessToken`, `ImpersonationToken`, `PlatformSetting` (`platform_settings`, SCHEMA §2.19).
 
 Tenant (`app/Models/Tenant`) — by module: **Clinic** `Branch, Department, Specialty, User
 (Authenticatable, HasRoles, HasApiTokens), Doctor, DoctorProfile, DoctorSpecialty, DoctorPadSetting, Setting`; **Scheduling**
@@ -1133,18 +1133,47 @@ Email + password + TOTP (clinic-independent; `pragmarx/google2fa` is **not** ins
 implements TOTP itself in `App\Domain\SaaS\Services\Totp`: RFC 6238, HMAC-SHA1, 6 digits, a 30-second step, the
 counter packed big-endian, comparison with `hash_equals`, verified against the RFC's own test vectors).
 
-**Enforcement is on by default.** `config('saas.two_factor.required')` (env `SUPER_2FA_REQUIRED`, default `true`)
-puts `App\Domain\SaaS\Http\Middleware\EnsureSuperTwoFactor` in charge of the whole `super.` route group: an
-operator who has not enrolled reaches the enrolment screen and nothing else — not a banner, a wall — because this
-is the one account that can read every clinic's records. Only `super.login`, `super.two-factor.challenge`,
-`super.two-factor.*` and `super.logout` opt out.
+**Enforcement is a platform setting, on by default.** The policy is the `public.platform_settings` key
+`security.super_two_factor` (SCHEMA §2.19; `App\Domain\SaaS\Enums\SuperTwoFactorPolicy`), set from the console's
+**Platform settings** screen (`super.settings.index`; saving it re-asks the operator's current password — the
+password, not a TOTP code, since it is the switch that turns the code off — and writes an `audit_logs_central`
+`settings_change` row with before/after) and read at **request time** by `SuperTwoFactor::policy()` through
+`App\Domain\SaaS\Services\PlatformSettings`: one Redis hit, never memoised on an instance, never read at boot, so
+a change takes effect on the next request of every Octane and queue worker with no restart.
+`config('saas.two_factor.required')` (env `SUPER_2FA_REQUIRED`, default `true`) only seeds the registry default —
+`true` → `required`, `false` → `optional`; once a row exists the env value is ignored. Three states, enforced by
+`App\Domain\SaaS\Http\Middleware\EnsureSuperTwoFactor` on the whole `super.` route group and by the login,
+challenge and enrolment controllers:
+
+* `required` — every operator must enrol before the console opens to them and is challenged at every sign-in. An
+  operator who has not enrolled reaches the enrolment screen and nothing else — not a banner, a wall — because this
+  is the one account that can read every clinic's records. Their only other doors are `super.logout` and
+  `super.settings.*`: the switch that holds them there lives on the same console, an un-enrolled password-holder
+  could pass the wall by enrolling a phone of their own anyway, and a wall with no switch behind it is how a
+  platform locks itself out of its own console.
+* `optional` — an enrolled operator is challenged; one who has not enrolled signs in with the password alone and
+  may enrol from the Security tab.
+* `disabled` — nobody is challenged, enrolled or not. The login never parks a pending challenge, a pending
+  challenge parked before the flip is void (back to the login screen, which now lets them in on the password), and
+  the Security tab is read-only with a "disabled by platform policy" state — it offers no enrol, rotate or turn-off
+  form, and the controller refuses those writes. Secrets and recovery codes are **kept**, not wiped, so switching
+  back restores every enrolment exactly as it was.
+
+Only `super.login`, `super.two-factor.challenge`, `super.two-factor.*` and `super.logout` opt out of the middleware.
+There is **no second factor on the tenant staff guard or on onboarding sign-up**: `users.two_factor_*` columns
+exist (SCHEMA §3.1) but nothing reads them; this policy concerns the platform console only.
 
 **The flow.** `Super\Auth\LoginController` checks the password through the provider directly rather than
-`attempt()`, and for an enrolled operator does **not** log them in: it parks `{id, remember, at}` under
-`SuperTwoFactor::SESSION_PENDING` (TTL `saas.two_factor.pending_ttl_seconds`) and redirects to
-`Super\Auth\TwoFactorChallengeController`. So an unchallenged session is a GUEST — it cannot reach a super route
-and cannot mint an impersonation token, by construction rather than by check. The challenge logs the operator in,
-regenerates the session id and stamps `SESSION_PASSED_AT`, which the middleware also verifies as a second line.
+`attempt()`, and for an operator the policy challenges (`SuperTwoFactor::challenges()` — enrolled, and the policy is
+not `disabled`) does **not** log them in: it parks `{id, at}` under `SuperTwoFactor::SESSION_PENDING` (TTL
+`saas.two_factor.pending_ttl_seconds`) and redirects to `Super\Auth\TwoFactorChallengeController`. So an
+unchallenged session is a GUEST — it cannot reach a super route and cannot mint an impersonation token, by
+construction rather than by check. The challenge logs the operator in, regenerates the session id and stamps
+`SESSION_PASSED_AT`, which the middleware also verifies as a second line. The stamp is written ONLY by a path that
+verified a code (the challenge, or confirming an enrolment) — a password-only login never writes it — which is what
+makes a policy change bite immediately: an enrolled operator who signed in on the password alone while the policy
+was `disabled` carries no stamp, and the first request after the policy is switched back to `required`/`optional`
+logs that session out and sends them to sign in properly.
 
 **Enrolment** (`Super\Auth\TwoFactorController`, page `Super/Auth/TwoFactor`) is confirm-before-enable: the secret
 is written with `two_factor_confirmed_at` NULL and only a code that verifies against it turns the factor on, so a

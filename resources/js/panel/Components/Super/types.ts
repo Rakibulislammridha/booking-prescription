@@ -376,3 +376,33 @@ export interface ApprovePromotionPayload {
 export interface RejectPromotionPayload {
   reason: string;
 }
+
+/** One option of a closed-list platform setting (App\Domain\SaaS\Queries\PlatformSettingsScreen). */
+export interface PlatformSettingOption {
+  value: string;
+  label: string;
+  help: string;
+}
+
+/** One `PlatformSettingsRegistry` key as the Platform settings screen renders it. Secrets arrive MASKED. */
+export interface PlatformSettingRow {
+  key: string;
+  type: 'string' | 'int' | 'number' | 'bool';
+  value: string | number | boolean | null;
+  default: string | number | boolean | null;
+  options: PlatformSettingOption[] | null;
+  secret: boolean;
+  is_set: boolean;
+  /** Saving re-asks the operator's current password (every `security.*` key). */
+  requires_password: boolean;
+  label: string;
+  description: string;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface PlatformSettingGroup {
+  key: string;
+  label: string;
+  settings: PlatformSettingRow[];
+}

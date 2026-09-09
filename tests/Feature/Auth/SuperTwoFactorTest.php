@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Auth;
 
+use App\Domain\SaaS\Enums\SuperTwoFactorPolicy;
 use App\Domain\SaaS\Services\SuperTwoFactor;
 use App\Domain\SaaS\Services\Totp;
 use App\Models\Central\AuditLogCentral;
@@ -12,6 +13,7 @@ use App\Models\Central\SuperAdmin;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
+use Tests\Feature\SaaS\Concerns\ControlsPlatformSettings;
 use Tests\TestCase;
 
 /**
@@ -24,7 +26,16 @@ use Tests\TestCase;
  */
 final class SuperTwoFactorTest extends TestCase
 {
+    use ControlsPlatformSettings;
+
     private const PASSWORD = 'secret-123';
+
+    /** Everything here runs under the production default, stated explicitly (SuperTwoFactorPolicyTest covers the rest). */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->setSuperTwoFactorPolicy(SuperTwoFactorPolicy::Required);
+    }
 
     public function test_enrolment_is_confirm_before_enable_and_mints_recovery_codes(): void
     {
@@ -213,8 +224,9 @@ final class SuperTwoFactorTest extends TestCase
         $this->get('/security/two-factor')->assertOk();
         $this->post('/logout')->assertRedirect('http://super.bp.test/login');   // the one other door
 
-        // With enforcement off the same operator works normally — the flag is real, not decorative.
-        config(['saas.two_factor.required' => false]);
+        // With the platform policy at `optional` the same operator works normally — the policy is real, not
+        // decorative, and it is read on the next request rather than at boot.
+        $this->setSuperTwoFactorPolicy(SuperTwoFactorPolicy::Optional);
         $this->actingAs($admin, 'super');
         $this->get('/')->assertOk();
     }

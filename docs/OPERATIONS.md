@@ -165,8 +165,19 @@ App\Models\Central\SuperAdmin::query()->where('email','ops@example.com')->firstO
   ->forceFill(['two_factor_secret' => null, 'two_factor_recovery_codes' => null, 'two_factor_confirmed_at' => null])->save();"
 ```
 
-— the next login is held on the enrolment screen again (`SUPER_2FA_REQUIRED=true`). Audit rows
+— the next login is held on the enrolment screen again (policy `required`). Audit rows
 `two_factor_enabled|disabled|failed|recovery_used` in `public.audit_logs_central` tell you what happened.
+
+Whether the console asks for a code at all is the platform setting `security.super_two_factor` (`required` |
+`optional` | `disabled`, SCHEMA §2.19), switched from **Platform settings** in the console (re-asks the operator's
+password, audited as `settings_change`) and read on every request — no restart. `disabled` keeps every enrolment
+intact; switching back restores it. An operator held on forced enrolment can still open Platform settings. From a
+shell, audited as the system:
+
+```bash
+docker compose exec app php artisan tinker --execute="
+app(App\Domain\SaaS\Actions\Settings\UpdatePlatformSetting::class)->handle('security.super_two_factor', 'disabled');"
+```
 
 ---
 

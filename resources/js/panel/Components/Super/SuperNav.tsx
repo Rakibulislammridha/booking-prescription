@@ -25,6 +25,7 @@ const ITEMS: NavItem[] = [
   { key: 'review', routeName: 'super.catalog.review', pattern: 'super.catalog.review', label: 'super.nav.review' },
   { key: 'reconciliation', routeName: 'super.catalog.reconciliation.index', pattern: 'super.catalog.reconciliation.*', label: 'super.nav.reconciliation' },
   { key: 'audit', routeName: 'super.audit.index', pattern: 'super.audit.*', label: 'super.nav.audit' },
+  { key: 'settings', routeName: 'super.settings.index', pattern: 'super.settings.*', label: 'super.nav.settings' },
   { key: 'security', routeName: 'super.two-factor.show', pattern: 'super.two-factor.*', label: 'super.nav.security' },
 ];
 

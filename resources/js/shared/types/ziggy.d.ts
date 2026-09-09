@@ -62,6 +62,13 @@ declare module 'ziggy-js' {
             "binding": "id"
         }
     ],
+    "super.settings.index": [],
+    "super.settings.update": [
+        {
+            "name": "key",
+            "required": true
+        }
+    ],
     "super.tenants.index": [],
     "super.tenants.show": [
         {
@@ -281,6 +288,12 @@ declare module 'ziggy-js' {
             "name": "tenant",
             "required": true,
             "binding": "public_id"
+        }
+    ],
+    "central.www": [
+        {
+            "name": "path",
+            "required": false
         }
     ],
     "api.billing.webhook": [

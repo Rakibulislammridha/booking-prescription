@@ -6,6 +6,8 @@ namespace App\Domain\SaaS\Services;
 
 use App\Domain\Audit\Enums\CentralAuditAction;
 use App\Domain\Prescription\Render\QrCodeRenderer;
+use App\Domain\SaaS\Enums\SuperTwoFactorPolicy;
+use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Models\Central\SuperAdmin;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\Repository as Cache;
@@ -39,6 +41,11 @@ use SensitiveParameter;
  *     our own CSPRNG output, not a human-chosen password: there is nothing to brute-force, and it is the same
  *     reasoning that makes Sanctum hash API tokens with SHA-256. Using one is audited, and the count that remains
  *     is on the screen — a recovery code spent by someone else is a visible event.
+ *   · **Policy.** Whether any of this is enforced is the platform setting `security.super_two_factor`
+ *     (`SuperTwoFactorPolicy`: required | optional | disabled), read through `policy()` at request time — never
+ *     cached on this instance, never read at boot — so the console toggle takes effect on the next request. Under
+ *     `disabled` nothing is challenged and nothing is wiped: `enabled()` still answers from the row, `challenges()`
+ *     is what the login, the challenge and the middleware ask, and the two differ exactly when the policy says so.
  */
 final class SuperTwoFactor
 {
@@ -57,16 +64,36 @@ final class SuperTwoFactor
     public function __construct(
         private readonly CentralAudit $audit,
         private readonly Cache $cache,
+        private readonly PlatformSettings $settings,
     ) {}
 
-    public function required(): bool
+    /** The platform-wide policy, as of THIS request (one cache hit; the toggle needs no restart to take effect). */
+    public function policy(): SuperTwoFactorPolicy
     {
-        return (bool) config('saas.two_factor.required', true);
+        $value = $this->settings->get(PlatformSettingsRegistry::SUPER_TWO_FACTOR);
+
+        return (is_string($value) ? SuperTwoFactorPolicy::tryFrom($value) : null) ?? SuperTwoFactorPolicy::Required;
     }
 
+    /** Enrolment is compulsory for every operator (policy `required`). */
+    public function required(): bool
+    {
+        return $this->policy()->forcesEnrolment();
+    }
+
+    /** The operator has a confirmed, working factor on their row — whatever the policy says about using it. */
     public function enabled(SuperAdmin $admin): bool
     {
         return $admin->two_factor_confirmed_at !== null && $this->secretOf($admin) !== null;
+    }
+
+    /**
+     * This operator is challenged at sign-in and their session must carry the challenge marker: enrolled AND the
+     * policy enforces it. Under `disabled` an enrolled operator signs in with the password alone.
+     */
+    public function challenges(SuperAdmin $admin): bool
+    {
+        return $this->policy()->challengesEnrolled() && $this->enabled($admin);
     }
 
     /** Enrolment is not optional for this operator and they have not done it: the console is closed to them. */

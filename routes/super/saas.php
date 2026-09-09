@@ -22,9 +22,13 @@ use Illuminate\Support\Facades\Route;
 // registered before the api group by bootstrap/app.php's ordering, and opts out of auth AND of the two-factor
 // gate because a heartbeat must answer whether or not anybody is signed in — an operator held on the enrolment
 // screen is online, and a 403 there would paint that screen with the same false OFFLINE bar.
+// The limiter carries its own prefix on purpose: a numeric `throttle:N,M` keys a GUEST by `sha1(domain|ip)` and a
+// signed-in operator by their id, whatever the route — so without a prefix the heartbeat (one hit every five
+// seconds on the login screen) shares one counter with `throttle:10,1` on `POST login`, and an operator who sat on
+// the login page for a minute got 429 on the password they then typed.
 Route::get('api/ping', PingController::class)
     ->withoutMiddleware(['auth:super', EnsureSuperTwoFactor::class])
-    ->middleware('throttle:60,1')->name('ping');
+    ->middleware('throttle:60,1,super-ping')->name('ping');
 
 Route::middleware(EnsureSuperAdminIsActive::class)->group(function (): void {
     Route::get('plans', [PlanController::class, 'index'])->name('plans.index');

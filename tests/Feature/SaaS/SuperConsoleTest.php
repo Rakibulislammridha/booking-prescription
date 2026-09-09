@@ -16,6 +16,7 @@ use App\Models\Central\Plan;
 use App\Models\Central\PlanFeature;
 use App\Models\Central\Subscription;
 use App\Models\Central\SubscriptionInvoice;
+use App\Models\Central\SuperAdmin;
 use Tests\Feature\SaaS\Concerns\ControlsPlanLimits;
 use Tests\TestCase;
 
@@ -66,6 +67,25 @@ final class SuperConsoleTest extends TestCase
         $this->post(route('super.plans.store', absolute: false), [])->assertRedirect(route('super.login', absolute: false));
 
         $this->assertSame(TenantStatus::Trial, $tenant->refresh()->status);
+    }
+
+    /**
+     * A numeric `throttle:N,M` keys a guest by `sha1(domain|ip)` whatever the route, so the panel's connection
+     * heartbeat — one `/api/ping` every five seconds on the login screen — used to spend the login's 10-per-minute
+     * budget: an operator who sat on the login page for a minute got 429 on the password they then typed. The
+     * ping now has its own bucket (`throttle:60,1,super-ping`); this pins that.
+     */
+    public function test_the_connection_heartbeat_does_not_spend_the_login_throttle(): void
+    {
+        $this->asCentral()->withServerVariables(['HTTP_HOST' => 'super.bp.test']);
+        $admin = SuperAdmin::factory()->create(['password' => 'secret-123']);
+
+        for ($beat = 0; $beat < 12; $beat++) {
+            $this->getJson('/api/ping')->assertOk();
+        }
+
+        $this->post('/login', ['email' => $admin->email, 'password' => 'secret-123'])->assertRedirect('http://super.bp.test');
+        $this->assertAuthenticatedAs($admin, 'super');
     }
 
     public function test_deactivating_an_operator_ends_their_session_on_the_next_request(): void

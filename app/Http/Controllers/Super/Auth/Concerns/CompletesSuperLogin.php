@@ -13,20 +13,28 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 /**
- * The last three lines of a super login, wherever it finishes: straight after the password when the operator has
- * no second factor, and after the TOTP challenge when they do. Kept in one place so the `SESSION_PASSED_AT` stamp
- * — the thing `EnsureSuperTwoFactor` reads — can never be forgotten on one of the two paths.
+ * The last lines of a super login, wherever it finishes: straight after the password when the operator is not
+ * challenged (not enrolled, or the platform policy is `disabled`), and after the TOTP challenge when they are.
+ * Kept in one place so the `SESSION_PASSED_AT` stamp — the thing `EnsureSuperTwoFactor` reads — is written by
+ * exactly one path and means exactly one thing: THIS session presented a second factor. A password-only login
+ * never stamps it, which is what lets a policy switched from `disabled` back to `required`/`optional` send an
+ * enrolled operator back to sign in properly on their very next request (ARCHITECTURE §6.5).
  */
 trait CompletesSuperLogin
 {
-    protected function completeSuperLogin(Request $request, SuperAdmin $admin, CentralAudit $audit): RedirectResponse
+    protected function completeSuperLogin(Request $request, SuperAdmin $admin, CentralAudit $audit, bool $challengePassed): RedirectResponse
     {
         $admin->forceFill(['last_login_at' => CarbonImmutable::now(), 'last_login_ip' => $request->ip()])->saveQuietly();
 
         $request->session()->forget(SuperTwoFactor::SESSION_PENDING);
-        $request->session()->put(SuperTwoFactor::SESSION_PASSED_AT, CarbonImmutable::now()->getTimestamp());
 
-        $audit->record(CentralAuditAction::Login, null, $admin, superAdminId: $admin->id);
+        if ($challengePassed) {
+            $request->session()->put(SuperTwoFactor::SESSION_PASSED_AT, CarbonImmutable::now()->getTimestamp());
+        } else {
+            $request->session()->forget(SuperTwoFactor::SESSION_PASSED_AT);
+        }
+
+        $audit->record(CentralAuditAction::Login, null, $admin, null, ['two_factor' => $challengePassed], superAdminId: $admin->id);
 
         return redirect()->intended(route('super.dashboard', absolute: false));
     }

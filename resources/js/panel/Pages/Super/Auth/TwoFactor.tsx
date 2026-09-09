@@ -3,7 +3,10 @@
 // Also the screen `EnsureSuperTwoFactor` sends an un-enrolled operator to when 2FA is required, which is why the
 // enrolment card leads and says plainly that nothing else in the console will open until it is done.
 //
-// Three states, one page: not enrolled → enrolling (QR + confirm) → enabled (recovery codes, rotate, disable).
+// Three states, one page: not enrolled → enrolling (QR + confirm) → enabled (recovery codes, rotate, disable) —
+// and a fourth, read-only one when the platform policy (`security.super_two_factor`, Platform settings) is
+// `disabled`: the page says so, shows what is kept, and offers no form, because "turn off" for a factor nobody
+// is asked for would mislead.
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useForm } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
@@ -18,9 +21,10 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { RouterLink } from '@panel/Layouts/RouterLink';
 import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { formatDhaka } from '@shared/format/date';
-import { route } from '@shared/routes';
+import { hasRoute, route } from '@shared/routes';
 import type { PageProps } from '@shared/types/inertia';
 
 interface Enrolment {
@@ -29,18 +33,24 @@ interface Enrolment {
   qr_svg: string;
 }
 
+/** App\Domain\SaaS\Enums\SuperTwoFactorPolicy. */
+type Policy = 'required' | 'optional' | 'disabled';
+
 type Props = PageProps<{
   enabled: boolean;
   required: boolean;
+  policy: Policy;
   confirmed_at: string | null;
   recovery_remaining: number;
   enrolment: Enrolment | null;
   recovery_codes?: string[] | null;
 }>;
 
-export default function TwoFactor({ enabled, required, confirmed_at, recovery_remaining, enrolment, recovery_codes }: Props) {
+export default function TwoFactor({ enabled, required, policy, confirmed_at, recovery_remaining, enrolment, recovery_codes }: Props) {
   const { t } = useTranslation();
   const [confirming, setConfirming] = useState(false);
+  const policyDisabled = policy === 'disabled';
+  const since = confirmed_at ? formatDhaka(confirmed_at, 'D MMM YYYY, h:mm a') : '—';
 
   const startForm = useForm({});
   const confirmForm = useForm({ code: '' });
@@ -70,6 +80,18 @@ export default function TwoFactor({ enabled, required, confirmed_at, recovery_re
       <Stack spacing={2} sx={{ maxWidth: 720 }}>
         {!enabled && required ? <Alert severity="warning">{t('auth.two_factor.enrolment_required')}</Alert> : null}
 
+        {policyDisabled ? (
+          <Alert
+            severity="info"
+            action={hasRoute('super.settings.index') ? (
+              <Button color="inherit" size="small" component={RouterLink} href={route('super.settings.index')}>{t('auth.two_factor.policy_link')}</Button>
+            ) : undefined}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>{t('auth.two_factor.policy_disabled_title')}</Typography>
+            <Typography variant="body2">{t('auth.two_factor.policy_disabled_alert')}</Typography>
+          </Alert>
+        ) : null}
+
         {recovery_codes && recovery_codes.length > 0 ? (
           <Alert severity="success">
             <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('auth.two_factor.recovery_codes_title')}</Typography>
@@ -90,13 +112,19 @@ export default function TwoFactor({ enabled, required, confirmed_at, recovery_re
                 label={enabled ? t('auth.two_factor.status_enabled') : t('auth.two_factor.status_disabled')}
               />
             </Stack>
-            <Typography variant="body2" color="text.secondary">{t('auth.two_factor.intro')}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t(policyDisabled ? 'auth.two_factor.intro_disabled' : policy === 'optional' ? 'auth.two_factor.intro_optional' : 'auth.two_factor.intro')}
+            </Typography>
 
-            {enabled ? (
+            {policyDisabled ? (
+              <Typography variant="body2" sx={{ mt: 2 }}>
+                {enabled
+                  ? t('auth.two_factor.policy_disabled_kept', { at: since, remaining: recovery_remaining })
+                  : t('auth.two_factor.policy_disabled_unenrolled')}
+              </Typography>
+            ) : enabled ? (
               <Stack spacing={2} sx={{ mt: 2 }}>
-                <Typography variant="body2">
-                  {t('auth.two_factor.enabled_since', { at: confirmed_at ? formatDhaka(confirmed_at, 'D MMM YYYY, h:mm a') : '—' })}
-                </Typography>
+                <Typography variant="body2">{t('auth.two_factor.enabled_since', { at: since })}</Typography>
                 <Typography variant="body2">{t('auth.two_factor.recovery_remaining', { remaining: recovery_remaining })}</Typography>
                 <Box component="form" onSubmit={regenerate} noValidate sx={{ display: 'grid', gap: 1.5, maxWidth: 320 }}>
                   <Typography variant="body2" color="text.secondary">{t('auth.two_factor.regenerate_recovery_help')}</Typography>
@@ -129,7 +157,7 @@ export default function TwoFactor({ enabled, required, confirmed_at, recovery_re
 
                 <Box component="form" onSubmit={disable} noValidate sx={{ display: 'grid', gap: 1.5, maxWidth: 320 }}>
                   <Typography variant="subtitle2">{t('auth.two_factor.disable_title')}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('auth.two_factor.disable_help')}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t(required ? 'auth.two_factor.disable_help' : 'auth.two_factor.disable_help_optional')}</Typography>
                   <TextField
                     label={t('auth.password')}
                     type="password"

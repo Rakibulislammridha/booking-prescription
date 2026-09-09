@@ -85,7 +85,7 @@ final class TwoFactorChallengeController extends Controller
         Auth::guard('super')->login($admin);        // no remember-me on the super guard (B4)
         $request->session()->regenerate();          // the session id that carried the pending marker never becomes a console session
 
-        return $this->completeSuperLogin($request, $admin, $this->audit);
+        return $this->completeSuperLogin($request, $admin, $this->audit, challengePassed: true);
     }
 
     /** @return array<string, mixed>|null */
@@ -122,8 +122,15 @@ final class TwoFactorChallengeController extends Controller
 
         $admin = SuperAdmin::query()->whereKey((int) $pending['id'])->where('is_active', true)->first();
 
-        // Deactivated, deleted, or their second factor was removed while they were reaching for the phone:
-        // the half-finished login is void rather than silently upgraded into a password-only login.
-        return $admin instanceof SuperAdmin && $this->twoFactor->enabled($admin) ? $admin : null;
+        // Deactivated, deleted, their second factor removed, or the platform policy switched to `disabled` while
+        // they were reaching for the phone: the half-finished login is void rather than silently upgraded into a
+        // password-only login — they start again at the login screen, which now knows what to do with them.
+        if ($admin instanceof SuperAdmin && $this->twoFactor->challenges($admin)) {
+            return $admin;
+        }
+
+        $request->session()->forget(SuperTwoFactor::SESSION_PENDING);
+
+        return null;
     }
 }

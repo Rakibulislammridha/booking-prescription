@@ -70,7 +70,7 @@ npm run dev                              # Vite (both surfaces from one dev serv
 |---|---|---|
 | Hospital admin, demo clinic | `admin@demo.test` | `password` |
 | Doctor, demo clinic | `rahman@demo.test` | `password` |
-| Super admin | `super@bp.localhost` | `password` — the console requires TOTP: on first login it holds you on the enrolment screen; scan the QR with any authenticator and keep the recovery codes. `SUPER_2FA_REQUIRED=false` in `.env` makes enrolment optional locally (config/saas.php). If the dev database already has the account enrolled, use that authenticator or clear `two_factor_*` on the row (docs/OPERATIONS.md §3.6) |
+| Super admin | `super@bp.localhost` | `password` — whether the console asks for a TOTP code is the `security.super_two_factor` platform setting (Platform settings tab; `required` / `optional` / `disabled`, SCHEMA §2.19). `SUPER_2FA_REQUIRED` in `.env` only seeds its default (`true` → required: first login holds you on the enrolment screen; scan the QR with any authenticator and keep the recovery codes). The local dev database ships with the policy `disabled` and the account un-enrolled, so the password alone signs in. If the account is enrolled, use that authenticator or clear `two_factor_*` on the row (docs/OPERATIONS.md §3.6) |
 
 Same stack in containers: `docker compose -f compose.yaml -f compose.dev.yaml up -d` (image built from
 `Dockerfile`; see docs/DEPLOYMENT.md §3).

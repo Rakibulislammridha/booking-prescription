@@ -16,6 +16,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $super_admin_id
  * @property int|null $tenant_id
  * @property CentralAuditAction $action
+ * @property string|null $auditable_type
+ * @property int|null $auditable_id
+ * @property array<string, mixed>|null $before
+ * @property array<string, mixed>|null $after
  */
 final class AuditLogCentral extends CentralModel
 {

@@ -109,7 +109,7 @@ Laravel default tables **not created**: `sessions`, `cache`, `cache_locks`, `job
 
 ## 1. Table index
 
-**public (booking DB):** tenants, plans, plan_features, subscriptions, subscription_invoices, subscription_payments, domains, super_admins, feature_flags, usage_counters, tenant_backups, catalog_reconciliation_reports, custom_brand_promotions, impersonation_tokens, audit_logs_central, personal_access_tokens, password_reset_tokens, failed_jobs, job_batches.
+**public (booking DB):** tenants, plans, plan_features, subscriptions, subscription_invoices, subscription_payments, domains, super_admins, feature_flags, usage_counters, tenant_backups, catalog_reconciliation_reports, custom_brand_promotions, impersonation_tokens, audit_logs_central, platform_settings, personal_access_tokens, password_reset_tokens, failed_jobs, job_batches.
 
 **tenant_{id} (booking DB):**
 - Setup & identity: branches, departments, specialties, users, password_reset_tokens, personal_access_tokens, permissions, roles, model_has_permissions, model_has_roles, role_has_permissions, doctors, doctor_profiles, doctor_specialties, doctor_pad_settings, holidays, doctor_leaves, settings
@@ -464,6 +464,23 @@ Laravel 12 default shapes, unchanged (`failed_jobs`: id, uuid unique, connection
 **PK** id. **FK** tenant_id → public.tenants(id) ON DELETE CASCADE; reviewed_by_super_admin_id → public.super_admins(id) ON DELETE SET NULL. **Unique** public_id; (tenant_id, custom_brand_id). **Indexes** (status, submitted_at); GIN (brand_name gin_trgm_ops) `_trgm` (similar-brand lookup). **Checks** status list; `(status <> 'pending') = (reviewed_at IS NOT NULL)`. Approving one row auto-resolves other tenants' identical pending rows as `map` (CATALOG.md §8).
 **JSON** `snapshot`: `{"strength":str|null,"dosage_form_id":int|null,"form":str|null,"route_id":int|null,"route":str|null,"use_count":int,"created_by_user_public_id":str|null}`. `decision`: `{"mode":"map|create","brand_id":int|null,"strength_id":int|null,"catalog_version_id":int|null,"reason":str|null}` — the master ids after approval; `reason` for rejections.
 **Model** `App\Models\Central\CustomBrandPromotion`.
+
+### 2.19 `platform_settings`
+**Purpose.** Platform-wide key/value configuration for the control plane itself — the counterpart of the tenant `settings` table (§3.1, Appendix B) for what is not per-clinic. First key: whether the super console demands a second factor (ARCHITECTURE §6.5). Keys are the closed registry `App\Domain\SaaS\Support\PlatformSettingsRegistry`; a missing row means the registry default, which may itself be derived from config so that a deploy-time env value seeds the console toggle instead of competing with it.
+
+| Column | Type | Null | Default | Meaning |
+|---|---|---|---|---|
+| key | varchar(96) | no | | Dotted key from the closed registry below; `PlatformSettings::set()` rejects unknown keys and type-checks the value |
+| value | jsonb | no | | Typed per the registry; a `secret` key holds ciphertext (same contract as Appendix B: encrypted by `set()`, masked by `all()`, kept by a blank submit, `[redacted]` in audit) |
+| updated_by_super_admin_id | bigint | yes | | Null when a command or seeder wrote it — "the system" |
+
+**PK** id. **FK** updated_by_super_admin_id → public.super_admins(id) ON DELETE SET NULL. **Unique** key. **Checks** `platform_settings_key_check` — `key ~ '^[a-z0-9_]+(\.[a-z0-9_]+)+$'` (the closed list is validated in code; the CHECK only stops a stray row shape). **Model** `App\Models\Central\PlatformSetting`. Read only through `App\Domain\SaaS\Services\PlatformSettings` — cached platform-wide in Redis under `bp:platform:settings`, invalidated on every write, and read at **request time**, never at boot, so a change takes effect on the next request of every worker without a restart. Every write through `App\Domain\SaaS\Actions\Settings\UpdatePlatformSetting` is a `public.audit_logs_central` row (`settings_change`, §2.13) with `{key, value}` before and after. The console renders the registry as the **Platform settings** screen (`super.settings.index`, `super.settings.update`); a key marked 🔑 (`reauth`) re-asks the operator's **current password** — the password, not a TOTP code, because the first such key is the switch that turns the second factor off.
+
+**Registry** (`PlatformSettingsRegistry::all()`; label, description and option copy live under `super.settings.<key>.*` in both language files and a test asserts they exist):
+
+| Key | Type | Default | Meaning | Owner |
+|---|---|---|---|---|
+| `security.super_two_factor` 🔑 | string: `required`, `optional`, `disabled` (`App\Domain\SaaS\Enums\SuperTwoFactorPolicy`) | `required` when `config('saas.two_factor.required')` (env `SUPER_2FA_REQUIRED`, default `true`) is on, else `optional` | The super console's second-factor policy: `required` forces enrolment and challenges every operator; `optional` challenges only enrolled operators; `disabled` challenges nobody and keeps every enrolment (secret, recovery codes) intact so switching back restores it | ARCHITECTURE §6.5 |
 
 ---
 
@@ -2206,7 +2223,7 @@ PHP string-backed enums live in **`App\Domain\<Module>\Enums`** (CONVENTIONS.md 
 
 | Namespace | Enum class → table.column |
 |---|---|
-| `App\Domain\SaaS\Enums` | `TenantStatus` (tenants.status), `SubscriptionStatus`, `BillingCycle`, `SubscriptionInvoiceStatus`, `SubscriptionPaymentMethod`, `SubscriptionPaymentStatus`, `DomainType`, `DomainVerificationStatus`, `SslStatus`, `BackupType`, `BackupStatus`, `UsageMetric` (usage_counters.metric), `PlanFeatureKey` (plan_features.feature_key) |
+| `App\Domain\SaaS\Enums` | `TenantStatus` (tenants.status), `SubscriptionStatus`, `BillingCycle`, `SubscriptionInvoiceStatus`, `SubscriptionPaymentMethod`, `SubscriptionPaymentStatus`, `DomainType`, `DomainVerificationStatus`, `SslStatus`, `BackupType`, `BackupStatus`, `UsageMetric` (usage_counters.metric), `PlanFeatureKey` (plan_features.feature_key), `SuperTwoFactorPolicy` (the `security.super_two_factor` platform setting, §2.19 — a JSON vocabulary validated by the registry, no CHECK) |
 | `App\Domain\Catalog\Enums` | `ReconciliationStatus` (catalog_reconciliation_reports.status), `CustomBrandPromotionStatus` (custom_brand_promotions.status), `CustomBrandReviewStatus` (custom_brands.review_status), `CatalogImportIssueKind` (catalog_import_issues.kind), `DosageFormCode` (dosage_forms.code), `RouteCode` (routes.code), `InteractionSeverity`, `EvidenceLevel`, `PregnancyCategory`, `LactationRisk`, `CautionLevel` (renal/hepatic_cautions.level), `DosePopulation`, `CatalogVersionStatus` |
 | `App\Domain\Audit\Enums` | `CentralAuditAction` (audit_logs_central.action), `AuditAction` (audit_logs.action), `AuditActorType` (audit_logs.actor_type) |
 | `App\Domain\Clinic\Enums` | `Role`, `Permission` (seeded spatie rows; ARCHITECTURE.md §6.2), `Gender` (doctors/patients.gender), `Locale` (tenants/users/patients locale columns), `PadPaperSize`, `PadOrientation`, `TokenSlipTemplate`, `LeaveType` (doctor_leaves.type) |

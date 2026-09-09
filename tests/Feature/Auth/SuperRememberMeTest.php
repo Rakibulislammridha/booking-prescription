@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Auth;
 
+use App\Domain\SaaS\Enums\SuperTwoFactorPolicy;
 use App\Domain\SaaS\Services\SuperTwoFactor;
 use App\Domain\SaaS\Services\Totp;
 use App\Models\Central\SuperAdmin;
 use Illuminate\Auth\SessionGuard;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Testing\AssertableInertia;
+use Tests\Feature\SaaS\Concerns\ControlsPlatformSettings;
 use Tests\TestCase;
 
 /**
@@ -24,7 +26,15 @@ use Tests\TestCase;
  */
 final class SuperRememberMeTest extends TestCase
 {
+    use ControlsPlatformSettings;
+
     private const PASSWORD = 'secret-123';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->setSuperTwoFactorPolicy(SuperTwoFactorPolicy::Required);
+    }
 
     public function test_the_super_login_hands_out_no_remember_me_cookie_even_when_asked(): void
     {

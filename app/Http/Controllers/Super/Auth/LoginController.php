@@ -25,7 +25,8 @@ use Inertia\Response;
 /**
  * Super-admin login on super.{central} (guard super). Renders panel page Super/Auth/Login.
  *
- * The password is only the FIRST half for an enrolled operator (ARCHITECTURE §6.5). Rather than logging them in
+ * The password is only the FIRST half for an operator the platform policy challenges — enrolled, and the policy
+ * (`security.super_two_factor`) is not `disabled` (ARCHITECTURE §6.5). Rather than logging them in
  * and then fencing the session off, a correct password parks a half-finished login in the session
  * (`SuperTwoFactor::SESSION_PENDING`) and nobody is authenticated until `TwoFactorChallengeController` says so —
  * a session that has not passed the challenge is a guest, which is a much stronger statement than a middleware
@@ -64,9 +65,11 @@ final class LoginController extends Controller
 
         RateLimiter::clear($key);
 
-        if ($this->twoFactor->enabled($admin)) {
+        if ($this->twoFactor->challenges($admin)) {
             // Deliberately NOT logged in. The pending marker carries an id and a timestamp and nothing else —
             // it is not a session for the console, it is a receipt for the password half, and it expires.
+            // `challenges()` (not `enabled()`) is the platform policy at THIS request: under `disabled` an
+            // enrolled operator is never parked here, they sign in with the password alone.
             $request->session()->put(SuperTwoFactor::SESSION_PENDING, [
                 'id' => $admin->id,
                 'at' => CarbonImmutable::now()->getTimestamp(),
@@ -81,7 +84,7 @@ final class LoginController extends Controller
         Auth::guard('super')->login($admin);
         $request->session()->regenerate();
 
-        return $this->completeSuperLogin($request, $admin, $this->audit);
+        return $this->completeSuperLogin($request, $admin, $this->audit, challengePassed: false);
     }
 
     public function destroy(Request $request): RedirectResponse
