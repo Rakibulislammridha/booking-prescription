@@ -23,7 +23,8 @@ final class SettingsServiceTest extends TestCase
 
         $this->assertSame(3, $settings->get('queue.auto_noshow_after'));
         $this->assertSame(0.8, $settings->get('serial.expected_show_rate'));
-        $this->assertTrue($settings->get('kiosk.otp_required'));
+        $this->assertFalse($settings->get('kiosk.otp_required'));
+        $this->assertSame(3, $settings->get('booking.self_service_daily_limit'));
         $this->assertSame(SettingsRegistry::defaults(), $settings->all());
         $this->assertSame(['serial.'], array_unique(array_map(fn (string $k) => substr($k, 0, 7), array_keys($settings->withPrefix('serial.')))));
     }

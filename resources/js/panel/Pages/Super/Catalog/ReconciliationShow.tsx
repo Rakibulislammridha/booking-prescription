@@ -15,7 +15,6 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import type { ReconciliationReference, ReconciliationRow } from '@panel/Components/Super/types';
 import { formatNumber } from '@shared/format/number';
@@ -68,8 +67,6 @@ export default function ReconciliationShow({ report, references, sample }: Props
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }} useFlexGap>
           <Button size="small" component={RouterLink} href={route('super.catalog.reconciliation.index')}>{t('super.reconciliation.back')}</Button>

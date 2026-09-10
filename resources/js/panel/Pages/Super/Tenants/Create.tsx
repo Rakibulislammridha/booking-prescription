@@ -19,7 +19,6 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { CredentialChoice } from '@panel/Components/Super/Tenants/CredentialChoice';
 import { SlugField, normaliseSlug } from '@panel/Components/Super/Tenants/SlugField';
 import type { CredentialKind, SlugAvailability } from '@panel/Components/Super/Tenants/types';
@@ -99,7 +98,6 @@ export default function Create({ plans, central_domain, timezones }: Props) {
 
   return (
     <Box>
-      <SuperNav />
       <Box component="form" onSubmit={submit} noValidate data-testid="create-tenant-form">
         <Stack spacing={2}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }} useFlexGap>

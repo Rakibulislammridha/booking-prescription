@@ -28,7 +28,9 @@ const messagesReady = ensureMessages(documentLocale());
 void createInertiaApp<SharedProps>({
   title: (title) => (title ? `${title} — ${appName}` : appName),
   resolve: (name) => Promise.all([
-    resolvePageComponent<PageModule>(`./Pages/${name}.tsx`, import.meta.glob<PageModule>('./Pages/**/*.tsx')),
+    // The negative pattern keeps a page's `__tests__/*.test.tsx` out of the production bundle: a test file next to
+    // a page is a Vitest input, not a route, and would otherwise ship (with its testing-library imports) as one.
+    resolvePageComponent<PageModule>(`./Pages/${name}.tsx`, import.meta.glob<PageModule>(['./Pages/**/*.tsx', '!./Pages/**/__tests__/**'])),
     messagesReady,
   ]).then(([m]) => m.default),
   setup({ el, App, props }) {

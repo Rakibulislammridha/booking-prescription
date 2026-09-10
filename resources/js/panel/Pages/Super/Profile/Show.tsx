@@ -22,7 +22,6 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import SecurityIcon from '@mui/icons-material/Security';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import type { SuperProfile } from '@panel/Components/Super/types';
 import { useSharedProps } from '@shared/inertia';
 import { formatNumber } from '@shared/format/number';
@@ -67,8 +66,6 @@ export default function Show({ profile, sessions, idle_timeout_minutes }: Props)
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2} sx={{ maxWidth: 880 }}>
         {shared.errors.domain ? <Alert severity="error">{shared.errors.domain}</Alert> : null}
 

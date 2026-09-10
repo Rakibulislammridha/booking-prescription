@@ -673,7 +673,7 @@ Priority may be set in the same request. Exhaustion → `ExtendSessionCapacity`.
 ### 11.2 Kiosk / QR self-booking
 
 The desk prints/shows a QR for `URL::signedRoute('site.booking.kiosk', ['branch' => …, 'session' => …], now()->addHours(12))` (`routes/site/booking.php`, Booking module).
-The page (site app, `site/Pages/Booking/Kiosk.tsx`) asks for mobile → OTP (tenant setting `kiosk.otp_required`, default true; `App\Domain\Patients\Services\OtpService`) → patient auto-match/create (Patients module, `App\Domain\Patients\Actions\FindOrCreatePatientByMobile`) → `AllocateSerial(pool: online, source: kiosk, clientEventId: <browser-generated ULID from shared/ulid.ts>)`. Rate limit `RateLimiter::for('kiosk', 5 per minute per mobile, 60 per minute per branch)` registered by `BookingServiceProvider`. The serial is `booked`; the desk checks it in when the patient walks up.
+The page (site app, `site/Pages/Booking/Doctor.tsx` with the `kiosk` prop) asks for mobile + name → OTP only when the tenant setting `kiosk.otp_required` is on (default false; `App\Domain\Patients\Services\OtpService`), with the per-mobile daily cap `booking.self_service_daily_limit` (SCHEMA Appendix B) as the guard otherwise → patient auto-match/create (Patients module, `App\Domain\Patients\Actions\FindOrCreatePatientByMobile`) → `AllocateSerial(pool: online, source: kiosk, clientEventId: <browser-generated ULID from shared/ulid.ts>)`. Rate limit `RateLimiter::for('kiosk', 5 per minute per mobile, 60 per minute per branch)` registered by `BookingServiceProvider`. The serial is `booked`; the desk checks it in when the patient walks up.
 
 ### 11.3 Follow-up rebooking
 

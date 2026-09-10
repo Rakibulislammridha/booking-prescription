@@ -16,7 +16,9 @@
 //                     round trip). Modules overlap freely: only one of them is ever loaded per route.
 //
 // Foundation-owned. A page that needs a new block adds its prefix here (and only here);
-// `lang/__tests__/bundles.test.ts` fails the build if a page uses a key its bundle does not carry.
+// `lang/__tests__/bundles.test.ts` fails the build if a page uses a key its bundle does not carry. A shared file
+// whose copy renders only on one module's pages (the console drawer PanelLayout mounts on the super surface alone)
+// declares it with a first-line `// @lang-module <module>` pragma so that test checks it against that module only.
 
 export const BASE_SURFACES = ['panel', 'site'] as const;
 

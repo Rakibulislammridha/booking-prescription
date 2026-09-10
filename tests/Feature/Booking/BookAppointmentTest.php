@@ -37,6 +37,7 @@ use App\Domain\Shared\Actor;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Doctor;
 use App\Models\Tenant\Patient;
+use App\Models\Tenant\PatientOtpCode;
 use App\Models\Tenant\Serial;
 use App\Models\Tenant\SerialPool as PoolRow;
 use App\Models\Tenant\SessionInstance;
@@ -210,10 +211,22 @@ final class BookAppointmentTest extends TestCase
         $this->assertSame('Child', $named->patient->name);
         $this->assertFalse($named->patientCreated);
 
-        $this->assertThrows(fn () => $this->book(new BookingRequest(channel: BookingChannel::Online, mobile: '01788888888', name: 'No OTP', sessionPublicId: $session->public_id), new Actor(source: 'web')), OtpRequired::class);
-        app(Settings::class)->set('kiosk.otp_required', false);
+        // Off by default (BRIEF §5.C has no code step): an unverified self-service request books.
         $noOtp = $this->book(new BookingRequest(channel: BookingChannel::Online, mobile: '01788888888', name: 'No OTP', sessionPublicId: $session->public_id), new Actor(source: 'web'));
         $this->assertSame(SerialSource::Online, $noOtp->serial->source);
+        $this->assertSame(0, PatientOtpCode::query()->count(), 'nothing asked for a code');
+
+        // On: the setting is the authority — an unverified request is refused on every self-service channel, and
+        // only the flag a controller sets after OtpService::verify() lets it through. Staff channels never see it.
+        app(Settings::class)->set('kiosk.otp_required', true);
+        $other = $this->openSession();
+        $this->assertThrows(fn () => $this->book(new BookingRequest(channel: BookingChannel::Online, mobile: '01788888888', name: 'No OTP', sessionPublicId: $other->public_id), new Actor(source: 'web')), OtpRequired::class);
+        $this->assertThrows(fn () => $this->book(new BookingRequest(channel: BookingChannel::Kiosk, mobile: '01788888888', name: 'No OTP', sessionPublicId: $other->public_id), new Actor(source: 'web')), OtpRequired::class);
+        $verified = $this->book(new BookingRequest(channel: BookingChannel::Online, mobile: '01788888888', name: 'No OTP', sessionPublicId: $other->public_id, otpVerified: true), new Actor(source: 'web'));
+        $this->assertSame(SerialSource::Online, $verified->serial->source);
+        $counter = $this->book(new BookingRequest(channel: BookingChannel::Counter, mobile: '01788888887', name: 'Desk', sessionPublicId: $other->public_id));
+        $this->assertSame(SerialSource::Counter, $counter->serial->source);
+        app(Settings::class)->set('kiosk.otp_required', false);
 
         $closedDoctor = Doctor::factory()->complete()->create(['accepts_online_booking' => false]);
         $private = $this->openSession(5, 5, 5, $closedDoctor);

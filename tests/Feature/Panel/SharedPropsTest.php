@@ -93,6 +93,33 @@ final class SharedPropsTest extends TestCase
         $this->assertStringContainsString('"features":{"', $raw);
     }
 
+    /**
+     * `surface` names the route group that served the page. The panel shell mounts the console's drawer on `super`
+     * and the clinic's on everything else, so the value must be right on every surface, not just the two the
+     * shell renders — a wrong `panel` on the console would put "Live queue" back in the super admin's sidebar.
+     */
+    public function test_surface_names_the_route_group_that_served_the_page_on_a_tenant_host(): void
+    {
+        $this->asTenant('a');
+        $this->actingAsStaff(Role::Receptionist);
+        $this->get('/panel')->assertOk()->assertInertia(fn (AssertableInertia $page) => $page->component('Dashboard/Index')->where('surface', 'panel'));
+
+        $this->asTenant('a');
+        $this->get('/')->assertOk()->assertInertia(fn (AssertableInertia $page) => $page->component('Home/Index')->where('surface', 'site'));
+    }
+
+    /** Its own test: a console request after a tenant request in one test ends that tenancy mid-pipeline and forgets the guards. */
+    public function test_surface_is_super_on_the_console(): void
+    {
+        $this->actingAsSuper();
+
+        $this->get('/')->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Super/Dashboard')
+            ->where('surface', 'super')
+            ->where('auth.guard', 'super')
+            ->where('tenant', null));
+    }
+
     public function test_flash_props_come_from_the_session_and_are_null_when_unset(): void
     {
         $this->asTenant('a');

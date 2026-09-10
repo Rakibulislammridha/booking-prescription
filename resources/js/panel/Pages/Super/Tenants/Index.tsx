@@ -25,7 +25,6 @@ import DownloadIcon from '@mui/icons-material/Download';
 import SearchIcon from '@mui/icons-material/Search';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { HealthChip, StatusChip } from '@panel/Components/Super/StatusChip';
 import type { PlanOption, TenantListFilters, TenantListRow } from '@panel/Components/Super/Tenants/types';
@@ -166,8 +165,6 @@ export default function Index({ tenants, meta, filters, statuses, plans, attenti
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }} useFlexGap>
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>

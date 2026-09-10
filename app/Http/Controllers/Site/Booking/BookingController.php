@@ -9,13 +9,10 @@ use App\Domain\Booking\Contracts\OnlinePaymentGateway;
 use App\Domain\Booking\Enums\AppointmentStatus;
 use App\Domain\Booking\Services\AdvancePaymentPolicy;
 use App\Domain\Clinic\Services\Settings;
-use App\Domain\Patients\Enums\OtpPurpose;
-use App\Domain\Patients\Exceptions\OtpAttemptsExceeded;
-use App\Domain\Patients\Exceptions\OtpExpired;
-use App\Domain\Patients\Exceptions\OtpInvalid;
 use App\Domain\Patients\Services\OtpService;
 use App\Domain\Shared\Actor;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Site\Booking\Concerns\VerifiesBookingOtp;
 use App\Http\Requests\Site\Booking\StoreBookingRequest;
 use App\Http\Resources\Booking\AppointmentResource;
 use App\Models\Tenant\Appointment;
@@ -26,20 +23,24 @@ use App\Models\Tenant\Specialty;
 use App\Support\Clock;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
  * The public booking site (BRIEF §5.C channel 1, Tailwind, no MUI): doctor search by specialty / name / day →
- * calendar with online serials remaining (api.scheduling.availability) → mobile + OTP → confirmation with the
+ * calendar with online serials remaining (api.scheduling.availability) → mobile + name → confirmation with the
  * serial code and the public queue link. Payment: "pay at counter" unless the OnlinePaymentGateway says otherwise.
+ *
+ * There is no OTP step unless the clinic turns `kiosk.otp_required` on (VerifiesBookingOtp); what guards the open
+ * form instead is `throttle:booking` plus the per-mobile daily cap `BookAppointment` enforces.
  *
  * A doctor with `advance_payment_required` (BRIEF §5.C) is announced on the doctor page BEFORE the patient fills the
  * form, and the confirmation page tells the truth about a held serial instead of claiming it is confirmed.
  */
 final class BookingController extends Controller
 {
+    use VerifiesBookingOtp;
+
     public function index(Request $request): Response
     {
         $specialtySlug = (string) $request->query('specialty', '');
@@ -92,7 +93,7 @@ final class BookingController extends Controller
 
     public function store(StoreBookingRequest $request, BookAppointment $book, OtpService $otpService, Settings $settings, OnlinePaymentGateway $payment): RedirectResponse
     {
-        $verified = $this->verifyOtp($request, $otpService, (bool) $settings->get('kiosk.otp_required'));
+        $verified = $this->verifyBookingOtp($request, $otpService, $settings);
         $result = $book->handle($request->toData($verified), new Actor(ip: $request->ip(), source: 'web'));
         $checkout = $payment->checkoutUrl($result->appointment);
 
@@ -116,23 +117,5 @@ final class BookingController extends Controller
             'hold_minutes' => $held ? $advance->holdMinutes() : null,
             'checkout_url' => $held ? $payment->checkoutUrl($appointment) : null,
         ]);
-    }
-
-    /** OTP is required for self-service booking when the tenant says so (kiosk.otp_required, default true). */
-    private function verifyOtp(StoreBookingRequest $request, OtpService $otpService, bool $required): bool
-    {
-        $code = (string) $request->validated('otp', '');
-
-        if (! $required && $code === '') {
-            return false;
-        }
-
-        try {
-            $otpService->verify((string) $request->validated('mobile'), $code, OtpPurpose::Booking);
-        } catch (OtpInvalid|OtpExpired|OtpAttemptsExceeded $e) {
-            throw ValidationException::withMessages(['otp' => $e->getMessage()]);
-        }
-
-        return true;
     }
 }

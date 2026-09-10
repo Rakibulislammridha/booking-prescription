@@ -1360,6 +1360,7 @@ on the HTML response (`Tests\TestCase` calls `withoutVite()`), which also proves
 
 ```ts
 export interface SharedProps {
+  surface: 'panel' | 'super' | 'site' | 'central';                     // the route group that served the page (§2); PanelLayout mounts the console's drawer on `super`, the clinic's otherwise
   auth: { guard: 'web' | 'patient' | 'super' | null;
           user: { id: number; name: string; roles: string[]; permissions: string[]; doctor_id: number | null } | null;
           impersonating: boolean };
@@ -1385,7 +1386,7 @@ export interface SharedProps {
 `null` when unset. `tenant.logo_url` is a URL (`Storage::disk('public')->url($branding['logo_path'])`,
 `null` without a logo); `tenant.theme` carries `primary`, `accent`, `on-primary` when `branding` has
 `primary_color`/`accent_color`/`on_primary_color`; `theme` and `features` serialise as JSON objects (`{}`) even
-when empty. `share()` computes `auth` per guard (`Auth::guard('super')->user()` on `super.*` routes, etc.),
+when empty. `share()` computes `surface` from the route-name prefix (the same match that picks the Ziggy group below), `auth` per guard (`Auth::guard('super')->user()` on `super.*` routes, etc.),
 `branch` from `ActiveBranch` service, `features` via `Inertia::once(fn () => Feature::for(Tenancy::current())->all())`,
 `ziggy` via `Inertia::once(fn () => (new Ziggy($group, $request->getSchemeAndHttpHost()))->toArray())`
 with `$group` = `panel|site|super` chosen from the route-name prefix; `config/ziggy.php`

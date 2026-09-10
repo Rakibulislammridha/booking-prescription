@@ -47,7 +47,11 @@ final class SettingsRegistry
             'serial.expected_show_rate' => ['type' => 'number', 'default' => 0.8, 'min' => 0, 'max' => 1],
             'serial.receptionist_extension_limit' => ['type' => 'int', 'default' => 0, 'min' => 0],
             'serial.cancel_cutoff_minutes' => ['type' => 'int', 'default' => 60, 'min' => 0],
-            'kiosk.otp_required' => ['type' => 'bool', 'default' => true],
+            // Mobile verification before a self-service (online / kiosk / telemedicine) serial. OFF by default: BRIEF
+            // §5.C's booking flow is mobile → patient → session → serial → confirmation, and a code step in front of
+            // it costs bookings. A clinic that wants a verified mobile against no-shows switches it on; the
+            // per-mobile daily cap below is what stands in for it when it is off.
+            'kiosk.otp_required' => ['type' => 'bool', 'default' => false],
             'kiosk.self_checkin_enabled' => ['type' => 'bool', 'default' => false],
             'reception.pin_idle_minutes' => ['type' => 'int', 'default' => 15, 'min' => 1],
             'reception.sound_on_offline' => ['type' => 'bool', 'default' => true],
@@ -55,6 +59,10 @@ final class SettingsRegistry
             // `booking:expire-holds` cancels it and the number goes back to the pool (BRIEF §5.C).
             'booking.advance_payment_hold_minutes' => ['type' => 'int', 'default' => 30, 'min' => 5, 'max' => 1440],
             'booking.online_payment_enabled' => ['type' => 'bool', 'default' => false],
+            // Self-service (online / kiosk / telemedicine) bookings one mobile number may make per clinic-local day —
+            // the abuse guard that replaces the OTP now that it is off by default. Staff counter bookings are never
+            // counted or limited; 0 removes the cap. Enforced in App\Domain\Booking\Actions\BookAppointment.
+            'booking.self_service_daily_limit' => ['type' => 'int', 'default' => 3, 'min' => 0, 'max' => 50],
             'billing.vat_percent' => ['type' => 'number', 'default' => 0, 'min' => 0, 'max' => 100],
             'billing.discount_approval_threshold_paisa' => ['type' => 'int', 'default' => 50000, 'min' => 0],
             // Clinic-local hours during which non-urgent messages are held until morning (BRIEF §5.J: "respect

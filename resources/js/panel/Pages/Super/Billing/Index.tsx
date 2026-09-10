@@ -12,10 +12,8 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { StatusChip } from '@panel/Components/Super/StatusChip';
-import { BillingNav } from '@panel/Components/Super/Billing/BillingNav';
 import type { ArrearsRow, CollectedMonth, DunningTotals, RevenueSummary } from '@panel/Components/Super/Billing/types';
 import { formatBdt } from '@shared/format/money';
 import { formatNumber } from '@shared/format/number';
@@ -91,9 +89,6 @@ export default function Index({ summary, months, arrears, dunning }: Props) {
 
   return (
     <Box>
-      <SuperNav />
-      <BillingNav />
-
       <Stack spacing={2}>
         <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' } }}>
           <Tile label={t('super.billing.overview.mrr')} value={money(summary.mrr_paisa)} hint={t('super.billing.overview.mrr_hint', { count: n(summary.recurring_subscriptions) })} />

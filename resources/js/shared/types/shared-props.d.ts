@@ -4,6 +4,8 @@ import type { Config as ZiggyConfig } from 'ziggy-js';
 
 export type Locale = 'bn' | 'en';
 export type Guard = 'web' | 'patient' | 'super';
+/** The route group that served the page (ARCHITECTURE §2): `super` is the console, `panel` the clinic's staff panel. */
+export type Surface = 'panel' | 'super' | 'site' | 'central';
 
 export interface AuthUser {
   id: number;
@@ -64,6 +66,7 @@ export interface SharedApp {
 }
 
 export type SharedProps = {
+  surface: Surface;                     // which surface served the page; PanelLayout picks its navigation by it
   auth: SharedAuth;
   tenant: SharedTenant | null;
   branch: SharedBranch | null;          // staff's active branch (SetActiveBranch); null on site/super

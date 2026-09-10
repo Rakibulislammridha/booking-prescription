@@ -1,7 +1,12 @@
 // The authenticated panel shell: ConnectionIndicator above the app bar, nav drawer, branch switcher, user menu,
 // flash + PWA-update snackbars. Pages assign it statically (CONVENTIONS §7.1):
 //   Board.layout = (page) => <PanelLayout title="reception.board.title">{page}</PanelLayout>
-import { useEffect, useState, type ReactNode } from 'react';
+//
+// One shell, two surfaces (ARCHITECTURE §7.4 `surface`): on the clinic's panel the drawer is NAV + SETUP below,
+// gated by permission / feature / shipped route; on the super console it is Components/Super/SuperSidebar.tsx —
+// the console's own entries, in their own chunk — and none of the clinic's entries, greyed or otherwise. The app
+// bar, user menu, impersonation banner, connection indicator and snackbars are the same on both.
+import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { Head, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AppBar from '@mui/material/AppBar';
@@ -59,6 +64,11 @@ import { usePwa } from '../pwa';
 import { RouterLink } from './RouterLink';
 
 export const DRAWER_WIDTH = 240;
+
+// The console's drawer content is loaded only where it is rendered: a reception desk never downloads the super
+// entries or their icons (scripts/check-panel-budget.sh), and panel/app.tsx requests the chunk in the same tick
+// as a `Super/*` page so the console sees no empty drawer on a cold load.
+const SuperSidebar = lazy(() => import('@panel/Components/Super/SuperSidebar'));
 
 interface NavItem {
   key: string;            // i18n key nav.<key>
@@ -118,6 +128,7 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
   const pwa = usePwa();
   const pageTitle = title ? t(title) : undefined;
   const user = shared.auth.user;
+  const isSuper = shared.surface === 'super';
   // Entries a user lacks the permission for are hidden; entries whose module has not shipped its route stay visible but disabled.
   const allowed = (item: NavItem): boolean =>
     (!item.permission || (user?.permissions.includes(item.permission) ?? false))
@@ -143,65 +154,75 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
     if (logoutRoute) router.post(route(logoutRoute));
   };
 
+  // The clinic's drawer: NAV + the Setup group, each entry hidden without its permission / feature and greyed
+  // until its module ships the route (the sweep in Tests\Feature\Panel\PanelNavRoutesTest keeps that list empty).
+  const clinicNav = (
+    <List>
+      {nav.map((item) => {
+        const available = hasRoute(item.routeName);
+        const selected = available && isRoute(item.pattern);
+        const button = (
+          <ListItemButton
+            key={item.key}
+            component={available ? RouterLink : 'div'}
+            href={available ? route(item.routeName) : undefined}
+            selected={selected}
+            disabled={!available}
+            onClick={() => setMobileOpen(false)}
+          >
+            <ListItemIcon>{item.icon}</ListItemIcon>
+            <ListItemText primary={t(`nav.${item.key}`)} />
+          </ListItemButton>
+        );
+        return available ? button : (
+          <Tooltip key={item.key} title={t('common.status.coming_soon')} placement="right">
+            <span>{button}</span>
+          </Tooltip>
+        );
+      })}
+
+      {setup.length > 0 ? (
+        <>
+          <Divider sx={{ my: 1 }} />
+          <ListItemButton onClick={() => setSetupOpen((open) => !open)} aria-expanded={setupOpen} selected={isRoute('panel.clinic.*')}>
+            <ListItemIcon><SetupIcon /></ListItemIcon>
+            <ListItemText primary={t('nav.setup')} />
+            {setupOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          </ListItemButton>
+          <Collapse in={setupOpen} timeout="auto" unmountOnExit>
+            <List component="div" disablePadding>
+              {setup.map((item) => (
+                <ListItemButton
+                  key={item.key}
+                  component={hasRoute(item.routeName) ? RouterLink : 'div'}
+                  href={hasRoute(item.routeName) ? route(item.routeName) : undefined}
+                  selected={hasRoute(item.routeName) && isRoute(item.pattern)}
+                  disabled={!hasRoute(item.routeName)}
+                  onClick={() => setMobileOpen(false)}
+                  sx={{ pl: 4 }}
+                >
+                  <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+                  <ListItemText primary={t(`nav.${item.key}`)} slotProps={{ primary: { variant: 'body2' } }} />
+                </ListItemButton>
+              ))}
+            </List>
+          </Collapse>
+        </>
+      ) : null}
+    </List>
+  );
+
   const drawer = (
     <Box role="navigation" aria-label={t('nav.menu')} sx={{ width: DRAWER_WIDTH }}>
       <Toolbar>
         <Typography variant="subtitle1" noWrap sx={{ fontWeight: 700 }}>{shared.tenant?.name ?? shared.app.name}</Typography>
       </Toolbar>
       <Divider />
-      <List>
-        {nav.map((item) => {
-          const available = hasRoute(item.routeName);
-          const selected = available && isRoute(item.pattern);
-          const button = (
-            <ListItemButton
-              key={item.key}
-              component={available ? RouterLink : 'div'}
-              href={available ? route(item.routeName) : undefined}
-              selected={selected}
-              disabled={!available}
-              onClick={() => setMobileOpen(false)}
-            >
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={t(`nav.${item.key}`)} />
-            </ListItemButton>
-          );
-          return available ? button : (
-            <Tooltip key={item.key} title={t('common.status.coming_soon')} placement="right">
-              <span>{button}</span>
-            </Tooltip>
-          );
-        })}
-
-        {setup.length > 0 ? (
-          <>
-            <Divider sx={{ my: 1 }} />
-            <ListItemButton onClick={() => setSetupOpen((open) => !open)} aria-expanded={setupOpen} selected={isRoute('panel.clinic.*')}>
-              <ListItemIcon><SetupIcon /></ListItemIcon>
-              <ListItemText primary={t('nav.setup')} />
-              {setupOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </ListItemButton>
-            <Collapse in={setupOpen} timeout="auto" unmountOnExit>
-              <List component="div" disablePadding>
-                {setup.map((item) => (
-                  <ListItemButton
-                    key={item.key}
-                    component={hasRoute(item.routeName) ? RouterLink : 'div'}
-                    href={hasRoute(item.routeName) ? route(item.routeName) : undefined}
-                    selected={hasRoute(item.routeName) && isRoute(item.pattern)}
-                    disabled={!hasRoute(item.routeName)}
-                    onClick={() => setMobileOpen(false)}
-                    sx={{ pl: 4 }}
-                  >
-                    <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
-                    <ListItemText primary={t(`nav.${item.key}`)} slotProps={{ primary: { variant: 'body2' } }} />
-                  </ListItemButton>
-                ))}
-              </List>
-            </Collapse>
-          </>
-        ) : null}
-      </List>
+      {isSuper ? (
+        <Suspense fallback={<List sx={{ minHeight: 320 }} aria-busy="true" />}>
+          <SuperSidebar onNavigate={() => setMobileOpen(false)} />
+        </Suspense>
+      ) : clinicNav}
     </Box>
   );
 

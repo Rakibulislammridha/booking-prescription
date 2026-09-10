@@ -21,10 +21,8 @@ import DownloadIcon from '@mui/icons-material/Download';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { StatusChip } from '@panel/Components/Super/StatusChip';
-import { BillingNav } from '@panel/Components/Super/Billing/BillingNav';
 import { ChangePlanDialog } from '@panel/Components/Super/Billing/ChangePlanDialog';
 import { ConfirmActionDialog } from '@panel/Components/Super/Billing/ConfirmActionDialog';
 import { Pager } from '@panel/Components/Super/Billing/Pager';
@@ -193,9 +191,6 @@ export default function Subscriptions({ subscriptions, meta, filters, statuses, 
 
   return (
     <Box>
-      <SuperNav />
-      <BillingNav />
-
       <Stack spacing={2}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ alignItems: { md: 'center' } }} useFlexGap>
           <Box component="form" onSubmit={(e) => { e.preventDefault(); go({ q, page: 1 }); }} sx={{ flexGrow: 1, minWidth: 200 }}>

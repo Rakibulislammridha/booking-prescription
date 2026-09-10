@@ -12,8 +12,6 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import DownloadIcon from '@mui/icons-material/Download';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
-import { BillingNav } from '@panel/Components/Super/Billing/BillingNav';
 import { InvoiceTable } from '@panel/Components/Super/Billing/InvoiceTable';
 import { Pager } from '@panel/Components/Super/Billing/Pager';
 import { RecordPaymentDialog } from '@panel/Components/Super/Billing/RecordPaymentDialog';
@@ -66,9 +64,6 @@ export default function Invoices({ invoices, meta, filters, statuses, status_cou
 
   return (
     <Box>
-      <SuperNav />
-      <BillingNav />
-
       <Stack spacing={2}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ alignItems: { md: 'center' } }} useFlexGap>
           <Box component="form" onSubmit={(e) => { e.preventDefault(); go({ q, page: 1 }); }} sx={{ flexGrow: 1, minWidth: 200 }}>

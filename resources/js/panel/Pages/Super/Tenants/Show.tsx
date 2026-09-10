@@ -43,7 +43,6 @@ import StarIcon from '@mui/icons-material/Star';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
 import { LazyChart } from '@panel/Components/Charts/LazyChart';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { StatusChip, HealthChip } from '@panel/Components/Super/StatusChip';
 import { UsageBars, bytesParts } from '@panel/Components/Super/UsageBars';
@@ -467,8 +466,6 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Card variant="outlined">
           <CardContent>

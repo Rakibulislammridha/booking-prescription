@@ -19,7 +19,6 @@ import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { ConfirmActionDialog } from '@panel/Components/Super/Billing/ConfirmActionDialog';
 import type { ConsolePlan } from '@panel/Components/Super/Billing/types';
@@ -137,8 +136,6 @@ export default function Index({ plans, subscriptions, feature_labels, limit_keys
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="subtitle1" component="h2">{t('super.plans.title')}</Typography>

@@ -18,7 +18,6 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import SearchIcon from '@mui/icons-material/Search';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { DetailDrawer } from '@panel/Components/Super/Catalog/DetailDrawer';
 import type {
@@ -141,8 +140,6 @@ export default function Browse({ tab, tabs, counts, filters, rows, meta, engine 
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={tab} onChange={changeTab} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label={t('super.catalog.title')}>

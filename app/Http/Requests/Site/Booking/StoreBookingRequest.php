@@ -11,7 +11,10 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-/** POST /booking — the public site (online) and the kiosk page (kiosk) share this shape; OTP verified by the controller. */
+/**
+ * POST /booking — the public site (online) and the kiosk page (kiosk) share this shape. `otp` is only read when the
+ * clinic has `kiosk.otp_required` on (VerifiesBookingOtp); nothing a client posts can mark the booking verified.
+ */
 final class StoreBookingRequest extends FormRequest
 {
     public function authorize(): bool

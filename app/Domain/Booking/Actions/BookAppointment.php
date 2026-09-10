@@ -13,6 +13,7 @@ use App\Domain\Booking\Exceptions\DoctorNotBookable;
 use App\Domain\Booking\Exceptions\OtpRequired;
 use App\Domain\Booking\Exceptions\PatientAmbiguous;
 use App\Domain\Booking\Exceptions\PatientRequired;
+use App\Domain\Booking\Exceptions\SelfServiceLimitReached;
 use App\Domain\Booking\Exceptions\SessionNotFound;
 use App\Domain\Booking\Services\AdvancePaymentPolicy;
 use App\Domain\Booking\Services\AppointmentWriter;
@@ -43,6 +44,13 @@ use Illuminate\Support\Facades\DB;
  * The "advance" leg of §5.C's payment step is AdvancePaymentPolicy: a self-service booking for a doctor who
  * requires payment up front is written `pending` (the serial is HELD, not confirmed) and is refused outright when
  * the tenant cannot take money online — checked after the fee is known and before a single number leaves the pool.
+ *
+ * Self-service channels (online, kiosk, telemedicine) carry two guards the staff channels never see, and this
+ * action — not the controller — is the authority on both: `kiosk.otp_required` decides whether a verified OTP is a
+ * precondition at all (off by default; when on, a request whose `otpVerified` flag the controller did not set
+ * after OtpService::verify() is refused, whatever the client sent), and `booking.self_service_daily_limit` caps
+ * how many bookings one mobile number may make per clinic-local day, which is what stands against a stranger
+ * booking any number he likes once no code is asked for.
  */
 final class BookAppointment
 {
@@ -79,6 +87,8 @@ final class BookAppointment
             if ($live !== null) {
                 throw new AlreadyBooked($live->load('serial'));
             }
+
+            $this->guardSelfServiceDailyLimit($r, $patient);
 
             $fee = $this->fees->resolve($patient, $doctor, $session, $r->channel, $r->type, $r->feeOverride, $previous);
 
@@ -150,7 +160,7 @@ final class BookAppointment
         return $this->materialiser->ensure($branchId, $doctor->id, $r->date, strtoupper($r->sessionCode)) ?? throw new SessionNotFound;
     }
 
-    /** Self-service channels need an online-bookable doctor and (when the tenant requires it) a verified OTP. */
+    /** Self-service channels need an online-bookable doctor and — only when the tenant asks for it — a verified OTP. */
     private function guardChannel(BookingRequest $r, Doctor $doctor): void
     {
         if (! $r->channel->isSelfService()) {
@@ -161,8 +171,46 @@ final class BookAppointment
             throw new DoctorNotBookable;
         }
 
+        // The setting, not the request, decides: with it off no code is ever asked for; with it on the only thing
+        // that satisfies the guard is the flag a controller sets after OtpService::verify() succeeded.
         if ((bool) $this->settings->get('kiosk.otp_required') && ! $r->otpVerified) {
             throw new OtpRequired;
+        }
+    }
+
+    /**
+     * `booking.self_service_daily_limit`: how many online / kiosk / telemedicine bookings one mobile number — the
+     * whole household behind it, since dependants share the number — may make in one clinic-local day (Clock:
+     * Asia/Dhaka unless the tenant says otherwise, so the counter resets at the clinic's midnight, not UTC's).
+     * Every booking created today counts, cancelled or not: a number that books and cancels in a loop is the
+     * abuse this exists for. Staff channels return before the count; 0 removes the cap. The count runs inside
+     * the booking transaction but takes no lock — two truly simultaneous submits from one number may both pass,
+     * which is a modest guard's accepted imprecision, not a serial-engine invariant.
+     */
+    private function guardSelfServiceDailyLimit(BookingRequest $r, Patient $patient): void
+    {
+        if (! $r->channel->isSelfService()) {
+            return;
+        }
+
+        $limit = (int) $this->settings->get('booking.self_service_daily_limit');
+
+        if ($limit <= 0) {
+            return;
+        }
+
+        $start = Clock::today();
+        $selfService = array_map(fn (BookingChannel $c) => $c->value, array_filter(BookingChannel::cases(), fn (BookingChannel $c) => $c->isSelfService()));
+
+        $today = Appointment::query()
+            ->whereIn('patient_id', Patient::query()->where('mobile', $patient->mobile)->select('id'))
+            ->whereIn('channel', $selfService)
+            ->where('created_at', '>=', $start->utc())
+            ->where('created_at', '<', $start->addDay()->utc())
+            ->count();
+
+        if ($today >= $limit) {
+            throw new SelfServiceLimitReached($limit);
         }
     }
 

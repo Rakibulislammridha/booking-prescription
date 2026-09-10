@@ -1,4 +1,5 @@
-// Booking site XHR (CONVENTIONS §7.2): the availability calendar (api.scheduling.availability) and the booking OTP.
+// Booking site XHR (CONVENTIONS §7.2): the availability calendar (api.scheduling.availability) and the booking OTP —
+// the latter only requested by a page whose `otp_required` prop is true (tenant setting `kiosk.otp_required`, default off).
 import { http } from '@shared/http';
 import { route } from '@shared/routes';
 import type { AvailabilityDay } from '@shared/types/models';

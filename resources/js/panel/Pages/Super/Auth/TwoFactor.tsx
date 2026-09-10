@@ -22,7 +22,6 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { formatDhaka } from '@shared/format/date';
 import { hasRoute, route } from '@shared/routes';
 import type { PageProps } from '@shared/types/inertia';
@@ -75,8 +74,6 @@ export default function TwoFactor({ enabled, required, policy, confirmed_at, rec
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2} sx={{ maxWidth: 720 }}>
         {!enabled && required ? <Alert severity="warning">{t('auth.two_factor.enrolment_required')}</Alert> : null}
 

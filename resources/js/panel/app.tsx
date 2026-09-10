@@ -57,9 +57,12 @@ function Providers({ children }: { locale: Locale; children: ReactNode }) {
 void createInertiaApp<SharedProps>({
   title: (title) => (title ? `${title} — ${appName}` : appName),
   resolve: (name) => Promise.all([
-    resolvePageComponent<PageModule>(`./Pages/${name}.tsx`, import.meta.glob<PageModule>('./Pages/**/*.tsx')),
+    resolvePageComponent<PageModule>(`./Pages/${name}.tsx`, import.meta.glob<PageModule>(['./Pages/**/*.tsx', '!./Pages/**/__tests__/**'])),
     messagesReady,
     ensureModuleMessages(panelModuleForPage(name), documentLocale()),
+    // The console's drawer is its own chunk (PanelLayout lazy-loads it on the super surface only): fetch it in this
+    // same tick as the page, so the console never paints an empty drawer while waiting for a second round trip.
+    name.startsWith('Super/') ? import('@panel/Components/Super/SuperSidebar') : undefined,
   ]).then(([m]) => m.default),
   setup({ el, App, props }) {
     const shared = props.initialPage.props;

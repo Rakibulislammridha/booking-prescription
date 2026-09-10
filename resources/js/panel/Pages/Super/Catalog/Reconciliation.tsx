@@ -23,7 +23,6 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import type { ConsoleMeta, ReconciliationRow, ReconciliationRun } from '@panel/Components/Super/types';
 import { formatNumber } from '@shared/format/number';
@@ -160,8 +159,6 @@ export default function Reconciliation({ reports, meta, filters, statuses, tenan
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }} useFlexGap>
           <Box>

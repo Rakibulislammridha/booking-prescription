@@ -14,10 +14,8 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { StatusChip } from '@panel/Components/Super/StatusChip';
-import { BillingNav } from '@panel/Components/Super/Billing/BillingNav';
 import { ConfirmActionDialog } from '@panel/Components/Super/Billing/ConfirmActionDialog';
 import { InvoiceStatusChip } from '@panel/Components/Super/Billing/InvoiceStatusChip';
 import type { DunningGroup, DunningInvoicePreview, DunningScheduleInfo, DunningTotals } from '@panel/Components/Super/Billing/types';
@@ -73,9 +71,6 @@ export default function Dunning({ queue, totals, schedule }: Props) {
 
   return (
     <Box>
-      <SuperNav />
-      <BillingNav />
-
       <Stack spacing={2}>
         <Alert severity="info">
           {t('super.billing.dunning.schedule', {

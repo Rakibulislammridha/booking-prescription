@@ -15,7 +15,6 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { JobStatusChip } from '@panel/Components/Super/Catalog/JobStatusChip';
 import type { CatalogImportIssueRow, CatalogJobRow, CatalogVersionRow, ImportIssueSample } from '@panel/Components/Super/types';
@@ -106,8 +105,6 @@ export default function Show({ job, issues, version, known_version }: Props) {
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }} useFlexGap>
           <Button size="small" component={RouterLink} href={route('super.catalog.imports.index')}>{t('super.catalog.imports.back')}</Button>

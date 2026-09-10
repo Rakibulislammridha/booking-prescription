@@ -19,7 +19,6 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { JobStatusChip } from '@panel/Components/Super/Catalog/JobStatusChip';
 import type { CatalogJobRow, CatalogVersionRow, SearchIndexStatus } from '@panel/Components/Super/types';
@@ -102,8 +101,6 @@ export default function Index({ versions, jobs, reindex, reconcile, search, open
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, alignItems: 'start' }}>
           <Card variant="outlined">

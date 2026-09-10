@@ -25,6 +25,7 @@ vi.mock('@shared/realtime/useQueueState', () => ({ useQueueState: ({ initial }: 
 vi.mock('@shared/realtime/useChannel', () => ({ useChannel: () => undefined }));
 
 const shared: SharedProps = {
+  surface: 'panel',
   auth: { guard: 'web', user: { id: 1, name: 'Dr Rahman', roles: ['doctor'], permissions: [], doctor_id: 1 }, impersonating: false },
   tenant: null, branch: null, branches: [], locale: 'en',
   flash: { success: null, error: null, warning: null, info: null },

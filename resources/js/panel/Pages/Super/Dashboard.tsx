@@ -20,7 +20,6 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
 import { LazyChart } from '@panel/Components/Charts/LazyChart';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { HealthChip, StatusChip } from '@panel/Components/Super/StatusChip';
 import type { AttentionItem, AttentionSeverity, DashboardKpis, PlatformTotals, SuperPlan, TenantRow, TrendDay } from '@panel/Components/Super/types';
@@ -165,8 +164,6 @@ export default function Dashboard({ totals, kpis, attention, trend, recent, plan
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Box>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>

@@ -33,7 +33,6 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import type { ConsolePlan } from '@panel/Components/Super/Billing/types';
 import { bytesParts } from '@panel/Components/Super/UsageBars';
 import {
@@ -189,8 +188,6 @@ export default function Edit({ plan, subscribers, next_sort_order, feature_label
 
   return (
     <Box>
-      <SuperNav />
-
       <Box component="form" onSubmit={submit} noValidate>
         <Stack spacing={2}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }} useFlexGap>

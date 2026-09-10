@@ -16,7 +16,6 @@ import LaunchIcon from '@mui/icons-material/Launch';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
 import { LazyChart } from '@panel/Components/Charts/LazyChart';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { StatusChip } from '@panel/Components/Super/StatusChip';
 import { bytesParts } from '@panel/Components/Super/UsageBars';
 import type { TenantUsageMetric, UsageTenantRef } from '@panel/Components/Super/types';
@@ -101,8 +100,6 @@ export default function Show({ tenant, metrics, metric_labels, near_percent, his
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2} sx={{ maxWidth: 960 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Button size="small" startIcon={<ArrowBackIcon />} component={RouterLink} href={route('super.usage.index')}>{t('super.usage.back')}</Button>

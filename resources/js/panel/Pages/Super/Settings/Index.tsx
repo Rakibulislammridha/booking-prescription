@@ -22,7 +22,6 @@ import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import type { PlatformSettingGroup, PlatformSettingRow } from '@panel/Components/Super/types';
 import { formatDhaka } from '@shared/format/date';
 import { route } from '@shared/routes';
@@ -177,8 +176,6 @@ export default function Index({ groups }: Props) {
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={3} sx={{ maxWidth: 800 }}>
         <Typography variant="body2" color="text.secondary">{t('super.settings.intro')}</Typography>
 

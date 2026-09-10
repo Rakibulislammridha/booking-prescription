@@ -22,8 +22,8 @@ use Inertia\Response;
 
 /**
  * GET /booking/kiosk?branch=…[&session=…]&signature=… (signed, 12 h) — the QR at the desk (SERIAL_ENGINE §11.2):
- * today's open sessions at that branch (or the one session the QR names), mobile → OTP → self-booking on the
- * online pool with source kiosk. The same Booking/Doctor page renders with `kiosk` prefilled — including the
+ * today's open sessions at that branch (or the one session the QR names), mobile + name → self-booking on the
+ * online pool with source kiosk (an OTP only when `kiosk.otp_required` is on). The same Booking/Doctor page renders with `kiosk` prefilled — including the
  * advance-payment notice, true when any doctor on the board asks for payment up front (BRIEF §5.C).
  */
 final class KioskController extends Controller

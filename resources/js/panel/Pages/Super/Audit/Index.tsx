@@ -22,7 +22,6 @@ import DownloadIcon from '@mui/icons-material/Download';
 import SearchIcon from '@mui/icons-material/Search';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { AuditDetailDrawer } from '@panel/Components/Super/AuditDetailDrawer';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import type { AuditDetailRow, AuditFilterOptions, AuditFilters, ConsoleMeta } from '@panel/Components/Super/types';
 import { formatNumber } from '@shared/format/number';
@@ -108,8 +107,6 @@ export default function Index({ logs, meta, filters, actions, options, export_li
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(6, 1fr)' } }}>
           <TextField

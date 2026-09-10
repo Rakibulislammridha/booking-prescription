@@ -6,6 +6,7 @@ namespace Tests\Feature\Telemedicine;
 
 use App\Domain\Booking\Enums\BookingChannel;
 use App\Domain\Booking\Enums\FeeRule;
+use App\Domain\Clinic\Services\Settings;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Doctor;
 use App\Models\Tenant\TelemedicineRoom;
@@ -17,7 +18,7 @@ use Tests\TestCase;
 /**
  * The public telemedicine booking channel. It posts to the ordinary `BookAppointment`; what is tested here is
  * that the CHANNEL is closed properly — only doctors who accept video, only when the clinic has the add-on, and
- * only with the OTP the clinic requires.
+ * with the OTP the clinic requires when it requires one.
  */
 final class SiteBookingTest extends TestCase
 {
@@ -52,7 +53,9 @@ final class SiteBookingTest extends TestCase
         [, $doctor] = $this->actingAsTelemedicineDoctor();
         $session = $this->openSessionFor($doctor);
         $this->flushSession();
-        // The OTP endpoint is the Booking module's own — this channel adds no second OTP flow.
+        // The OTP is the Booking module's own switch and endpoint — this channel adds no second OTP flow, and
+        // with `kiosk.otp_required` off (the default) it asks for no code either.
+        app(Settings::class)->set('kiosk.otp_required', true);
         $this->postJson('/booking/otp', ['mobile' => '01712345678'])->assertOk();
 
         $response = $this->post('/telemedicine', [

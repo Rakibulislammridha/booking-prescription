@@ -22,7 +22,6 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AddIcon from '@mui/icons-material/Add';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import type { SuperAdminRow, SuperTwoFactorState } from '@panel/Components/Super/types';
 import { formatNumber } from '@shared/format/number';
@@ -165,8 +164,6 @@ export default function Index({ admins, active_count }: Props) {
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}>
           <Box>

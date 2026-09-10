@@ -20,7 +20,6 @@ import Typography from '@mui/material/Typography';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { ChangeSlugDialog } from '@panel/Components/Super/Tenants/ChangeSlugDialog';
 import type { ConsoleTenantDetail } from '@panel/Components/Super/Tenants/types';
 import { useSharedProps } from '@shared/inertia';
@@ -93,7 +92,6 @@ export default function Edit({ tenant, central_domain, timezones }: Props) {
 
   return (
     <Box>
-      <SuperNav />
       <Box component="form" onSubmit={submit} noValidate data-testid="edit-tenant-form">
         <Stack spacing={2}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }} useFlexGap>

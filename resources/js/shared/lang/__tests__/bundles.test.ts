@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import en from '@lang/en.json';
 import {
   PANEL_BASE_PREFIXES, PANEL_MODULES, PANEL_MODULE_PREFIXES, SITE_KEY_PREFIXES,
-  isLangSurface, langPrefixesFor, messagesForSurface, panelModuleForPage, type LangSurface,
+  isLangSurface, isPanelModule, langPrefixesFor, messagesForSurface, panelModuleForPage, type LangSurface, type PanelModule,
 } from '../surfaces';
 
 const ROOT = path.resolve(__dirname, '../../../../..');
@@ -175,6 +175,23 @@ const KEY_TOKEN = /[a-z0-9_]+(?:\.[a-z0-9_-]+)+/g;
 const PREFIX_TOKEN = /[a-z0-9_]+(?:\.[a-z0-9_-]+)*\.(?=\$\{|['"`]\s*\+)/g;
 const ALL_KEYS = Object.keys(MESSAGES);
 
+// A file whose copy renders only on ONE module's pages says so on its first line: `// @lang-module super`. The
+// walk is static and cannot see a runtime branch — PanelLayout is one shell for two surfaces and mounts
+// Components/Super/{nav,SuperSidebar}.tsx only when `surface === 'super'`, i.e. only under Super/* pages — so
+// without the pragma every clinic route would be asked to carry `super.nav.*`. The pragma moves that file's keys
+// to the named module's check and out of every other page's; the runtime guard it describes is what
+// panel/Layouts/__tests__/PanelLayout.test.tsx proves.
+const MODULE_PRAGMA = /^\/\/\s*@lang-module\s+([a-z]+)\b/;
+
+function langModuleOf(file: string): PanelModule | null {
+  const first = fs.readFileSync(path.join(ROOT, file), 'utf8').split('\n', 1)[0] ?? '';
+  const match = MODULE_PRAGMA.exec(first);
+  if (match === null) return null;
+  const module = match[1] as string;
+  if (!isPanelModule(module)) throw new Error(`${file}: @lang-module names '${module}', which is not a panel module (surfaces.ts PANEL_MODULES)`);
+  return module;
+}
+
 function keysUsedBy(file: string): { keys: string[]; prefixes: string[] } {
   const src = readSource(file);
   const keys = [...src.matchAll(KEY_TOKEN)].map((m) => m[0]).filter((k) => Object.hasOwn(MESSAGES, k));
@@ -198,6 +215,17 @@ describe('panel module lang bundles cover every key their pages can render', () 
     expect(pages.length).toBeGreaterThan(50);
   });
 
+  it('the @lang-module files are the console drawer, and the clinic pages reach them only through the shell', () => {
+    const pragma = sourceFiles('resources/js/panel').filter((file) => langModuleOf(file) !== null);
+    expect(pragma.sort()).toEqual(['resources/js/panel/Components/Super/SuperSidebar.tsx', 'resources/js/panel/Components/Super/nav.tsx']);
+    for (const file of pragma) expect(langModuleOf(file)).toBe('super');
+    // No page outside Super/ imports them directly — the only door is PanelLayout's `surface === 'super'` branch.
+    for (const page of pages.filter((p) => !p.startsWith(`${PANEL_PAGES}/Super/`))) {
+      const direct = [...readSource(page).matchAll(IMPORT_RE)].map((m) => m[1] ?? m[2] ?? m[3]).filter((s) => s !== undefined && /Components\/Super\/(nav|SuperSidebar)/.test(s));
+      expect(direct, `${page} imports the console drawer`).toEqual([]);
+    }
+  });
+
   it.each(pages)('%s', (page) => {
     const name = page.slice(`${PANEL_PAGES}/`.length).replace(/\.tsx$/, '');
     const module = panelModuleForPage(name);
@@ -211,6 +239,8 @@ describe('panel module lang bundles cover every key their pages can render', () 
     const missingKeys = new Set<string>();
     const missingPrefixes = new Set<string>();
     for (const file of importClosure(page)) {
+      const only = langModuleOf(file);
+      if (only !== null && only !== module) continue;
       const { keys, prefixes } = keysUsedBy(file);
       for (const key of keys) if (!(key in bundle)) missingKeys.add(`${key} (${file})`);
       for (const prefix of prefixes) {

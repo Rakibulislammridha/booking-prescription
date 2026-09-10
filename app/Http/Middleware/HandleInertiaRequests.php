@@ -49,10 +49,11 @@ final class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $tenant = Tenancy::current();
-        $group = $this->ziggyGroup($request);
+        $surface = $this->surface($request);
 
         return [
             ...parent::share($request),
+            'surface' => $surface,
             'auth' => fn () => $this->auth($request),
             'tenant' => $tenant === null ? null : $this->tenant($tenant),
             'branch' => fn () => $this->branch(),
@@ -65,7 +66,7 @@ final class HandleInertiaRequests extends Middleware
                 'info' => fn () => $request->hasSession() ? $request->session()->get('flash.info') : null,
             ],
             'features' => Inertia::once(fn () => $tenant === null ? new stdClass : self::asObject($this->features())),
-            'ziggy' => Inertia::once(fn () => (new Ziggy($group, $request->getSchemeAndHttpHost()))->toArray()),
+            'ziggy' => Inertia::once(fn () => (new Ziggy($surface, $request->getSchemeAndHttpHost()))->toArray()),
             'csrf_token' => $request->hasSession() ? csrf_token() : '',
             'app' => [
                 'name' => config('app.name'),
@@ -222,7 +223,14 @@ final class HandleInertiaRequests extends Middleware
         return array_keys(array_filter($this->features()));
     }
 
-    private function ziggyGroup(Request $request): string
+    /**
+     * The surface serving this page — the route-name prefix of ARCHITECTURE §2, which is also the Ziggy group the
+     * page's `ziggy` prop carries. The panel shell switches its whole navigation on it: `super` mounts the console's
+     * drawer, everything else the clinic's (resources/js/panel/Layouts/PanelLayout.tsx).
+     *
+     * @return 'super'|'panel'|'central'|'site'
+     */
+    private function surface(Request $request): string
     {
         $name = (string) $request->route()?->getName();
 

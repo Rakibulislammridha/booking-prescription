@@ -21,7 +21,6 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DownloadIcon from '@mui/icons-material/Download';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { LazyChart } from '@panel/Components/Charts/LazyChart';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { StatusChip } from '@panel/Components/Super/StatusChip';
 import { bytesParts } from '@panel/Components/Super/UsageBars';
@@ -130,8 +129,6 @@ export default function Index({ metric, metrics, metric_labels, is_bytes, is_cap
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { sm: 'center' } }}>
           <TextField

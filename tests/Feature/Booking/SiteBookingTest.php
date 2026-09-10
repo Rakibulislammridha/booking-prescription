@@ -11,6 +11,7 @@ use App\Domain\Patients\Enums\OtpPurpose;
 use App\Domain\Patients\Services\OtpService;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Doctor;
+use App\Models\Tenant\PatientOtpCode;
 use App\Models\Tenant\Serial;
 use App\Models\Tenant\Specialty;
 use Inertia\Testing\AssertableInertia;
@@ -57,6 +58,7 @@ final class SiteBookingTest extends TestCase
     public function test_doctor_page_and_online_booking_with_otp_end_to_end(): void
     {
         $doctor = $this->doctorWithTemplate(10, 10, 5);
+        app(Settings::class)->set('kiosk.otp_required', true);   // the opt-in verified flow, unchanged
 
         $this->get($this->url('site.booking.doctor', ['doctor' => $doctor->slug]))->assertOk()
             ->assertInertia(fn (AssertableInertia $p) => $p->component('Booking/Doctor')->where('doctor.slug', $doctor->slug)->where('otp_required', true)->where('online_payment_enabled', false)->where('channel', 'online'));
@@ -90,6 +92,54 @@ final class SiteBookingTest extends TestCase
                 ->where('pay_at_counter', true));
 
         $this->getJson($this->url('api.scheduling.availability', ['slug' => $doctor->slug]))->assertOk()->assertJsonPath('days.0.sessions.0.online_remaining', 9);
+    }
+
+    /**
+     * The default flow (BRIEF §5.C): mobile + name → session → serial → confirmation. No OTP screen, no OTP request,
+     * no `patient_otp_codes` row — for the online site and for the kiosk / QR page alike, which post the same form.
+     */
+    public function test_online_and_kiosk_booking_need_no_otp_by_default(): void
+    {
+        $doctor = $this->doctorWithTemplate(10, 10, 5);
+        $branch = $this->mainBranch();
+
+        $this->get($this->url('site.booking.doctor', ['doctor' => $doctor->slug]))->assertOk()
+            ->assertInertia(fn (AssertableInertia $p) => $p->component('Booking/Doctor')->where('otp_required', false)->where('channel', 'online'));
+
+        $session = $this->getJson($this->url('api.scheduling.availability', ['slug' => $doctor->slug]))->assertOk()->json('days.0.sessions.0');
+        $ulid = '01J8ZK4V2Q3W5X6Y7Z8A9B0C3A';
+        $response = $this->post($this->url('site.booking.store'), ['session' => $session['public_id'], 'mobile' => '01712345678', 'name' => 'Rahima', 'sex' => 'f', 'age_years' => 54, 'client_event_id' => $ulid]);
+
+        $appointment = Appointment::query()->where('client_event_id', $ulid)->firstOrFail();
+        $response->assertSessionHasNoErrors()->assertRedirect($this->url('site.booking.confirmed', ['appointment' => $appointment->public_id]));
+        $this->assertSame('online', $appointment->channel->value);
+        $this->assertSame('A-011', Serial::query()->findOrFail($appointment->serial_id)->display_code);
+        $this->assertSame(0, PatientOtpCode::query()->count(), 'no code was issued or stored');
+        $this->get($this->url('site.booking.confirmed', ['appointment' => $appointment->public_id]))->assertOk()
+            ->assertInertia(fn (AssertableInertia $p) => $p->component('Booking/Confirmed')->where('appointment.serial.display_code', 'A-011'));
+
+        // Kiosk / QR: the same setting, the same form, source kiosk on the online pool.
+        $kiosk = $this->post($this->url('site.booking.store'), ['session' => $session['public_id'], 'channel' => 'kiosk', 'kiosk_branch' => $branch->public_id, 'mobile' => '01712345679', 'name' => 'Karim', 'client_event_id' => '01J8ZK4V2Q3W5X6Y7Z8A9B0C3B']);
+        $kioskAppointment = Appointment::query()->where('client_event_id', '01J8ZK4V2Q3W5X6Y7Z8A9B0C3B')->firstOrFail();
+        $kiosk->assertSessionHasNoErrors()->assertRedirect($this->url('site.booking.confirmed', ['appointment' => $kioskAppointment->public_id]));
+        $this->assertSame('kiosk', $kioskAppointment->channel->value);
+        $this->assertSame('kiosk', Serial::query()->findOrFail($kioskAppointment->serial_id)->source->value);
+        $this->assertSame(0, PatientOtpCode::query()->count());
+    }
+
+    /** With the setting on, nothing a client posts stands in for verification: the server decides. */
+    public function test_a_forged_verified_flag_does_not_skip_the_otp_when_the_clinic_requires_it(): void
+    {
+        $doctor = $this->doctorWithTemplate(10, 10, 5);
+        app(Settings::class)->set('kiosk.otp_required', true);
+        $session = $this->getJson($this->url('api.scheduling.availability', ['slug' => $doctor->slug]))->assertOk()->json('days.0.sessions.0');
+        $forged = ['session' => $session['public_id'], 'mobile' => '01712345678', 'name' => 'Rahima', 'client_event_id' => '01J8ZK4V2Q3W5X6Y7Z8A9B0C3C', 'otp_verified' => true, 'otpVerified' => 1];
+
+        $this->post($this->url('site.booking.store'), $forged)->assertSessionHasErrors('otp');
+        $this->post($this->url('site.booking.store'), $forged + ['otp' => '000000'])->assertSessionHasErrors('otp');   // no code was ever issued
+        $this->postJson($this->url('api.booking.public.store'), ['doctor_slug' => $doctor->slug, 'date' => $this->today()->toDateString(), 'session_code' => 'A', 'mobile' => '01712345678', 'patient' => ['name' => 'Rahima'], 'client_event_id' => '01J8ZK4V2Q3W5X6Y7Z8A9B0C3D', 'otp_verified' => true])
+            ->assertStatus(422)->assertJsonValidationErrors('otp');
+        $this->assertSame(0, Appointment::query()->count());
     }
 
     public function test_public_api_booking_and_double_submit(): void

@@ -15,9 +15,7 @@ import Typography from '@mui/material/Typography';
 import DownloadIcon from '@mui/icons-material/Download';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
-import { BillingNav } from '@panel/Components/Super/Billing/BillingNav';
 import { PAYMENT_METHOD_LABELS, PaymentStatusChip } from '@panel/Components/Super/Billing/InvoiceStatusChip';
 import { Pager } from '@panel/Components/Super/Billing/Pager';
 import type { BillingPaymentRow, ConsoleMeta } from '@panel/Components/Super/Billing/types';
@@ -96,9 +94,6 @@ export default function Payments({ payments, meta, filters, methods, statuses, m
 
   return (
     <Box>
-      <SuperNav />
-      <BillingNav />
-
       <Stack spacing={2}>
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
           <Typography variant="caption" color="text.secondary">{t('super.billing.payments.month_by_method')}</Typography>

@@ -6,15 +6,12 @@ namespace App\Http\Controllers\Site\Telemedicine;
 
 use App\Domain\Booking\Actions\BookAppointment;
 use App\Domain\Clinic\Services\Settings;
-use App\Domain\Patients\Enums\OtpPurpose;
-use App\Domain\Patients\Exceptions\OtpAttemptsExceeded;
-use App\Domain\Patients\Exceptions\OtpExpired;
-use App\Domain\Patients\Exceptions\OtpInvalid;
 use App\Domain\Patients\Services\OtpService;
 use App\Domain\Shared\Actor;
 use App\Domain\Telemedicine\Exceptions\DoctorNotTelemedicine;
 use App\Domain\Telemedicine\Services\JoinLink;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Site\Booking\Concerns\VerifiesBookingOtp;
 use App\Http\Requests\Site\Telemedicine\StoreTelemedicineBookingRequest;
 use App\Http\Resources\Booking\AppointmentResource;
 use App\Models\Tenant\Appointment;
@@ -25,7 +22,6 @@ use App\Models\Tenant\TelemedicineRoom;
 use App\Support\Clock;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -42,6 +38,8 @@ use Inertia\Response;
  */
 final class BookingController extends Controller
 {
+    use VerifiesBookingOtp;
+
     public function index(Request $request, Settings $settings, OtpService $otp): Response
     {
         $doctors = Doctor::query()->active()
@@ -70,7 +68,7 @@ final class BookingController extends Controller
     public function store(StoreTelemedicineBookingRequest $request, BookAppointment $book, OtpService $otpService, Settings $settings): RedirectResponse
     {
         $this->assertDoctorConsults((string) $request->validated('session'));
-        $verified = $this->verifyOtp($request, $otpService, (bool) $settings->get('kiosk.otp_required'));
+        $verified = $this->verifyBookingOtp($request, $otpService, $settings);
         $result = $book->handle($request->toData($verified), new Actor(ip: $request->ip(), source: 'web'));
 
         return redirect()->route('site.telemedicine.booked', ['appointment' => $result->appointment->public_id]);
@@ -100,22 +98,5 @@ final class BookingController extends Controller
         if (! $accepts) {
             throw new DoctorNotTelemedicine;
         }
-    }
-
-    private function verifyOtp(StoreTelemedicineBookingRequest $request, OtpService $otpService, bool $required): bool
-    {
-        $code = (string) $request->validated('otp', '');
-
-        if (! $required && $code === '') {
-            return false;
-        }
-
-        try {
-            $otpService->verify((string) $request->validated('mobile'), $code, OtpPurpose::Booking);
-        } catch (OtpInvalid|OtpExpired|OtpAttemptsExceeded $e) {
-            throw ValidationException::withMessages(['otp' => $e->getMessage()]);
-        }
-
-        return true;
     }
 }

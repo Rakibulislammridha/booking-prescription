@@ -1,7 +1,10 @@
 // Booking site, steps 2–4 (Inertia::render('Booking/Doctor')): calendar with online serials remaining
-// (api.scheduling.availability → AvailabilityCalendar, materialised on demand) → mobile + OTP (kiosk.otp_required)
-// → name/sex/age → POST site.booking.store. The kiosk QR lands here too (`kiosk` prop: today's sessions prefilled,
-// channel kiosk). Payment is "pay at counter" unless the OnlinePaymentGateway is enabled (extension point).
+// (api.scheduling.availability → AvailabilityCalendar, materialised on demand) → mobile + name (+ sex/age) →
+// POST site.booking.store. The kiosk QR lands here too (`kiosk` prop: today's sessions prefilled, channel kiosk).
+// There is no OTP step unless the clinic turned `kiosk.otp_required` on (`otp_required` prop): only then does the
+// page show the send-code button and the code field, and only then does the payload carry an `otp` at all — the
+// server ignores the field otherwise and never issues a code. Payment is "pay at counter" unless the
+// OnlinePaymentGateway is enabled (extension point).
 // `advance_payment_required` (BRIEF §5.C) is announced before the form is filled: the serial will be HELD until it
 // is paid, or — with no gateway configured — self-booking is refused and the patient must phone the clinic.
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
@@ -86,7 +89,14 @@ export default function Doctor({ doctor, branch, from, to, otp_required, otp_res
 
   const submit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
-    form.transform((d) => ({ ...d, mobile: toAsciiDigits(d.mobile).replace(/[\s-]/g, ''), otp: toAsciiDigits(d.otp).replace(/\D/g, ''), age_years: d.age_years === '' ? null : Number(toAsciiDigits(d.age_years)), sex: d.sex === '' ? null : d.sex }));
+    form.transform(({ otp, ...d }) => ({
+      ...d,
+      mobile: toAsciiDigits(d.mobile).replace(/[\s-]/g, ''),
+      age_years: d.age_years === '' ? null : Number(toAsciiDigits(d.age_years)),
+      sex: d.sex === '' ? null : d.sex,
+      // Only a clinic that asks for verification gets a code in the payload; without it there is nothing to verify.
+      ...(otp_required ? { otp: toAsciiDigits(otp).replace(/\D/g, '') } : {}),
+    }));
     form.post(route('site.booking.store'), { preserveScroll: true });
   };
 

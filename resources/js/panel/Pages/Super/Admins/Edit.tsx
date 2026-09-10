@@ -22,7 +22,6 @@ import Typography from '@mui/material/Typography';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import type { SuperAdminDetail } from '@panel/Components/Super/types';
 import { useSharedProps } from '@shared/inertia';
 import { formatNumber } from '@shared/format/number';
@@ -125,8 +124,6 @@ export default function Edit({ admin }: Props) {
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2} sx={{ maxWidth: 880 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Button size="small" startIcon={<ArrowBackIcon />} component={RouterLink} href={route('super.admins.index')}>{t('super.admins.back')}</Button>

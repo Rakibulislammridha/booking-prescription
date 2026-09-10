@@ -15,8 +15,9 @@ final class SettingsRegistryTest extends TestCase
     {
         $keys = array_keys(SettingsRegistry::all());
 
-        $this->assertCount(34, $keys);          // + the six telemedicine.* keys (Module K, BRIEF §5.K),
-        // booking.advance_payment_hold_minutes (§5.C advance payment) and the two patients.ocr_* keys (§5.H)
+        $this->assertCount(35, $keys);          // + the six telemedicine.* keys (Module K, BRIEF §5.K),
+        // booking.advance_payment_hold_minutes (§5.C advance payment), the two patients.ocr_* keys (§5.H) and
+        // booking.self_service_daily_limit (the per-mobile cap that stands in for the OTP)
         $this->assertSame(60, SettingsRegistry::default('serial.cancel_cutoff_minutes'));
         $this->assertSame('both', SettingsRegistry::default('queue.display_voice'));
         $this->assertSame(120, SettingsRegistry::default('security.session_timeout_minutes'));
@@ -26,6 +27,19 @@ final class SettingsRegistryTest extends TestCase
         $this->assertSame('21:00', SettingsRegistry::default('notifications.quiet_hours_start'));
         $this->assertSame('08:00', SettingsRegistry::default('notifications.quiet_hours_end'));
         $this->assertFalse(SettingsRegistry::default('booking.online_payment_enabled'));
+
+        // BRIEF §5.C: mobile → patient → session → serial, no code step. The OTP is opt-in per clinic; what guards
+        // the open form by default is a modest per-mobile daily cap, and 0 is the documented way to lift it.
+        $this->assertFalse(SettingsRegistry::default('kiosk.otp_required'));
+        $this->assertSame(3, SettingsRegistry::default('booking.self_service_daily_limit'));
+        $this->assertSame(0, SettingsRegistry::validate('booking.self_service_daily_limit', '0'));
+
+        try {
+            SettingsRegistry::validate('booking.self_service_daily_limit', 51);
+            $this->fail('a cap above 50 is not a modest cap');
+        } catch (InvalidSettingValue) {
+            $this->addToAssertionCount(1);
+        }
 
         foreach ($keys as $key) {
             $this->assertMatchesRegularExpression('/^(queue|serial|kiosk|reception|booking|billing|notifications|patients|security|telemedicine)\.[a-z_]+$/', $key);

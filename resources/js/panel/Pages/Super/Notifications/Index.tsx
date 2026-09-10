@@ -21,7 +21,6 @@ import Typography from '@mui/material/Typography';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { previewTemplate } from '@panel/api/super';
 import type { ConsoleMeta, PlatformMessageRow, PlatformSettingRow, TemplatePreview, TemplateRows } from '@panel/Components/Super/types';
@@ -231,8 +230,6 @@ export default function Index({ identity, effective_identity, sms, sms_summary, 
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={3}>
         <Typography variant="body2" color="text.secondary">{t('super.notifications.intro')}</Typography>
 

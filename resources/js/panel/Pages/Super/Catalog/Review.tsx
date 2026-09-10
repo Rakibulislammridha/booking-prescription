@@ -39,7 +39,6 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import SearchIcon from '@mui/icons-material/Search';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { approvePromotion, listPromotionTenants, listPromotions, rejectPromotion, showPromotion } from '@panel/api/super';
 import type { JsonPage, PromotionDetail, PromotionRow, PromotionTenantOption } from '@panel/Components/Super/types';
 import { isApiError } from '@shared/http';
@@ -193,8 +192,6 @@ export default function Review({ status, statuses, counts, endpoints }: Props) {
 
   return (
     <Box>
-      <SuperNav />
-
       <Stack spacing={2}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={status} onChange={changeStatus} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
