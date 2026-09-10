@@ -10,6 +10,7 @@ use App\Domain\Booking\Enums\AppointmentStatus;
 use App\Domain\Booking\Services\AdvancePaymentPolicy;
 use App\Domain\Clinic\Services\Settings;
 use App\Domain\Patients\Services\OtpService;
+use App\Domain\Queue\Support\QueueLinks;
 use App\Domain\Shared\Actor;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Site\Booking\Concerns\VerifiesBookingOtp;
@@ -110,7 +111,7 @@ final class BookingController extends Controller
 
         return Inertia::render('Booking/Confirmed', [
             'appointment' => (new AppointmentResource($appointment))->toArray($request),
-            'queue_url' => '/q/'.$appointment->doctor->slug.'/today?s='.($appointment->serial->public_id ?? ''),
+            'queue_url' => QueueLinks::forSerial($appointment->doctor->slug, $appointment->serial?->public_id),
             'branch' => ['name' => $appointment->branch->name, 'phone' => $appointment->branch->phone, 'address' => $appointment->branch->address],
             'pay_at_counter' => ! $held && ! $payment->enabled(),
             'held_for_payment' => $held,

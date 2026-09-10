@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Site\Telemedicine;
 use App\Domain\Booking\Actions\BookAppointment;
 use App\Domain\Clinic\Services\Settings;
 use App\Domain\Patients\Services\OtpService;
+use App\Domain\Queue\Support\QueueLinks;
 use App\Domain\Shared\Actor;
 use App\Domain\Telemedicine\Exceptions\DoctorNotTelemedicine;
 use App\Domain\Telemedicine\Services\JoinLink;
@@ -84,7 +85,7 @@ final class BookingController extends Controller
             'appointment' => (new AppointmentResource($appointment))->toArray($request),
             'join_url' => $room === null ? null : $links->relative($room),
             'room' => $room?->room_name,
-            'queue_url' => '/q/'.$appointment->doctor->slug.'/today?s='.($appointment->serial->public_id ?? ''),
+            'queue_url' => QueueLinks::forSerial($appointment->doctor->slug, $appointment->serial?->public_id),
             'branch' => ['name' => $appointment->branch->name, 'phone' => $appointment->branch->phone],
         ]);
     }

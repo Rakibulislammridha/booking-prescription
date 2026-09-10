@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Site\Portal;
 
 use App\Domain\Patients\Queries\PatientTimelineQuery;
+use App\Domain\Patients\Queries\UpcomingSerialsQuery;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Patients\FamilyMemberResource;
 use App\Http\Resources\Patients\PatientSummaryResource;
@@ -14,10 +15,13 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
-/** GET /portal — the logged-in household: members, the member being acted for, and their timeline (audited). */
+/**
+ * GET /portal — the logged-in household: members, the member being acted for, their timeline (audited), and the
+ * household's upcoming serials with the queue-page link the patient follows (BRIEF §5.E, §5.H).
+ */
 final class HomeController extends Controller
 {
-    public function __invoke(Request $request, PatientTimelineQuery $timeline): Response
+    public function __invoke(Request $request, PatientTimelineQuery $timeline, UpcomingSerialsQuery $upcoming): Response
     {
         /** @var Patient $patient */
         $patient = $request->user('patient');
@@ -34,6 +38,8 @@ final class HomeController extends Controller
             'family' => FamilyMemberResource::collection($household)->resolve(),
             'acting_for' => (new PatientSummaryResource($acting))->resolve(),
             'timeline' => $timeline->fetch($acting, null, 10)->toArray(),
+            // The whole household, not only the acting member: one phone follows everyone it booked for.
+            'upcoming' => $upcoming->fetch($household->pluck('id')->all()),
         ]);
     }
 }

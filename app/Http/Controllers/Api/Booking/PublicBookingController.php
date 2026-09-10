@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\Booking;
 use App\Domain\Booking\Actions\BookAppointment;
 use App\Domain\Clinic\Services\Settings;
 use App\Domain\Patients\Services\OtpService;
+use App\Domain\Queue\Support\QueueLinks;
 use App\Domain\Shared\Actor;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Site\Booking\Concerns\VerifiesBookingOtp;
@@ -37,7 +38,7 @@ final class PublicBookingController extends Controller
                 'public_id' => $result->serial->public_id,
                 'display_code' => $result->serial->display_code,
                 'number' => $result->serial->number,
-                'queue_url' => '/q/'.$appointment->doctor->slug.'/today?s='.$result->serial->public_id,
+                'queue_url' => QueueLinks::forSerial($appointment->doctor->slug, $result->serial->public_id),
             ],
             'appointment' => (new AppointmentResource($appointment))->toArray($request),
             'replayed' => $result->replayed,

@@ -324,6 +324,28 @@ export interface FamilyMember extends PatientSummary {
   relation: PatientRelationType | null;
 }
 
+/**
+ * One row of the portal's "Upcoming serials" card (UpcomingSerialsQuery, GET /portal `upcoming`): a household
+ * booking from today on that is not over. `queue_url` is set for today's serials only (the public queue page with
+ * this serial pinned, REALTIME §5.3); `live` is the existing QueueState's "now serving · N ahead" when the session
+ * is running or paused today and a snapshot exists; `hold_expires_at`/`pay_url` only while held for advance payment.
+ */
+export interface UpcomingSerial {
+  appointment_id: string;
+  status: AppointmentStatus;
+  is_telemedicine: boolean;
+  is_today: boolean;
+  patient: { public_id: string; name: string };
+  doctor: { slug: string; name: string; name_bn: string | null; room: string | null };
+  branch: { name: string };
+  session: { public_id: string; code: string; date: string; status: SessionStatus; planned_start_at: string; planned_end_at: string; delay_minutes: number };
+  serial: { public_id: string; display_code: string; number: number; status: SerialStatus };
+  queue_url: string | null;
+  hold_expires_at: string | null;
+  pay_url: string | null;
+  live: { now_serving: string | null; ahead: number | null } | null;
+}
+
 export interface PatientAllergy {
   id: number;
   allergen_type: AllergenType;
