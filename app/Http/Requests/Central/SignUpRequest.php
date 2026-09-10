@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace App\Http\Requests\Central;
 
 use App\Domain\SaaS\Data\OnboardingData;
+use App\Domain\SaaS\Rules\OwnerEmailDomainAllowed;
+use App\Domain\SaaS\Services\PlatformSettings;
+use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Domain\Tenancy\Rules\NotReservedSlug;
 use App\Models\Central\Plan;
 use App\Models\Central\Tenant;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * The wizard's one and only write. Everything a clinic can get wrong is caught here, before `ProvisionTenant`
@@ -33,7 +37,7 @@ final class SignUpRequest extends FormRequest
             'clinic_name' => ['required', 'string', 'min:2', 'max:160'],
             'slug' => ['required', 'string', 'min:2', 'max:63', 'regex:/^[a-z0-9][a-z0-9-]{1,62}$/', new NotReservedSlug, Rule::unique(Tenant::class, 'slug')->withoutTrashed()],
             'owner_name' => ['required', 'string', 'min:2', 'max:160'],
-            'owner_email' => ['required', 'email:rfc', 'max:255'],
+            'owner_email' => ['required', 'email:rfc', 'max:255', new OwnerEmailDomainAllowed($this->settings())],
             'owner_mobile' => ['required', 'string', 'regex:/^\+?8801[3-9]\d{8}$/'],
             'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
             'plan' => ['required', 'string', Rule::exists(Plan::class, 'code')->where(fn ($q) => $q->whereNull('archived_at')->where('is_public', true)->where('is_addon', false))],
@@ -54,13 +58,41 @@ final class SignUpRequest extends FormRequest
         ];
     }
 
+    /**
+     * `onboarding.signup_open` off: the form is refused with the operator's message whatever else it says — the
+     * wizard already shows that message instead of the form, so only an old tab or a script gets here.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $v): void {
+            $settings = $this->settings();
+
+            if (! (bool) $settings->get(PlatformSettingsRegistry::SIGNUP_OPEN)) {
+                $message = trim((string) $settings->get(PlatformSettingsRegistry::SIGNUP_CLOSED_MESSAGE));
+                $v->errors()->add('clinic_name', $message !== '' ? $message : (string) __('saas.onboarding.closed'));
+            }
+        });
+    }
+
+    /**
+     * The wizard's blanks fall back to the platform defaults (`onboarding.default_locale` / `default_timezone`), so
+     * a clinic that never touched those two fields is provisioned the way the platform operator chose.
+     */
     protected function prepareForValidation(): void
     {
+        $settings = $this->settings();
+
         $this->merge([
             'slug' => mb_strtolower(trim((string) $this->input('slug'))),
-            'timezone' => (string) ($this->input('timezone') ?: 'Asia/Dhaka'),
+            'locale' => (string) ($this->input('locale') ?: $settings->get(PlatformSettingsRegistry::DEFAULT_LOCALE)),
+            'timezone' => (string) ($this->input('timezone') ?: $settings->get(PlatformSettingsRegistry::DEFAULT_TIMEZONE)),
             'demo' => $this->boolean('demo'),
         ]);
+    }
+
+    private function settings(): PlatformSettings
+    {
+        return app(PlatformSettings::class);
     }
 
     public function toData(): OnboardingData

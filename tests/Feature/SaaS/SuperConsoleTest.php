@@ -285,7 +285,9 @@ final class SuperConsoleTest extends TestCase
                 ->where('metric', 'appointments')
                 ->has('series')
                 ->has('metric_labels.appointments')
-                ->where('top.0.value', 42));
+                ->has('counts.all')
+                ->where('board.0.slug', 'test-a')
+                ->where('board.0.value', 42));
 
         $this->post(route('super.tenants.suspend', ['tenant' => $tenant->public_id], false), ['reason' => 'for the audit log']);
 

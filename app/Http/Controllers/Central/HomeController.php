@@ -21,6 +21,7 @@ final class HomeController extends Controller
         return Inertia::render('Central/Home', [
             'plans' => $catalog->publicPlans(),
             'links' => $this->centralLinks(),
+            'platform' => $this->platformProps(),
             'highlights' => ['marketing.highlight.1', 'marketing.highlight.2', 'marketing.highlight.3'],
             'copy' => CentralCopy::for('home'),
         ]);

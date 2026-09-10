@@ -28,6 +28,15 @@ enum CentralAuditAction: string
     case TwoFactorDisabled = 'two_factor_disabled';
     case TwoFactorFailed = 'two_factor_failed';
     case TwoFactorRecoveryUsed = 'two_factor_recovery_used';
+    // Super-admin account management (the console's Admins and Profile screens). `deactivate` pairs with the
+    // existing `reactivate` — the auditable type says whether a row is about a clinic or an operator. A reset of
+    // SOMEONE ELSE's second factor is its own action rather than a `two_factor_disabled`: the latter is the owner
+    // turning their factor off with a code in hand, the former is the "locked out of the authenticator" path and
+    // the question an incident asks is "who stripped whose factor, and when".
+    case Deactivate = 'deactivate';
+    case TwoFactorReset = 'two_factor_reset';
+    case PasswordChange = 'password_change';
+    case SessionRevoke = 'session_revoke';
 
     /** @return array<int, string> */
     public static function values(): array

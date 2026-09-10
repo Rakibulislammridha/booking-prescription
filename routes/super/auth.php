@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domain\SaaS\Http\Middleware\EnsureSuperAdminIsActive;
 use App\Domain\SaaS\Http\Middleware\EnsureSuperTwoFactor;
 use App\Http\Controllers\Super\Auth\LoginController;
 use App\Http\Controllers\Super\Auth\TwoFactorChallengeController;
@@ -38,4 +39,6 @@ Route::prefix('security/two-factor')->name('two-factor.')->group(function (): vo
     Route::delete('/', [TwoFactorController::class, 'destroy'])->middleware('throttle:super-2fa')->name('destroy');
 });
 
-Route::get('/', DashboardController::class)->name('dashboard');
+// The dashboard carries the kill switch too (it is the page a deactivated operator's open tab refreshes), and
+// EnsureSuperAdminIsActive is what keeps their entry in the Profile screen's device list current.
+Route::get('/', DashboardController::class)->middleware(EnsureSuperAdminIsActive::class)->name('dashboard');

@@ -37,6 +37,7 @@ final class ReviewController extends Controller
                 'show' => route('super.catalog.promotions.show', ['promotion' => '__ID__']),
                 'approve' => route('super.catalog.promotions.approve', ['promotion' => '__ID__']),
                 'reject' => route('super.catalog.promotions.reject', ['promotion' => '__ID__']),
+                'tenants' => route('super.catalog.promotions.tenants'),
             ],
         ]);
     }

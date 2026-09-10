@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Super\Auth\Concerns;
 
 use App\Domain\Audit\Enums\CentralAuditAction;
 use App\Domain\SaaS\Services\CentralAudit;
+use App\Domain\SaaS\Services\SuperSessionIndex;
 use App\Domain\SaaS\Services\SuperTwoFactor;
 use App\Models\Central\SuperAdmin;
 use Carbon\CarbonImmutable;
@@ -19,6 +20,9 @@ use Illuminate\Http\Request;
  * exactly one path and means exactly one thing: THIS session presented a second factor. A password-only login
  * never stamps it, which is what lets a policy switched from `disabled` back to `required`/`optional` send an
  * enrolled operator back to sign in properly on their very next request (ARCHITECTURE §6.5).
+ *
+ * Both callers regenerate the session id BEFORE arriving here, so the id written into `SuperSessionIndex` is the
+ * one the browser will actually present — the Profile screen's device list is built from it.
  */
 trait CompletesSuperLogin
 {
@@ -33,6 +37,8 @@ trait CompletesSuperLogin
         } else {
             $request->session()->forget(SuperTwoFactor::SESSION_PASSED_AT);
         }
+
+        app(SuperSessionIndex::class)->remember($admin, $request->session()->getId(), $request->ip(), $request->userAgent());
 
         $audit->record(CentralAuditAction::Login, null, $admin, null, ['two_factor' => $challengePassed], superAdminId: $admin->id);
 

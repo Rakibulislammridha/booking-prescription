@@ -8,7 +8,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useSharedProps } from '@shared/inertia';
 import { formatBn } from '@shared/format/number';
 import { makeCopy, type Copy } from './copy';
-import type { CentralLinks } from './types';
+import type { CentralLinks, PlatformProps } from './types';
 
 const EMPTY_LINKS: CentralLinks = { home: '/', pricing: '/pricing', docs: '/docs', changelog: '/changelog', signup: '/signup', signup_store: '/signup', locale: '' };
 
@@ -27,11 +27,15 @@ export interface CentralLayoutProps {
  * `(page) => <CentralLayout title="…">{page}</CentralLayout>` form, and the shell asks Inertia for what it needs.
  */
 export function CentralLayout({ title, children }: CentralLayoutProps) {
-  const page = usePage<{ links?: CentralLinks; copy?: Copy }>();
+  const page = usePage<{ links?: CentralLinks; copy?: Copy; platform?: PlatformProps }>();
   const links = page.props.links ?? EMPTY_LINKS;
   const c = makeCopy(page.props.copy ?? {});
   const shared = useSharedProps();
-  const appName = shared.app.name;
+  // The platform's own identity (`platform.*` settings) when the page passes it; the app name otherwise.
+  const platform = page.props.platform;
+  const appName = platform?.name && platform.name !== '' ? platform.name : shared.app.name;
+  const signupOpen = platform?.signup_open ?? true;
+  const banner = platform?.maintenance_banner ?? '';
   const pageTitle = title ? c(title) : undefined;
   const nextLocale = shared.locale === 'bn' ? 'en' : 'bn';
   const year = formatBn(new Date().getFullYear(), shared.locale);
@@ -45,6 +49,12 @@ export function CentralLayout({ title, children }: CentralLayoutProps) {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       {pageTitle ? <Head title={pageTitle} /> : null}
+
+      {banner !== '' ? (
+        <div role="status" data-testid="maintenance-banner" className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm font-medium text-amber-900">
+          {banner}
+        </div>
+      ) : null}
 
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
@@ -76,9 +86,11 @@ export function CentralLayout({ title, children }: CentralLayoutProps) {
                 {nextLocale === 'bn' ? 'বাংলা' : 'English'}
               </button>
             ) : null}
-            <Link href={links.signup} className="rounded-lg bg-primary px-3 py-2 font-semibold text-on-primary hover:opacity-90">
-              {c('nav.signup')}
-            </Link>
+            {signupOpen ? (
+              <Link href={links.signup} className="rounded-lg bg-primary px-3 py-2 font-semibold text-on-primary hover:opacity-90">
+                {c('nav.signup')}
+              </Link>
+            ) : null}
           </nav>
         </div>
 
@@ -105,10 +117,20 @@ export function CentralLayout({ title, children }: CentralLayoutProps) {
                 {item.label}
               </Link>
             ))}
-            <Link href={links.signup} className="font-semibold text-primary underline-offset-2 hover:underline">
-              {c('nav.signup')}
-            </Link>
+            {signupOpen ? (
+              <Link href={links.signup} className="font-semibold text-primary underline-offset-2 hover:underline">
+                {c('nav.signup')}
+              </Link>
+            ) : null}
           </nav>
+          {platform && (platform.support_email !== '' || platform.support_phone !== '') ? (
+            <p className="text-sm text-slate-600 md:col-span-2" data-testid="support-contact">
+              {c('footer.support')}{' '}
+              {platform.support_email !== '' ? <a href={`mailto:${platform.support_email}`} className="font-medium text-primary underline-offset-2 hover:underline">{platform.support_email}</a> : null}
+              {platform.support_email !== '' && platform.support_phone !== '' ? ' · ' : ''}
+              {platform.support_phone !== '' ? <a href={`tel:${platform.support_phone.replace(/[^+0-9]/g, '')}`} className="font-medium text-primary underline-offset-2 hover:underline">{platform.support_phone}</a> : null}
+            </p>
+          ) : null}
           <p className="text-xs text-slate-500 md:col-span-2">{c('footer.rights', { year, app: appName })}</p>
         </div>
       </footer>

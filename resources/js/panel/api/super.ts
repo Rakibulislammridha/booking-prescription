@@ -7,7 +7,7 @@
 // own. Everything else in the console is an Inertia form post returning a redirect.
 import { http } from '@shared/http';
 import type {
-  ApprovePromotionPayload, JsonPage, PromotionDetail, PromotionRow, RejectPromotionPayload,
+  ApprovePromotionPayload, CatalogDetail, JsonPage, PromotionDetail, PromotionRow, PromotionTenantOption, RejectPromotionPayload, TemplatePreview,
 } from '@panel/Components/Super/types';
 
 /** Substitute a promotion's public_id into one of the `endpoints` templates. */
@@ -41,7 +41,32 @@ export async function approvePromotion(template: string, publicId: string, paylo
   return data;
 }
 
-export async function rejectPromotion(template: string, publicId: string, payload: RejectPromotionPayload): Promise<{ promotion: PromotionRow }> {
-  const { data } = await http.post<{ promotion: PromotionRow }>(promotionUrl(template, publicId), payload);
+export async function rejectPromotion(template: string, publicId: string, payload: RejectPromotionPayload): Promise<{ promotion: PromotionRow; notified?: boolean }> {
+  const { data } = await http.post<{ promotion: PromotionRow; notified?: boolean }>(promotionUrl(template, publicId), payload);
+  return data;
+}
+
+/** The clinics that have ever submitted a brand — the queue's tenant filter (`super.catalog.promotions.tenants`). */
+export async function listPromotionTenants(url: string, signal?: AbortSignal): Promise<PromotionTenantOption[]> {
+  const { data } = await http.get<PromotionTenantOption[]>(url, { signal });
+  return data;
+}
+
+/** The catalogue browser's drawer (`super.catalog.show`), read-only. */
+export async function catalogDetail(url: string, signal?: AbortSignal): Promise<CatalogDetail> {
+  const { data } = await http.get<CatalogDetail>(url, { signal });
+  return data;
+}
+
+export interface TemplatePreviewPayload {
+  template: string;
+  locale: 'en' | 'bn';
+  subject?: string;
+  body?: string;
+}
+
+/** Render a platform mail template with sample data (`super.notifications.templates.preview`); nothing is saved. */
+export async function previewTemplate(url: string, payload: TemplatePreviewPayload, signal?: AbortSignal): Promise<TemplatePreview> {
+  const { data } = await http.post<TemplatePreview>(url, payload, { signal });
   return data;
 }

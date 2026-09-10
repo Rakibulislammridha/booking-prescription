@@ -9,6 +9,7 @@ use App\Domain\SaaS\Actions\Subscriptions\ChangePlan;
 use App\Domain\SaaS\Actions\Subscriptions\ReactivateTenant;
 use App\Domain\SaaS\Actions\Subscriptions\SuspendTenant;
 use App\Domain\SaaS\Enums\BillingCycle;
+use App\Domain\SaaS\Enums\TenantStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Central\Plan;
 use App\Models\Central\Tenant;
@@ -31,10 +32,19 @@ final class LifecycleController extends Controller
         return back()->with('flash.warning', __('saas.tenants.flash.suspended', ['clinic' => $tenant->name]));
     }
 
+    /**
+     * `ReactivateTenant` declines silently when unpaid invoices exist and `force` is off — that is the right
+     * behaviour for the payment listener that shares it, but a human pressing a button has to be told, so the
+     * outcome is read back from the row rather than assumed.
+     */
     public function reactivate(Request $request, Tenant $tenant, ReactivateTenant $reactivate): RedirectResponse
     {
         $validated = $request->validate(['reason' => ['nullable', 'string', 'max:255'], 'force' => ['boolean']]);
         $reactivate->handle($tenant, (string) ($validated['reason'] ?? 'saas.reactivate.manual'), $request->boolean('force'));
+
+        if (! $tenant->refresh()->isServable() || $tenant->status === TenantStatus::PastDue) {
+            return back()->with('flash.warning', __('super.tenants.flash.reactivate_refused', ['clinic' => $tenant->name]));
+        }
 
         return back()->with('flash.success', __('saas.tenants.flash.reactivated', ['clinic' => $tenant->name]));
     }

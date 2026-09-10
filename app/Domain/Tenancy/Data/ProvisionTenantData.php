@@ -27,6 +27,8 @@ final readonly class ProvisionTenantData
         public ?string $adminName = null,
         public ?string $branchName = null,
         public ?string $branchCode = null,
+        /** Trial length override in days; null = the plan's own `trial_days`. Sign-up passes the platform default. */
+        public ?int $trialDays = null,
     ) {}
 
     public static function forTests(int $id, string $slug, string $schemaName, string $planCode = 'starter'): self

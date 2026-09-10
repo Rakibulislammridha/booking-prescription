@@ -6,6 +6,7 @@ namespace App\Domain\Notifications\Services;
 
 use App\Domain\Notifications\Contracts\ChannelDriver;
 use App\Domain\Notifications\Contracts\DriverFactory;
+use App\Domain\Notifications\Contracts\PlatformGatewayDefaults;
 use App\Domain\Notifications\Data\GatewayConfig;
 use App\Domain\Notifications\Drivers\Ivr\HttpIvrDriver;
 use App\Domain\Notifications\Drivers\LogChannelDriver;
@@ -47,6 +48,8 @@ final class GatewayResolver implements DriverFactory
         private readonly string $mailFromName = 'Clinic',
         private readonly int $pushTtl = 3600,
         private readonly int $pushPruneAfterFailures = 5,
+        // The platform's own gateway, inherited by a tenant with no usable row (super console → SaaS binding).
+        private readonly ?PlatformGatewayDefaults $platform = null,
     ) {}
 
     public function for(NotificationChannel $channel): ChannelDriver
@@ -63,12 +66,12 @@ final class GatewayResolver implements DriverFactory
         $row = SmsGatewaySetting::query()->usable($channel)->first();
 
         if ($row === null) {
-            return null;
+            return $this->platform?->configFor($channel);
         }
 
         $config = GatewayConfig::fromModel($row);
 
-        return $config->hasCredentials() ? $config : null;
+        return $config->hasCredentials() ? $config : $this->platform?->configFor($channel);
     }
 
     public function fromConfig(GatewayConfig $config): ChannelDriver

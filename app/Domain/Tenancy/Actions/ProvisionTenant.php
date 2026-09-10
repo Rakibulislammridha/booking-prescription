@@ -93,6 +93,8 @@ final class ProvisionTenant
         $id = $data->id ?? (int) DB::connection('pgsql')->scalar("select nextval(pg_get_serial_sequence('public.tenants', 'id'))");
         $schema = $data->schemaName ?? "tenant_{$id}";
         $now = CarbonImmutable::now();
+        // The caller may override the plan's trial (the sign-up wizard passes the platform default `onboarding.trial_days`).
+        $trialDays = max(0, $data->trialDays ?? $plan->trial_days);
 
         $tenant = new Tenant;
         $tenant->forceFill([
@@ -107,7 +109,7 @@ final class ProvisionTenant
             'owner_name' => $data->ownerName,
             'owner_email' => $data->ownerEmail,
             'owner_mobile' => $data->ownerMobile,
-            'trial_ends_at' => $now->addDays(max(0, $plan->trial_days)),
+            'trial_ends_at' => $now->addDays($trialDays),
             'onboarding' => ['step' => 'branches', 'demo_seeded' => $data->demo, 'completed_at' => null],
             'branding' => ['primary_color' => '#0f766e', 'logo_path' => null, 'favicon_path' => null, 'tagline_bn' => null, 'tagline_en' => null],
         ]);
@@ -137,12 +139,12 @@ final class ProvisionTenant
         $subscription = Subscription::query()->create([
             'tenant_id' => $tenant->id,
             'plan_id' => $plan->id,
-            'status' => $plan->trial_days > 0 ? SubscriptionStatus::Trialing : SubscriptionStatus::Active,
+            'status' => $trialDays > 0 ? SubscriptionStatus::Trialing : SubscriptionStatus::Active,
             'billing_cycle' => BillingCycle::Monthly,
             'price_paisa' => $plan->price_monthly_paisa,
             'current_period_start' => $now,
-            'current_period_end' => $plan->trial_days > 0 ? $now->addDays($plan->trial_days) : $now->addMonth(),
-            'trial_ends_at' => $plan->trial_days > 0 ? $now->addDays($plan->trial_days) : null,
+            'current_period_end' => $trialDays > 0 ? $now->addDays($trialDays) : $now->addMonth(),
+            'trial_ends_at' => $trialDays > 0 ? $now->addDays($trialDays) : null,
         ]);
 
         $tenant->forceFill(['current_subscription_id' => $subscription->id])->save();

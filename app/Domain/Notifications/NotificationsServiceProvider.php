@@ -7,6 +7,7 @@ namespace App\Domain\Notifications;
 use App\Domain\Booking\Events\AppointmentBooked;
 use App\Domain\Notifications\Console\SendRemindersCommand;
 use App\Domain\Notifications\Contracts\DriverFactory;
+use App\Domain\Notifications\Contracts\PlatformGatewayDefaults;
 use App\Domain\Notifications\Events\NotificationSent;
 use App\Domain\Notifications\Listeners\AttachPdfOnReady;
 use App\Domain\Notifications\Listeners\CancelPendingNotifications;
@@ -33,6 +34,8 @@ use App\Domain\Prescription\Events\PdfReady;
 use App\Domain\Prescription\Events\PrescriptionDeliveryRequested;
 use App\Domain\Prescription\Events\PrescriptionIssued;
 use App\Domain\Queue\Events\SerialApproaching;
+use App\Domain\SaaS\Services\PlatformSettings;
+use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Domain\Serials\Events\SerialCancelled;
 use App\Domain\Serials\Events\SerialNoShow;
 use App\Domain\Serials\Events\SerialPostponed;
@@ -68,18 +71,28 @@ final class NotificationsServiceProvider extends ServiceProvider
         ));
 
         // Non-shared: a resolver caches the CURRENT tenant's gateway rows, so it must not outlive the request/job.
-        $this->app->bind(DriverFactory::class, fn ($app): GatewayResolver => new GatewayResolver(
-            $app->make(SegmentCounter::class),
-            $app->make(VapidSigner::class),
-            $app->make(WebPushEncryptor::class),
-            $app->make(Mailer::class),
-            (bool) config('notifications.force_log_driver', false),
-            (int) config('notifications.http_timeout', 10),
-            (string) config('mail.from.address', 'no-reply@example.test'),
-            (string) config('mail.from.name', 'Clinic'),
-            (int) config('notifications.push.ttl', 3600),
-            (int) config('notifications.push.prune_after_failures', 5),
-        ));
+        // The email identity and the inherited SMS gateway are the platform's (super console settings, read at
+        // resolution time); their registry defaults are config('mail.from') and "no gateway", so an install that
+        // never opened the console behaves exactly as before.
+        $this->app->bind(DriverFactory::class, function ($app): GatewayResolver {
+            $settings = $app->make(PlatformSettings::class);
+            $fromAddress = trim((string) $settings->get(PlatformSettingsRegistry::MAIL_FROM_ADDRESS));
+            $fromName = trim((string) $settings->get(PlatformSettingsRegistry::MAIL_FROM_NAME));
+
+            return new GatewayResolver(
+                $app->make(SegmentCounter::class),
+                $app->make(VapidSigner::class),
+                $app->make(WebPushEncryptor::class),
+                $app->make(Mailer::class),
+                (bool) config('notifications.force_log_driver', false),
+                (int) config('notifications.http_timeout', 10),
+                $fromAddress !== '' ? $fromAddress : (string) config('mail.from.address', 'no-reply@example.test'),
+                $fromName !== '' ? $fromName : (string) config('mail.from.name', 'Clinic'),
+                (int) config('notifications.push.ttl', 3600),
+                (int) config('notifications.push.prune_after_failures', 5),
+                $app->bound(PlatformGatewayDefaults::class) ? $app->make(PlatformGatewayDefaults::class) : null,
+            );
+        });
 
         // ARCHITECTURE §6.3 — the Patients module's OTP delivery finally has a gateway behind it.
         $this->app->bind(OtpSender::class, SmsOtpSender::class);

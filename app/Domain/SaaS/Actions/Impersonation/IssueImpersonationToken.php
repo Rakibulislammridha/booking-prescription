@@ -34,15 +34,18 @@ final class IssueImpersonationToken
 
     public function __construct(private readonly CentralAudit $audit) {}
 
-    public function handle(SuperAdmin $admin, Tenant $tenant, ?int $userId = null, ?string $ip = null, string $scheme = 'https'): ImpersonationTicket
+    /** @param  int|string|null  $userId  the clinic's `users.id`, or its `public_id`; null = the first hospital admin */
+    public function handle(SuperAdmin $admin, Tenant $tenant, int|string|null $userId = null, ?string $ip = null, string $scheme = 'https'): ImpersonationTicket
     {
         /** @var array{id: int, name: string}|null $target */
         $target = Tenancy::run($tenant, function () use ($userId): ?array {
             $query = User::query()->where('is_active', true);
 
-            $user = $userId === null
-                ? $query->whereHas('roles', fn ($r) => $r->where('name', Role::HospitalAdmin->value))->orderBy('id')->first()
-                : $query->whereKey($userId)->first();
+            $user = match (true) {
+                $userId === null => $query->whereHas('roles', fn ($r) => $r->where('name', Role::HospitalAdmin->value))->orderBy('id')->first(),
+                is_string($userId) => $query->where('public_id', $userId)->first(),
+                default => $query->whereKey($userId)->first(),
+            };
 
             return $user === null ? null : ['id' => $user->id, 'name' => $user->name];
         });

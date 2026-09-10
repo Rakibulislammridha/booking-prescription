@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type FormEvent, type MouseEvent, type Reac
 import { Link, useForm } from '@inertiajs/react';
 import { CentralLayout } from '@site/Components/Central/CentralLayout';
 import { makeCopy, type Copy } from '@site/Components/Central/copy';
-import type { CentralLinks, PricingPlan } from '@site/Components/Central/types';
+import type { CentralLinks, PlatformProps, PricingPlan } from '@site/Components/Central/types';
 import { formatBdt } from '@shared/format/money';
 import { formatNumber } from '@shared/format/number';
 import { getLocale } from '@shared/locale';
@@ -20,9 +20,12 @@ type Props = PageProps<{
   copy: Copy;
   plans: PricingPlan[];
   links: CentralLinks;
+  platform?: PlatformProps;
   central_domain: string;
   selected_plan: string | null;
   slug_suggestion: string;
+  /** The platform's defaults for the fields most clinics never touch (`onboarding.default_*`, `onboarding.trial_days`). */
+  defaults?: { locale: Locale; timezone: string; trial_days: number };
 }>;
 
 interface SignupForm {
@@ -75,9 +78,10 @@ function slugify(value: string): string {
     .slice(0, 40);
 }
 
-export default function Signup({ plans, links, central_domain, selected_plan, slug_suggestion, copy }: Props) {
+export default function Signup({ plans, links, platform, central_domain, selected_plan, slug_suggestion, defaults, copy }: Props) {
   const c = makeCopy(copy);
   const locale = getLocale();
+  const signupOpen = platform?.signup_open ?? true;
   const choosable = plans.filter((plan) => !plan.is_addon);
   const preselected = choosable.find((plan) => plan.code === selected_plan)
     ?? choosable.find((plan) => plan.is_featured)
@@ -92,8 +96,10 @@ export default function Signup({ plans, links, central_domain, selected_plan, sl
     clinic_name: '',
     slug: slug_suggestion,
     branch_name: '',
-    locale,
-    timezone: 'Asia/Dhaka',
+    // The clinic's own language defaults to the platform's `onboarding.default_locale`, not the visitor's toggle:
+    // a manager reading the marketing page in English usually still runs a Bangla front desk.
+    locale: defaults?.locale ?? locale,
+    timezone: defaults?.timezone ?? 'Asia/Dhaka',
     plan: preselected?.code ?? '',
     demo: false,
   });
@@ -199,6 +205,23 @@ export default function Signup({ plans, links, central_domain, selected_plan, sl
     const message = errorFor(field);
     return message === undefined ? null : <p id={`${field}-error`} className="text-xs font-semibold text-red-700">{message}</p>;
   };
+
+  if (!signupOpen) {
+    // `onboarding.signup_open` is off: the operator's message replaces the wizard (the POST is refused too).
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8 md:py-12">
+        <header>
+          <h1 className="text-2xl font-black tracking-tight md:text-3xl">{c('onboarding.title')}</h1>
+        </header>
+        <p role="status" data-testid="signup-closed" className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-base text-amber-900">
+          {platform?.signup_closed_message ?? ''}
+        </p>
+        <p className="mt-4 text-sm text-slate-600">
+          <Link href={links.pricing} className="font-semibold text-primary underline-offset-4 hover:underline">{c('nav.pricing')}</Link>
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 md:py-12">

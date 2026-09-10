@@ -21,6 +21,7 @@ final class ChangelogController extends Controller
         return Inertia::render('Central/Changelog', [
             'entries' => Changelog::entries(),
             'links' => $this->centralLinks(),
+            'platform' => $this->platformProps(),
             'copy' => CentralCopy::for('changelog'),
         ]);
     }

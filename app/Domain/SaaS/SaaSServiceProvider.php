@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\SaaS;
 
 use App\Domain\Catalog\Events\CatalogReconciliationCompleted;
+use App\Domain\Notifications\Contracts\PlatformGatewayDefaults;
 use App\Domain\Notifications\Events\NotificationDeadLettered;
 use App\Domain\Prescription\Events\PrescriptionIssued;
 use App\Domain\SaaS\Console\CreateSuperAdminCommand;
@@ -24,6 +25,7 @@ use App\Domain\SaaS\Events\SubscriptionPaymentReceived;
 use App\Domain\SaaS\Events\TenantAutoSuspended;
 use App\Domain\SaaS\Gateways\SubscriptionGatewayManager;
 use App\Domain\SaaS\Listeners\FlushEntitlementsCache;
+use App\Domain\SaaS\Listeners\ForgetSuperSession;
 use App\Domain\SaaS\Listeners\NotifyCatalogReconciliation;
 use App\Domain\SaaS\Listeners\NotifySuspension;
 use App\Domain\SaaS\Listeners\PrimeFeatureFlags;
@@ -41,6 +43,8 @@ use App\Domain\SaaS\Observers\PatientDocumentUsageObserver;
 use App\Domain\SaaS\Services\ArrayDnsResolver;
 use App\Domain\SaaS\Services\Entitlements;
 use App\Domain\SaaS\Services\PlanLimits;
+use App\Domain\SaaS\Services\PlatformSmsGateway;
+use App\Domain\SaaS\Services\SuperSessionIndex;
 use App\Domain\SaaS\Services\SystemDnsResolver;
 use App\Domain\Tenancy\Events\TenancyEnded;
 use App\Domain\Tenancy\Events\TenancyInitialized;
@@ -51,6 +55,7 @@ use App\Models\Tenant\Doctor;
 use App\Models\Tenant\Notification;
 use App\Models\Tenant\PatientDocument;
 use App\Tenancy\Facades\Tenancy;
+use Illuminate\Auth\Events\Logout;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -77,6 +82,10 @@ final class SaaSServiceProvider extends ServiceProvider
         $this->app->scoped(Entitlements::class);
         $this->app->scoped(PlanLimits::class);
         $this->app->scoped(SubscriptionGatewayManager::class);
+        $this->app->singleton(SuperSessionIndex::class);
+
+        // The SMS gateway a tenant inherits when it has none of its own (super console `sms.*` settings).
+        $this->app->bind(PlatformGatewayDefaults::class, PlatformSmsGateway::class);
 
         // The suite must never reach a resolver; ArrayDnsResolver is a singleton there so a test can publish records.
         if ($this->app->environment('testing')) {
@@ -136,6 +145,7 @@ final class SaaSServiceProvider extends ServiceProvider
         Event::listen(PrescriptionIssued::class, RecordPrescriptionUsage::class);
         Event::listen(NotificationDeadLettered::class, ReleaseSmsCreditsOnDeadLetter::class);
         Event::listen(CatalogReconciliationCompleted::class, NotifyCatalogReconciliation::class);
+        Event::listen(Logout::class, ForgetSuperSession::class);
 
         // Per-tenant memos must not survive a tenancy switch inside one request (the super console does that).
         Event::listen(TenancyInitialized::class, FlushEntitlementsCache::class);

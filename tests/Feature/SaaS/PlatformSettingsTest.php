@@ -13,6 +13,7 @@ use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Models\Central\AuditLogCentral;
 use App\Models\Central\PlatformSetting;
 use App\Models\Central\SuperAdmin;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia;
 use Tests\Feature\SaaS\Concerns\ControlsPlatformSettings;
@@ -54,7 +55,15 @@ final class PlatformSettingsTest extends TestCase
         // The security switch re-asks the password; it is a closed list of exactly the enum's values.
         $this->assertTrue(PlatformSettingsRegistry::requiresPassword(self::KEY));
         $this->assertSame(SuperTwoFactorPolicy::values(), PlatformSettingsRegistry::definition(self::KEY)['options'] ?? null);
-        $this->assertSame([], PlatformSettingsRegistry::secretKeys(), 'no platform key is a secret yet — update the screen test when the first one lands');
+        $this->assertSame([PlatformSettingsRegistry::SMS_API_TOKEN, PlatformSettingsRegistry::SMS_PASSWORD], PlatformSettingsRegistry::secretKeys(), 'the platform SMS gateway credentials are the secret keys');
+        $this->assertTrue(PlatformSettingsRegistry::requiresPassword(PlatformSettingsRegistry::CONSOLE_IDLE_MINUTES), 'every security.* key re-asks the password');
+
+        // Every key is rendered by exactly one screen, and the notifications screen carries only its own groups.
+        foreach (array_keys(PlatformSettingsRegistry::all()) as $key) {
+            $screen = PlatformSettingsRegistry::screenOf($key);
+            $this->assertContains($screen, ['settings', 'notifications'], $key);
+            $this->assertSame($screen === 'notifications', in_array(PlatformSettingsRegistry::groupOf($key), ['mail', 'sms', 'templates'], true), $key);
+        }
     }
 
     public function test_the_registry_validates_keys_and_values(): void
@@ -136,25 +145,41 @@ final class PlatformSettingsTest extends TestCase
         $this->setSuperTwoFactorPolicy(SuperTwoFactorPolicy::Disabled);
         $this->actingAsSuper();
 
+        // The settings screen renders every `settings`-screen key grouped by first segment; `security` is the third
+        // group (platform, onboarding, security, backups) and the two-factor switch is its first row. The
+        // notifications-screen keys (mail, sms, templates) are not here.
+        $settingsKeys = array_filter(array_keys(PlatformSettingsRegistry::all()), fn (string $k) => PlatformSettingsRegistry::screenOf($k) === 'settings');
+        $securityKeys = array_values(array_filter($settingsKeys, fn (string $k) => PlatformSettingsRegistry::groupOf($k) === 'security'));
+        $this->assertSame(self::KEY, $securityKeys[0]);
+
         $this->get('/settings')->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page->component('Super/Settings/Index')
-                ->has('groups', 1)
-                ->where('groups.0.key', 'security')
-                ->where('groups.0.label', __('super.settings.group.security'))
-                ->has('groups.0.settings', count(PlatformSettingsRegistry::all()))
-                ->where('groups.0.settings.0.key', self::KEY)
-                ->where('groups.0.settings.0.type', 'string')
-                ->where('groups.0.settings.0.value', 'disabled')
-                ->where('groups.0.settings.0.default', PlatformSettingsRegistry::default(self::KEY))
-                ->where('groups.0.settings.0.requires_password', true)
-                ->where('groups.0.settings.0.secret', false)
-                ->where('groups.0.settings.0.is_set', true)
-                ->where('groups.0.settings.0.label', __('super.settings.'.self::KEY.'.label'))
-                ->has('groups.0.settings.0.options', 3)
-                ->where('groups.0.settings.0.options.0.value', 'required')
-                ->where('groups.0.settings.0.options.0.label', __('super.settings.'.self::KEY.'.options.required'))
-                ->where('groups.0.settings.0.options.2.value', 'disabled')
-                ->has('groups.0.settings.0.updated_at'));
+                ->has('groups', 4)
+                ->where('groups.0.key', 'platform')
+                ->where('groups.1.key', 'onboarding')
+                ->where('groups.2.key', 'security')
+                ->where('groups.3.key', 'backups')
+                ->where('groups.2.label', __('super.settings.group.security'))
+                ->has('groups.2.settings', count($securityKeys))
+                ->where('groups.2.settings.0.key', self::KEY)
+                ->where('groups.2.settings.0.type', 'string')
+                ->where('groups.2.settings.0.value', 'disabled')
+                ->where('groups.2.settings.0.default', PlatformSettingsRegistry::default(self::KEY))
+                ->where('groups.2.settings.0.requires_password', true)
+                ->where('groups.2.settings.0.secret', false)
+                ->where('groups.2.settings.0.is_set', true)
+                ->where('groups.2.settings.0.label', __('super.settings.'.self::KEY.'.label'))
+                ->has('groups.2.settings.0.options', 3)
+                ->where('groups.2.settings.0.options.0.value', 'required')
+                ->where('groups.2.settings.0.options.0.label', __('super.settings.'.self::KEY.'.options.required'))
+                ->where('groups.2.settings.0.options.2.value', 'disabled')
+                ->has('groups.2.settings.0.updated_at')
+                ->where('groups.0.settings', fn ($rows) => collect(self::rows($rows))->pluck('key')->contains(PlatformSettingsRegistry::MAINTENANCE_BANNER)
+                    && collect(self::rows($rows))->firstWhere('key', PlatformSettingsRegistry::MAINTENANCE_BANNER)['multiline'] === true
+                    && collect(self::rows($rows))->firstWhere('key', PlatformSettingsRegistry::SUPPORT_EMAIL)['input'] === 'email')
+                ->where('groups.1.settings', fn ($rows) => collect(self::rows($rows))->firstWhere('key', PlatformSettingsRegistry::TRIAL_DAYS)['min'] === 0
+                    && collect(self::rows($rows))->firstWhere('key', PlatformSettingsRegistry::TRIAL_DAYS)['max'] === 365)
+                ->where('groups', fn ($groups) => ! collect(self::rows($groups))->pluck('key')->contains('mail')));
     }
 
     public function test_changing_the_security_policy_needs_the_current_password_and_is_audited(): void
@@ -190,8 +215,8 @@ final class PlatformSettingsTest extends TestCase
 
         // The screen now shows who changed it, and the next request runs under the new policy.
         $this->get('/settings')->assertOk()
-            ->assertInertia(fn (AssertableInertia $page) => $page->where('groups.0.settings.0.value', 'required')
-                ->where('groups.0.settings.0.updated_by', $admin->name));
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('groups.2.settings.0.value', 'required')
+                ->where('groups.2.settings.0.updated_by', $admin->name));
 
         // An unknown key is a domain error, not a 500.
         $this->from('/settings')->put('/settings/security.nope', ['value' => 'x'])->assertSessionHasErrors('domain');
@@ -211,5 +236,15 @@ final class PlatformSettingsTest extends TestCase
         $this->assertSame('', PlatformSettings::mask(null));
         $this->assertSame(PlatformSettings::MASK_PREFIX, PlatformSettings::mask('abcd'));
         $this->assertSame(PlatformSettings::MASK_PREFIX.'6789', PlatformSettings::mask('0123456789'));
+    }
+
+    /**
+     * A page prop as AssertableInertia hands it to a `where` closure: a Collection for lists, an array otherwise.
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function rows(mixed $value): array
+    {
+        return $value instanceof Collection ? $value->all() : (array) $value;
     }
 }

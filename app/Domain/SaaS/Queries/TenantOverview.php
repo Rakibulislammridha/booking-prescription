@@ -9,9 +9,12 @@ use App\Domain\SaaS\Enums\SubscriptionStatus;
 use App\Domain\SaaS\Enums\UsageMetric;
 use App\Domain\SaaS\Services\PlanLimits;
 use App\Domain\SaaS\Services\UsageMeter;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Central\Subscription;
 use App\Models\Central\Tenant;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
@@ -30,22 +33,48 @@ final class TenantOverview
         private readonly UsageMeter $meter,
     ) {}
 
+    /** `attention` filter values: what the console can ask the list to surface. */
+    public const ATTENTION = ['trial_ending', 'arrears', 'no_subscription'];
+
+    /** `sort` values; every one is a column of `public.tenants` or a correlated aggregate — never a per-row query. */
+    public const SORTS = ['created', 'name', 'slug', 'status', 'trial_ends', 'arrears'];
+
+    /** The soft-deleted rows, reachable through `status=deleted`: their export archive stays downloadable. */
+    public const STATUS_DELETED = 'deleted';
+
+    /** Days ahead the `trial_ending` filter looks. */
+    public const TRIAL_ENDING_DAYS = 7;
+
     /**
+     * @param  array{plan?: string|null, attention?: string|null, sort?: string|null, dir?: string|null}  $options
      * @return array{data: array<int, array<string, mixed>>, meta: array<string, mixed>}
      */
-    public function list(?string $search, ?string $status, int $perPage = 25): array
+    public function list(?string $search, ?string $status, int $perPage = 25, array $options = []): array
     {
+        $deleted = $status === self::STATUS_DELETED;
+        $plan = $options['plan'] ?? null;
+        $attention = $options['attention'] ?? null;
+        $sort = in_array($options['sort'] ?? null, self::SORTS, true) ? (string) $options['sort'] : 'created';
+        $dir = ($options['dir'] ?? null) === 'asc' ? 'asc' : (($options['dir'] ?? null) === 'desc' ? 'desc' : null);
+
         /** @var LengthAwarePaginator<int, Tenant> $page */
         $page = Tenant::query()
             ->with(['currentSubscription.plan'])
+            ->when($deleted, fn ($q) => $q->onlyTrashed())
             ->when($search !== null && $search !== '', fn ($q) => $q->where(function ($w) use ($search): void {
                 $term = '%'.mb_strtolower($search).'%';
                 $w->whereRaw('lower(name) like ?', [$term])
                     ->orWhereRaw('lower(slug) like ?', [$term])
                     ->orWhereRaw('lower(owner_email) like ?', [$term]);
             }))
-            ->when($status !== null && $status !== '', fn ($q) => $q->where('status', $status))
-            ->orderByDesc('id')
+            ->when(! $deleted && $status !== null && $status !== '', fn ($q) => $q->where('status', $status))
+            ->when($plan !== null && $plan !== '', fn ($q) => $q->whereHas('currentSubscription', fn ($s) => $s->whereHas('plan', fn ($p) => $p->where('code', $plan))))
+            ->when($attention === 'trial_ending', fn ($q) => $q->where('status', 'trial')
+                ->whereNotNull('trial_ends_at')
+                ->whereBetween('trial_ends_at', [CarbonImmutable::now(), CarbonImmutable::now()->addDays(self::TRIAL_ENDING_DAYS)]))
+            ->when($attention === 'arrears', fn ($q) => $q->whereExists($this->unsettledInvoicesQuery()))
+            ->when($attention === 'no_subscription', fn ($q) => $q->whereNull('current_subscription_id'))
+            ->tap(fn ($q) => $this->applySort($q, $sort, $dir))
             ->paginate($perPage)
             ->withQueryString();
 
@@ -53,9 +82,11 @@ final class TenantOverview
         $ids = $page->getCollection()->map(fn (Tenant $t): int => $t->id)->all();
         $usage = $this->usageFor($ids);
         $arrears = $this->arrearsFor($ids);
+        $exports = $deleted ? $this->latestExportsFor($ids) : [];
 
         return [
-            'data' => $page->getCollection()->map(fn (Tenant $tenant) => $this->row($tenant, $usage[$tenant->id] ?? [], $arrears[$tenant->id] ?? ['count' => 0, 'paisa' => 0]))->all(),
+            'data' => $page->getCollection()->map(fn (Tenant $tenant) => $this->row($tenant, $usage[$tenant->id] ?? [], $arrears[$tenant->id] ?? ['count' => 0, 'paisa' => 0])
+                + ['deleted_at' => $tenant->deleted_at?->toIso8601String(), 'last_export_id' => $exports[$tenant->id] ?? null])->all(),
             'meta' => [
                 'current_page' => $page->currentPage(),
                 'last_page' => $page->lastPage(),
@@ -120,6 +151,15 @@ final class TenantOverview
             'data_export_requested_at' => $tenant->data_export_requested_at?->toIso8601String(),
             'onboarding' => $tenant->onboarding,
             'suspension_reason' => $tenant->suspension_reason,
+            'platform_notes' => $tenant->platform_notes,
+            'deleted_at' => $tenant->deleted_at?->toIso8601String(),
+            'branding' => [
+                'name_bn' => is_string($tenant->branding['name_bn'] ?? null) ? $tenant->branding['name_bn'] : null,
+                'primary_color' => is_string($tenant->branding['primary_color'] ?? null) ? $tenant->branding['primary_color'] : null,
+                'accent_color' => is_string($tenant->branding['accent_color'] ?? null) ? $tenant->branding['accent_color'] : null,
+                'logo_path' => is_string($tenant->branding['logo_path'] ?? null) ? $tenant->branding['logo_path'] : null,
+                'logo_url' => HandleInertiaRequests::publicUrl($tenant->branding['logo_path'] ?? null),
+            ],
             'subscription' => $subscription === null ? null : [
                 'id' => $subscription->id,
                 'status' => $subscription->status->value,
@@ -224,6 +264,69 @@ final class TenantOverview
             if ($metric !== null && $metric->isGauge() === ($row->period === UsageMeter::GAUGE_PERIOD)) {
                 $out[(int) $row->tenant_id][$metric->value] = (int) $row->value;
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * `sort=arrears` orders by a correlated sum over `subscription_invoices` — one extra aggregate per PAGE row
+     * inside the same statement, not a query per tenant. `trial_ends` puts the clinics with no trial last.
+     *
+     * @param  Builder<Tenant>  $query
+     */
+    private function applySort(Builder $query, string $sort, ?string $dir): void
+    {
+        match ($sort) {
+            'name' => $query->orderByRaw('lower(name) '.($dir ?? 'asc')),
+            'slug' => $query->orderBy('slug', $dir ?? 'asc'),
+            'status' => $query->orderBy('status', $dir ?? 'asc')->orderByDesc('id'),
+            'trial_ends' => $query->orderByRaw('trial_ends_at '.($dir ?? 'asc').' nulls last')->orderByDesc('id'),
+            'arrears' => $query->orderBy(
+                DB::connection('pgsql')->table('public.subscription_invoices')
+                    ->selectRaw('coalesce(sum(total_paisa - paid_paisa), 0)')
+                    ->whereColumn('subscription_invoices.tenant_id', 'tenants.id')
+                    ->whereIn('status', [SubscriptionInvoiceStatus::Issued->value, SubscriptionInvoiceStatus::Overdue->value]),
+                $dir ?? 'desc',
+            )->orderByDesc('id'),
+            default => $query->orderBy('id', $dir ?? 'desc'),
+        };
+    }
+
+    /** @return QueryBuilder an EXISTS subquery: the tenant has an issued or overdue invoice with a balance */
+    private function unsettledInvoicesQuery(): QueryBuilder
+    {
+        return DB::connection('pgsql')->table('public.subscription_invoices')
+            ->selectRaw('1')
+            ->whereColumn('subscription_invoices.tenant_id', 'tenants.id')
+            ->whereIn('status', [SubscriptionInvoiceStatus::Issued->value, SubscriptionInvoiceStatus::Overdue->value])
+            ->whereColumn('paid_paisa', '<', 'total_paisa');
+    }
+
+    /**
+     * The newest COMPLETED churn export per tenant — what the deleted-clinics list offers for download.
+     *
+     * @param  array<int, int>  $tenantIds
+     * @return array<int, int> tenant id → tenant_backups.id
+     */
+    private function latestExportsFor(array $tenantIds): array
+    {
+        if ($tenantIds === []) {
+            return [];
+        }
+
+        $rows = DB::connection('pgsql')->table('public.tenant_backups')
+            ->whereIn('tenant_id', $tenantIds)
+            ->where('type', 'export')
+            ->where('status', 'completed')
+            ->selectRaw('tenant_id, max(id) as id')
+            ->groupBy('tenant_id')
+            ->get();
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            $out[(int) $row->tenant_id] = (int) $row->id;
         }
 
         return $out;

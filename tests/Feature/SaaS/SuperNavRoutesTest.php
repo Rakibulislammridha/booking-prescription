@@ -20,7 +20,7 @@ final class SuperNavRoutesTest extends TestCase
     public function test_every_tab_points_at_a_registered_get_route_on_the_super_surface(): void
     {
         $names = $this->declared('routeName');
-        $this->assertGreaterThanOrEqual(9, count($names), 'the sweep read the strip and found its tabs');
+        $this->assertGreaterThanOrEqual(10, count($names), 'the sweep read the strip and found its tabs');
 
         $missing = array_values(array_filter($names, fn (string $name): bool => ! Route::has($name)));
         $this->assertSame([], $missing, 'SuperNav tabs whose route does not exist — they vanish from the strip: '.implode(', ', $missing));
@@ -34,6 +34,7 @@ final class SuperNavRoutesTest extends TestCase
 
         $this->assertContains('super.settings.index', $names);
         $this->assertContains('super.two-factor.show', $names);
+        $this->assertContains('super.admins.index', $names);
     }
 
     public function test_every_tab_has_a_label_in_both_languages(): void

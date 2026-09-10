@@ -263,6 +263,9 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
                       <ListItemText primary={user.name} secondary={user.roles.map((r) => t(`roles.${r}`, { defaultValue: r })).join(', ')} />
                     </MenuItem>
                     <Divider />
+                    {hasRoute('super.profile.show') ? (
+                      <MenuItem component={RouterLink} href={route('super.profile.show')} onClick={() => setUserAnchor(null)}>{t('nav.account')}</MenuItem>
+                    ) : null}
                     <MenuItem onClick={logout} disabled={!logoutRoute}>{t('auth.logout')}</MenuItem>
                   </Menu>
                 </>

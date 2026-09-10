@@ -31,6 +31,7 @@ final class DocsController extends Controller
             'sections' => DocsLibrary::index($url),
             'current' => DocsLibrary::section($section, $url),
             'links' => $this->centralLinks(),
+            'platform' => $this->platformProps(),
             'copy' => CentralCopy::for('docs'),
         ]);
     }

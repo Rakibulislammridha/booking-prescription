@@ -35,21 +35,32 @@ import Typography from '@mui/material/Typography';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
+import EditIcon from '@mui/icons-material/Edit';
 import LaunchIcon from '@mui/icons-material/Launch';
 import LoginIcon from '@mui/icons-material/Login';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import StarIcon from '@mui/icons-material/Star';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
+import { RouterLink } from '@panel/Layouts/RouterLink';
 import { LazyChart } from '@panel/Components/Charts/LazyChart';
 import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
 import { StatusChip, HealthChip } from '@panel/Components/Super/StatusChip';
 import { UsageBars, bytesParts } from '@panel/Components/Super/UsageBars';
+import { DeleteTenantCard } from '@panel/Components/Super/Tenants/DeleteTenantCard';
+import { ChangePlanDialog, ReactivateDialog } from '@panel/Components/Super/Tenants/LifecycleDialogs';
+import { RevealDialog } from '@panel/Components/Super/Tenants/RevealDialog';
+import { StaffTab } from '@panel/Components/Super/Tenants/StaffTab';
+import { TenantBillingCard } from '@panel/Components/Super/TenantBillingCard';
+import type { TenantBilling } from '@panel/Components/Super/Billing/types';
 import type {
-  AuditTenantRef, BackupRow, DomainRow, InvoiceRow, SuperPlan, TenantAuditEntry, TenantDetail, UsagePoint,
+  ConsoleDomainRow, ConsoleTenantDetail, DeletionState, RevealPayload, StaffRow,
+} from '@panel/Components/Super/Tenants/types';
+import type {
+  AuditTenantRef, BackupRow, InvoiceRow, SuperPlan, TenantAuditEntry, TenantDetail, UsagePoint,
 } from '@panel/Components/Super/types';
 import { useSharedProps } from '@shared/inertia';
-import { formatBdt, parseBdt } from '@shared/format/money';
+import { formatBdt } from '@shared/format/money';
 import { formatNumber } from '@shared/format/number';
 import { formatDhaka } from '@shared/format/date';
 import { getLocale } from '@shared/locale';
@@ -58,7 +69,7 @@ import type { PageProps } from '@shared/types/inertia';
 import type { Locale } from '@shared/types/shared-props';
 
 type Props = PageProps<{
-  tenant: TenantDetail;
+  tenant: ConsoleTenantDetail;
   plans: SuperPlan[];
   feature_labels: Record<string, string>;
   metric_labels: Record<string, string>;
@@ -66,23 +77,23 @@ type Props = PageProps<{
   limit_keys: string[];
   history: { appointments: UsagePoint[]; sms_credits: UsagePoint[]; prescriptions: UsagePoint[] };
   invoices: InvoiceRow[];
-  domains: DomainRow[];
+  billing: TenantBilling;
+  domains: ConsoleDomainRow[];
   backups: BackupRow[];
   audit: TenantAuditEntry[];
+  staff: StaffRow[];
+  roles: string[];
+  reveal: RevealPayload | null;
+  deletion: DeletionState;
+  links: { panel: string };
 }>;
 
-type TabKey = 'overview' | 'entitlements' | 'billing' | 'domains' | 'data' | 'audit';
+type TabKey = 'overview' | 'entitlements' | 'billing' | 'domains' | 'staff' | 'data' | 'audit';
 
-// The three gateways already have customer-facing names in the translation file; the manual methods are the
-// console's own vocabulary.
-const PAYMENT_METHODS: Array<{ value: string; label: string }> = [
-  { value: 'bkash', label: 'saas.gateway.bkash' },
-  { value: 'nagad', label: 'saas.gateway.nagad' },
-  { value: 'sslcommerz', label: 'saas.gateway.sslcommerz' },
-  { value: 'bank_transfer', label: 'super.billing.method.bank_transfer' },
-  { value: 'cash', label: 'super.billing.method.cash' },
-  { value: 'manual', label: 'super.billing.method.manual' },
-];
+const SSL_TONE: Record<ConsoleDomainRow['ssl_status'], 'default' | 'warning' | 'success' | 'error'> = {
+  none: 'default', pending: 'warning', issued: 'success', failed: 'error',
+};
+
 const DATE = 'D MMM YYYY';
 const DATETIME = 'D MMM YYYY, h:mm a';
 
@@ -233,124 +244,6 @@ function CancelDialog({ open, tenant, onClose }: { open: boolean; tenant: Tenant
   );
 }
 
-function VoidInvoiceDialog({ tenant, invoice, onClose }: { tenant: TenantDetail; invoice: InvoiceRow | null; onClose: () => void }) {
-  const { t } = useTranslation();
-  const form = useForm({ reason: '' });
-  const open = invoice !== null;
-
-  useEffect(() => { if (open) { form.setData('reason', ''); form.clearErrors(); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open]);
-
-  const submit = (event: FormEvent): void => {
-    event.preventDefault();
-    if (invoice === null) return;
-    form.post(route('super.tenants.invoices.void', { tenant: tenant.public_id, invoice: invoice.public_id }), { preserveScroll: true, onSuccess: onClose });
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <Box component="form" onSubmit={submit} noValidate>
-        <DialogTitle>{t('super.billing.void_title')}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
-          <DialogContentText>{t('super.billing.void_body', { number: invoice?.number ?? '' })}</DialogContentText>
-          <TextField
-            label={t('super.tenants.reason')}
-            value={form.data.reason}
-            onChange={(e) => form.setData('reason', e.target.value)}
-            error={Boolean(form.errors.reason)}
-            helperText={form.errors.reason}
-            required
-            autoFocus
-            slotProps={{ htmlInput: { maxLength: 255 } }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={onClose}>{t('super.actions.cancel')}</Button>
-          <Button type="submit" color="error" variant="contained" disabled={form.processing || form.data.reason.trim() === ''}>
-            {t('super.billing.void')}
-          </Button>
-        </DialogActions>
-      </Box>
-    </Dialog>
-  );
-}
-
-function PayInvoiceDialog({ tenant, invoice, onClose }: { tenant: TenantDetail; invoice: InvoiceRow | null; onClose: () => void }) {
-  const { t } = useTranslation();
-  const locale = getLocale();
-  const open = invoice !== null;
-  const due = invoice === null ? 0 : Math.max(0, invoice.total_paisa - invoice.paid_paisa);
-  const [taka, setTaka] = useState('');
-  const form = useForm<{ amount_paisa: number | null; method: string; reference: string }>({ amount_paisa: null, method: 'bank_transfer', reference: '' });
-
-  useEffect(() => {
-    if (!open) return;
-    setTaka(String(due / 100));
-    form.setData({ amount_paisa: due, method: 'bank_transfer', reference: '' });
-    form.clearErrors();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, due]);
-
-  const onAmount = (value: string): void => {
-    setTaka(value);
-    form.setData('amount_paisa', parseBdt(value));
-  };
-
-  const submit = (event: FormEvent): void => {
-    event.preventDefault();
-    if (invoice === null) return;
-    form.post(route('super.tenants.invoices.pay', { tenant: tenant.public_id, invoice: invoice.public_id }), { preserveScroll: true, onSuccess: onClose });
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <Box component="form" onSubmit={submit} noValidate>
-        <DialogTitle>{t('super.billing.pay_title')}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
-          <DialogContentText>
-            {t('super.billing.pay_body', { number: invoice?.number ?? '', amount: formatBdt(due, locale) })}
-          </DialogContentText>
-          <TextField
-            label={t('super.billing.amount_taka')}
-            value={taka}
-            onChange={(e) => onAmount(e.target.value)}
-            error={Boolean(form.errors.amount_paisa)}
-            helperText={form.errors.amount_paisa ?? t('super.billing.amount_help', { amount: formatBdt(form.data.amount_paisa ?? 0, locale) })}
-            required
-            autoFocus
-            slotProps={{ htmlInput: { inputMode: 'decimal' } }}
-          />
-          <TextField
-            select
-            label={t('super.billing.method')}
-            value={form.data.method}
-            onChange={(e) => form.setData('method', e.target.value)}
-            error={Boolean(form.errors.method)}
-            helperText={form.errors.method}
-          >
-            {PAYMENT_METHODS.map((method) => (
-              <MenuItem key={method.value} value={method.value}>{t(method.label)}</MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            label={t('super.billing.reference')}
-            value={form.data.reference}
-            onChange={(e) => form.setData('reference', e.target.value)}
-            error={Boolean(form.errors.reference)}
-            helperText={form.errors.reference ?? t('super.billing.reference_help')}
-            slotProps={{ htmlInput: { maxLength: 64 } }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={onClose}>{t('super.actions.cancel')}</Button>
-          <Button type="submit" variant="contained" disabled={form.processing || (form.data.amount_paisa ?? 0) < 1}>
-            {t('super.billing.record_payment')}
-          </Button>
-        </DialogActions>
-      </Box>
-    </Dialog>
-  );
-}
-
 function RestoreDialog({ tenant, backup, onClose }: { tenant: TenantDetail; backup: BackupRow | null; onClose: () => void }) {
   const { t } = useTranslation();
   const open = backup !== null;
@@ -403,6 +296,7 @@ function AddDomainDialog({ open, tenant, onClose }: { open: boolean; tenant: Ten
       <Box component="form" onSubmit={submit} noValidate>
         <DialogTitle>{t('super.domains.add_title')}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: 1 }}>
+          <DialogContentText>{t('super.tenants.domains_subdomain_hint', { host: tenant.host })}</DialogContentText>
           <TextField
             label={t('super.domains.hostname')}
             value={form.data.domain}
@@ -411,12 +305,12 @@ function AddDomainDialog({ open, tenant, onClose }: { open: boolean; tenant: Ten
             helperText={form.errors.domain ?? t('super.domains.hostname_help')}
             required
             autoFocus
-            slotProps={{ htmlInput: { maxLength: 253, spellCheck: false, autoCapitalize: 'none' } }}
+            slotProps={{ htmlInput: { maxLength: 253, spellCheck: false, autoCapitalize: 'none', 'data-testid': 'domain-input' } }}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={onClose}>{t('super.actions.cancel')}</Button>
-          <Button type="submit" variant="contained" disabled={form.processing || form.data.domain.trim() === ''}>
+          <Button type="submit" variant="contained" disabled={form.processing || form.data.domain.trim() === ''} data-testid="add-domain-submit">
             {t('super.actions.add')}
           </Button>
         </DialogActions>
@@ -479,19 +373,24 @@ function LimitRow({ tenant, featureKey, label, effective, overridden }: {
 // them. Lazily loaded, and skipped entirely for a clinic with no history yet (Components/Charts/LazyChart.tsx).
 const TenantHistoryChart = lazy(() => import('@panel/Components/Charts/SuperCharts').then((m) => ({ default: m.TenantHistoryChart })));
 
-export default function Show({ tenant, plans, feature_labels, metric_labels, toggles, limit_keys, history, invoices, domains, backups, audit }: Props) {
+export default function Show({ tenant, plans, feature_labels, metric_labels, toggles, limit_keys, history, billing, domains, backups, audit, staff, roles, reveal, deletion, links }: Props) {
   const { t } = useTranslation();
   const shared = useSharedProps();
   const locale = getLocale();
-  const [tab, setTab] = useState<TabKey>('overview');
+  // A freshly created clinic opens on its staff, which is where the owner's credential and "log in as" live.
+  const [tab, setTab] = useState<TabKey>(reveal !== null ? 'staff' : 'overview');
   const [suspendOpen, setSuspendOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
+  const [planChoice, setPlanChoice] = useState<{ plan: string; billing_cycle: 'monthly' | 'yearly' } | null>(null);
   const [addDomainOpen, setAddDomainOpen] = useState(false);
-  const [voidInvoice, setVoidInvoice] = useState<InvoiceRow | null>(null);
-  const [payInvoice, setPayInvoice] = useState<InvoiceRow | null>(null);
   const [restoreBackup, setRestoreBackup] = useState<BackupRow | null>(null);
-  const [force, setForce] = useState(false);
   const [openAudit, setOpenAudit] = useState<number | null>(null);
+  const [shownReveal, setShownReveal] = useState<RevealPayload | null>(reveal);
+
+  // The page is already mounted when a staff create/reset redirects back to it, so the one-time credential
+  // arrives as a PROP CHANGE, not a mount — `useState(reveal)` alone would never open the dialog again.
+  useEffect(() => { if (reveal !== null) { setShownReveal(reveal); setTab('staff'); } }, [reveal]);
 
   const subscription = tenant.subscription;
   const overrides = subscription?.feature_overrides ?? {};
@@ -500,10 +399,7 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
 
   const changePlan = (event: FormEvent): void => {
     event.preventDefault();
-    planForm.post(route('super.tenants.plan', { tenant: tenant.public_id }), { preserveScroll: true });
-  };
-  const reactivate = (): void => {
-    router.post(route('super.tenants.reactivate', { tenant: tenant.public_id }), { force }, { preserveScroll: true });
+    setPlanChoice({ plan: planForm.data.plan, billing_cycle: planForm.data.billing_cycle });
   };
   const setFeature = (key: string, enabled: boolean): void => {
     router.post(route('super.tenants.features', { tenant: tenant.public_id }), { feature: key, enabled }, { preserveScroll: true });
@@ -515,70 +411,6 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
   const simplePost = (name: string, params: Record<string, string | number>): void => {
     router.post(route(name, params), {}, { preserveScroll: true });
   };
-
-  const invoiceColumns: SuperColumn<InvoiceRow>[] = [
-    {
-      key: 'number',
-      label: t('super.billing.column.number'),
-      render: (row) => (
-        <Box>
-          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{row.number}</Typography>
-          {row.dunning_step > 0 ? (
-            <Typography variant="caption" color="warning.main">{t('super.billing.dunning_step', { step: n(row.dunning_step) })}</Typography>
-          ) : null}
-        </Box>
-      ),
-    },
-    {
-      key: 'status',
-      label: t('super.billing.column.status'),
-      render: (row) => (
-        <Chip
-          size="small"
-          color={row.status === 'paid' ? 'success' : row.status === 'overdue' ? 'error' : row.status === 'issued' ? 'warning' : 'default'}
-          variant={row.status === 'void' || row.status === 'draft' ? 'outlined' : 'filled'}
-          label={t(`saas.invoice.status.${row.status}`, { defaultValue: row.status })}
-        />
-      ),
-    },
-    {
-      key: 'period',
-      label: t('super.billing.column.period'),
-      render: (row) => `${when(row.period_start, locale)} – ${when(row.period_end, locale)}`,
-    },
-    {
-      key: 'total',
-      label: t('super.billing.column.total'),
-      align: 'right',
-      render: (row) => (
-        <Box>
-          <div>{formatBdt(row.total_paisa, locale)}</div>
-          <Typography variant="caption" color="text.secondary">{t('super.billing.paid_of', { paid: formatBdt(row.paid_paisa, locale) })}</Typography>
-        </Box>
-      ),
-    },
-    { key: 'due_at', label: t('super.billing.column.due_at'), render: (row) => when(row.due_at, locale) },
-    {
-      key: 'actions',
-      label: t('super.billing.column.actions'),
-      align: 'right',
-      render: (row) => (
-        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-          {row.status === 'draft' ? (
-            <Button size="small" onClick={() => simplePost('super.tenants.invoices.issue', { tenant: tenant.public_id, invoice: row.public_id })}>
-              {t('super.billing.issue')}
-            </Button>
-          ) : null}
-          {row.status === 'issued' || row.status === 'overdue' ? (
-            <Button size="small" variant="outlined" onClick={() => setPayInvoice(row)}>{t('super.billing.record_payment')}</Button>
-          ) : null}
-          {row.status !== 'void' && row.status !== 'paid' ? (
-            <Button size="small" color="error" onClick={() => setVoidInvoice(row)}>{t('super.billing.void')}</Button>
-          ) : null}
-        </Stack>
-      ),
-    },
-  ];
 
   const backupColumns: SuperColumn<BackupRow>[] = [
     { key: 'type', label: t('super.data.column.type'), render: (row) => t(`super.data.type.${row.type}`, { defaultValue: row.type }) },
@@ -649,7 +481,7 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
                 </Stack>
                 <Stack direction="row" spacing={2} sx={{ mt: 1, flexWrap: 'wrap' }} useFlexGap>
                   <Field label={t('super.tenants.field.host')}>
-                    <Link href={`https://${tenant.host}`} target="_blank" rel="noopener noreferrer" underline="hover">
+                    <Link href={links.panel} target="_blank" rel="noopener noreferrer" underline="hover">
                       {tenant.host} <LaunchIcon sx={{ fontSize: 12, verticalAlign: 'middle' }} />
                     </Link>
                   </Field>
@@ -664,20 +496,31 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
                   <Field label={t('super.tenants.field.created')}>{when(tenant.created_at, locale)}</Field>
                 </Stack>
               </Box>
-              {hasRoute('super.tenants.impersonate') ? (
-                // A plain HTML form, not an Inertia post: the server answers with `redirect()->away()` to the
-                // clinic's own host, and only a real browser navigation can follow that.
-                <Box component="form" method="post" action={route('super.tenants.impersonate', { tenant: tenant.public_id })}>
-                  <input type="hidden" name="_token" value={shared.csrf_token} />
-                  <Button type="submit" variant="contained" startIcon={<LoginIcon />} disabled={tenant.status === 'cancelled'}>
-                    {t('super.tenants.impersonate')}
-                  </Button>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, maxWidth: 260 }}>
-                    {t('super.tenants.impersonate_help')}
-                  </Typography>
-                </Box>
-              ) : null}
+              <Stack spacing={1} sx={{ flexShrink: 0, alignItems: { md: 'flex-end' } }}>
+                {hasRoute('super.tenants.impersonate') ? (
+                  // A plain HTML form, not an Inertia post: the server answers with `redirect()->away()` to the
+                  // clinic's own host, and only a real browser navigation can follow that.
+                  <Box component="form" method="post" action={route('super.tenants.impersonate', { tenant: tenant.public_id })}>
+                    <input type="hidden" name="_token" value={shared.csrf_token} />
+                    <Button type="submit" variant="contained" startIcon={<LoginIcon />} disabled={tenant.status === 'cancelled'} data-testid="impersonate-owner">
+                      {t('super.tenants.impersonate')}
+                    </Button>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, maxWidth: 260 }}>
+                      {t('super.tenants.impersonate_help')}
+                    </Typography>
+                  </Box>
+                ) : null}
+                <Button component={RouterLink} href={route('super.tenants.edit', { tenant: tenant.public_id })} variant="outlined" startIcon={<EditIcon />} data-testid="edit-tenant">
+                  {t('super.tenants.edit')}
+                </Button>
+              </Stack>
             </Stack>
+            {tenant.platform_notes ? (
+              <Alert severity="info" icon={false} sx={{ mt: 2, whiteSpace: 'pre-wrap' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t('super.tenants.notes_label')}</Typography>
+                {tenant.platform_notes}
+              </Alert>
+            ) : null}
             {tenant.status === 'suspended' && tenant.suspension_reason ? (
               <Alert severity="warning" sx={{ mt: 2 }}>
                 {t('super.tenants.suspended_since', { date: when(tenant.suspended_at, locale, DATETIME), reason: tenant.suspension_reason })}
@@ -691,8 +534,9 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
             <Tab value="overview" label={t('super.tenants.tab.overview')} sx={{ textTransform: 'none' }} />
             <Tab value="entitlements" label={t('super.tenants.tab.entitlements')} sx={{ textTransform: 'none' }} />
             <Tab value="billing" label={t('super.tenants.tab.billing')} sx={{ textTransform: 'none' }} />
-            <Tab value="domains" label={t('super.tenants.tab.domains')} sx={{ textTransform: 'none' }} />
-            <Tab value="data" label={t('super.tenants.tab.data')} sx={{ textTransform: 'none' }} />
+            <Tab value="domains" label={t('super.tenants.tab.domains')} sx={{ textTransform: 'none' }} data-testid="tab-domains" />
+            <Tab value="staff" label={t('super.tenants.tab.staff')} sx={{ textTransform: 'none' }} data-testid="tab-staff" />
+            <Tab value="data" label={t('super.tenants.tab.data')} sx={{ textTransform: 'none' }} data-testid="tab-data" />
             <Tab value="audit" label={t('super.tenants.tab.audit')} sx={{ textTransform: 'none' }} />
           </Tabs>
         </Box>
@@ -782,15 +626,9 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
                   <Button color="error" variant="outlined" onClick={() => setSuspendOpen(true)} disabled={tenant.status === 'suspended'}>
                     {t('super.tenants.suspend')}
                   </Button>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                    <Button color="success" variant="outlined" onClick={reactivate} disabled={tenant.status === 'active'}>
-                      {t('super.tenants.reactivate')}
-                    </Button>
-                    <FormControlLabel
-                      control={<Checkbox size="small" checked={force} onChange={(e) => setForce(e.target.checked)} />}
-                      label={<Typography variant="caption">{t('super.tenants.force_help')}</Typography>}
-                    />
-                  </Stack>
+                  <Button color="success" variant="outlined" onClick={() => setReactivateOpen(true)} disabled={tenant.status === 'active' || tenant.status === 'trial'}>
+                    {t('super.tenants.reactivate')}
+                  </Button>
                   <Button color="error" onClick={() => setCancelOpen(true)} disabled={tenant.status === 'cancelled'}>
                     {t('super.tenants.cancel_subscription')}
                   </Button>
@@ -860,39 +698,14 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
         ) : null}
 
         {tab === 'billing' ? (
-          <Card variant="outlined">
-            <CardContent>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }} useFlexGap>
-                <Box>
-                  <Typography variant="subtitle1" component="h3">{t('super.billing.title')}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {t('super.billing.arrears', { amount: formatBdt(tenant.arrears_paisa, locale), count: n(tenant.arrears_invoices) })}
-                  </Typography>
-                </Box>
-                <Button
-                  variant="contained"
-                  onClick={() => router.post(route('super.tenants.invoices.store', { tenant: tenant.public_id }), { issue: true }, { preserveScroll: true })}
-                  disabled={subscription === null}
-                >
-                  {t('super.billing.raise_invoice')}
-                </Button>
-              </Stack>
-            </CardContent>
-            <SuperTable
-              columns={invoiceColumns}
-              rows={invoices}
-              rowKey={(row) => row.public_id}
-              empty={t('super.billing.empty')}
-              label={t('super.billing.title')}
-            />
-          </Card>
+          <TenantBillingCard tenant={{ public_id: tenant.public_id, name: tenant.name }} billing={billing} plans={plans} />
         ) : null}
 
         {tab === 'domains' ? (
           <Stack spacing={2}>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle1" component="h3">{t('super.domains.title')}</Typography>
-              <Button variant="contained" onClick={() => setAddDomainOpen(true)}>{t('super.domains.add')}</Button>
+              <Button variant="contained" onClick={() => setAddDomainOpen(true)} data-testid="add-domain">{t('super.domains.add')}</Button>
             </Stack>
             {domains.length === 0 ? (
               <Alert severity="info">{t('super.domains.empty')}</Alert>
@@ -910,6 +723,11 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
                         />
                         {domain.is_primary ? <Chip size="small" color="primary" icon={<StarIcon />} label={t('super.domains.primary')} /> : null}
                         <Chip size="small" variant="outlined" label={t(`super.domains.type.${domain.type}`, { defaultValue: domain.type })} />
+                        {domain.type === 'custom' ? (
+                          <Tooltip title={domain.ssl_expires_at ? t('super.tenants.ssl_expires', { date: when(domain.ssl_expires_at, locale) }) : ''}>
+                            <Chip size="small" variant="outlined" color={SSL_TONE[domain.ssl_status]} label={`${t('super.tenants.ssl_label')}: ${t(`super.tenants.ssl.${domain.ssl_status}`, { defaultValue: domain.ssl_status })}`} />
+                          </Tooltip>
+                        ) : null}
                       </Stack>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                         {t('super.domains.checked', { verified: when(domain.verified_at, locale, DATETIME), checked: when(domain.last_checked_at, locale, DATETIME) })}
@@ -929,7 +747,7 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
                     </Box>
 
                     <Stack spacing={1} sx={{ flexShrink: 0 }}>
-                      <Button size="small" variant="outlined" onClick={() => simplePost('super.tenants.domains.verify', { tenant: tenant.public_id, domain: domain.id })}>
+                      <Button size="small" variant="outlined" onClick={() => simplePost('super.tenants.domains.verify', { tenant: tenant.public_id, domain: domain.id })} data-testid={`verify-domain-${domain.id}`}>
                         {t('super.actions.verify')}
                       </Button>
                       <Button size="small" onClick={() => simplePost('super.tenants.domains.primary', { tenant: tenant.public_id, domain: domain.id })} disabled={domain.is_primary || domain.verification_status !== 'verified'}>
@@ -952,7 +770,10 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
           </Stack>
         ) : null}
 
+        {tab === 'staff' ? <StaffTab tenant={tenant} staff={staff} roles={roles} /> : null}
+
         {tab === 'data' ? (
+          <Stack spacing={2}>
           <Card variant="outlined">
             <CardContent>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between' }}>
@@ -979,6 +800,8 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
               label={t('super.tenants.tab.data')}
             />
           </Card>
+          <DeleteTenantCard tenant={tenant} deletion={deletion} />
+          </Stack>
         ) : null}
 
         {tab === 'audit' ? (
@@ -1016,9 +839,10 @@ export default function Show({ tenant, plans, feature_labels, metric_labels, tog
 
       <SuspendDialog open={suspendOpen} tenant={tenant} onClose={() => setSuspendOpen(false)} />
       <CancelDialog open={cancelOpen} tenant={tenant} onClose={() => setCancelOpen(false)} />
+      <ReactivateDialog open={reactivateOpen} tenant={tenant} onClose={() => setReactivateOpen(false)} />
+      <ChangePlanDialog tenant={tenant} choice={planChoice} plans={plans} onClose={() => setPlanChoice(null)} />
+      <RevealDialog reveal={shownReveal} onClose={() => setShownReveal(null)} />
       <AddDomainDialog open={addDomainOpen} tenant={tenant} onClose={() => setAddDomainOpen(false)} />
-      <VoidInvoiceDialog tenant={tenant} invoice={voidInvoice} onClose={() => setVoidInvoice(null)} />
-      <PayInvoiceDialog tenant={tenant} invoice={payInvoice} onClose={() => setPayInvoice(null)} />
       <RestoreDialog tenant={tenant} backup={restoreBackup} onClose={() => setRestoreBackup(null)} />
     </Box>
   );

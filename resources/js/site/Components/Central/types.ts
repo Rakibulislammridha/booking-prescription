@@ -21,6 +21,20 @@ export interface CentralLinks {
   locale: string;
 }
 
+/**
+ * The platform's own identity for the shell (`PlatformSettingsRegistry` via BuildsCentralLinks::platformProps()):
+ * name, support contacts, the maintenance banner, and whether sign-up is open. Optional on the page props so a
+ * page that does not pass it still renders (the shell falls back to `app.name` and shows no banner).
+ */
+export interface PlatformProps {
+  name: string;
+  support_email: string;
+  support_phone: string;
+  maintenance_banner: string;
+  signup_open: boolean;
+  signup_closed_message: string;
+}
+
 /** A plan or an add-on as the pricing pages render it. Money is integer paisa (CONVENTIONS §13). */
 export interface PricingPlan {
   code: string;

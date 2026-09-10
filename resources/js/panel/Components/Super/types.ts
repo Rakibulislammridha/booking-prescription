@@ -316,6 +316,7 @@ export type PromotionStatus = 'pending' | 'approved' | 'rejected' | 'promoted';
 
 export interface PromotionTenantRef {
   id: number;
+  public_id?: string;
   slug?: string;
   name?: string;
 }
@@ -343,11 +344,17 @@ export interface SimilarMasterBrand {
   generic_name: string | null;
   is_active: boolean;
   same_generic: boolean;
+  /** The master brand's presentations, for the proposed-vs-master comparison. */
+  strengths?: SimilarMasterStrength[];
 }
 
 export interface PromotionDetail extends PromotionRow {
   use_count: number;
   similar_master_brands: SimilarMasterBrand[];
+  /** The clinic's proposal as one flat block (snapshot + denormalised columns). */
+  proposed?: PromotionProposed;
+  /** The molecule as the catalogue knows it today; null when it has vanished. */
+  catalog_generic?: { id: number; name: string; slug: string; is_active: boolean } | null;
 }
 
 /** Laravel's length-aware paginator as it arrives over JSON. */
@@ -395,6 +402,12 @@ export interface PlatformSettingRow {
   is_set: boolean;
   /** Saving re-asks the operator's current password (every `security.*` key). */
   requires_password: boolean;
+  /** Control hints from the registry: a textarea, an email/tel/url box, numeric bounds, template placeholders. */
+  multiline: boolean;
+  input: string | null;
+  min: number | null;
+  max: number | null;
+  placeholders: string[];
   label: string;
   description: string;
   updated_at: string | null;
@@ -405,4 +418,477 @@ export interface PlatformSettingGroup {
   key: string;
   label: string;
   settings: PlatformSettingRow[];
+}
+
+// ── Catalogue browser (Super/Catalog/Browse — App\Domain\Catalog\Queries\CatalogBrowser) ────────────────
+
+export type CatalogTab = 'generics' | 'brands' | 'strengths' | 'icd10' | 'interactions' | 'allergy_classes';
+
+export interface CatalogRef {
+  id: number;
+  name: string | null;
+}
+
+interface CatalogRowBase {
+  id: number;
+  is_active: boolean;
+  catalog_version_id: number | null;
+}
+
+export interface CatalogGenericRow extends CatalogRowBase {
+  name: string;
+  name_bn: string | null;
+  slug: string;
+  atc_code: string | null;
+  therapeutic_class: string | null;
+  aliases: string[];
+  is_controlled: boolean;
+  is_pediatric_weight_based: boolean;
+  needs_review: boolean;
+  brands_count: number;
+  info_slug: string | null;
+  info_published: boolean;
+}
+
+export interface CatalogBrandRow extends CatalogRowBase {
+  name: string;
+  slug: string;
+  manufacturer: string | null;
+  dar_number: string | null;
+  popularity: number;
+  aliases: string[];
+  generic: CatalogRef;
+  strengths_count: number;
+  discontinued_at: string | null;
+}
+
+export interface CatalogStrengthRow extends CatalogRowBase {
+  brand: CatalogRef;
+  generic: CatalogRef;
+  form: { name: string; code: string };
+  route: { name: string; code: string } | null;
+  strength_label: string;
+  pack_size: string | null;
+  strength_mg: number | null;
+  per_ml: number | null;
+  unit_price_paisa: number | null;
+}
+
+export interface CatalogIcd10Row extends CatalogRowBase {
+  code: string;
+  title: string;
+  title_bn: string | null;
+  chapter: string | null;
+  block: string | null;
+  parent_code: string | null;
+  aliases: string[];
+  is_billable: boolean;
+}
+
+export interface CatalogInteractionRow extends CatalogRowBase {
+  generic_a: CatalogRef;
+  generic_b: CatalogRef;
+  severity: string;
+  effect: string;
+  mechanism: string | null;
+  management: string | null;
+  evidence_level: string | null;
+  source: string | null;
+}
+
+export interface CatalogAllergyClassRow extends CatalogRowBase {
+  name: string;
+  slug: string;
+  description: string | null;
+  members_count: number;
+  cross_reacts_with: { allergy_class_id: number; probability_pct: number }[];
+}
+
+export type CatalogRow = CatalogGenericRow | CatalogBrandRow | CatalogStrengthRow | CatalogIcd10Row | CatalogInteractionRow | CatalogAllergyClassRow;
+
+export interface CatalogVersionRef {
+  id: number;
+  version: string;
+  applied_at: string | null;
+}
+
+export interface CatalogDrugInformation {
+  id: number;
+  public_slug: string;
+  published_at: string | null;
+  indications: string | null;
+  indications_bn: string | null;
+  side_effects: string | null;
+  side_effects_bn: string | null;
+  contraindications: string | null;
+  precautions: string | null;
+  patient_advice_bn: string | null;
+}
+
+/** The drawer payload (`super.catalog.show`); `kind` says which shape the rest is. */
+export interface CatalogDetail {
+  kind: CatalogTab;
+  id: number;
+  is_active: boolean;
+  version: CatalogVersionRef | null;
+  name?: string;
+  name_bn?: string | null;
+  slug?: string;
+  atc_code?: string | null;
+  therapeutic_class?: string | null;
+  aliases?: string[];
+  is_controlled?: boolean;
+  is_pediatric_weight_based?: boolean;
+  needs_review?: boolean;
+  components?: { generic_id: number; mg: number | null; name: string | null }[];
+  brands?: { id: number; name: string; manufacturer: string | null; popularity: number; strengths_count: number; is_active: boolean }[];
+  information?: CatalogDrugInformation | null;
+  allergy_classes?: { id: number; name: string; slug: string }[];
+  pregnancy?: { trimester: number | null; category: string; lactation: string; notes: string | null }[];
+  renal?: { egfr_below: number | null; level: string; advice: string }[];
+  hepatic?: { child_pugh_class: string | null; level: string; advice: string }[];
+  max_doses?: { route: string | null; population: string; max_mg_per_day: number | null; max_mg_per_kg_per_day: number | null; max_mg_per_dose: number | null; min_age_months: number | null; max_age_months: number | null; notes: string | null }[];
+  interactions?: { id: number; with: CatalogRef; severity: string; effect: string; management: string | null; is_active: boolean }[];
+  manufacturer?: string | null;
+  dar_number?: string | null;
+  popularity?: number;
+  discontinued_at?: string | null;
+  generic?: { id: number; name: string; slug?: string; is_active: boolean } | null;
+  strengths?: { id: number; strength_label: string; form: string | null; form_code?: string | null; route: string | null; pack_size: string | null; strength_mg: number | null; per_ml: number | null; unit_price_paisa: number | null; is_active: boolean }[];
+  strength_label?: string;
+  strength_value?: number | null;
+  strength_unit?: string | null;
+  per_volume_ml?: number | null;
+  strength_mg?: number | null;
+  per_ml?: number | null;
+  pack_size?: string | null;
+  pack_size_value?: number | null;
+  pack_unit?: string | null;
+  unit_price_paisa?: number | null;
+  brand?: { id: number; name: string; manufacturer: string | null; is_active: boolean } | null;
+  form?: { name: string; code: string; default_unit?: string } | null;
+  route?: { name: string; code: string } | null;
+  code?: string;
+  title?: string;
+  title_bn?: string | null;
+  chapter?: string | null;
+  block?: string | null;
+  is_billable?: boolean;
+  parent?: { id: number; code: string; title: string } | null;
+  children?: { id: number; code: string; title: string; is_active: boolean }[];
+  generic_a?: CatalogRef;
+  generic_b?: CatalogRef;
+  severity?: string;
+  mechanism?: string | null;
+  effect?: string;
+  management?: string | null;
+  evidence_level?: string | null;
+  source?: string | null;
+  description?: string | null;
+  cross_reacts_with?: { allergy_class_id: number; name: string | null; probability_pct: number | null }[];
+  members?: { id: number; name: string; is_active: boolean }[];
+}
+
+// ── Catalogue imports and maintenance jobs (public.catalog_jobs) ────────────────────────────────────────
+
+export type CatalogJobKind = 'import' | 'reindex' | 'reconcile';
+
+export type CatalogJobStatus = 'uploaded' | 'queued' | 'running' | 'succeeded' | 'failed';
+
+export interface ImportIssueSample {
+  kind: string;
+  source_row: number | null;
+  payload: Record<string, unknown>;
+}
+
+/** App\Domain\Catalog\Data\ImportReport::toArray(). */
+export interface ImportReport {
+  status: 'applied' | 'dry_run' | 'already_imported';
+  version_id: number | null;
+  version: string;
+  checksum: string;
+  row_counts: Record<string, { rows: number; inserted: number; updated: number; deactivated: number }>;
+  issues: Record<string, number>;
+  duration_ms: number;
+  issue_samples: ImportIssueSample[];
+  total_changes: number;
+  indexed?: boolean;
+  index_error?: string;
+  /** Rebuild jobs: uid → documents / ms. */
+  indexes?: Record<string, { documents: number; ms: number }>;
+  /** Reconcile jobs. */
+  run_id?: string;
+  tenants?: number;
+}
+
+export interface CatalogJobRow {
+  public_id: string;
+  kind: CatalogJobKind;
+  mode: 'dry_run' | 'apply' | null;
+  status: CatalogJobStatus;
+  source: string | null;
+  version: string | null;
+  release_ref: string | null;
+  full: boolean;
+  bundle_files: string[];
+  /** The uploaded files are still on disk (a discarded or pruned bundle cannot be re-run). */
+  has_bundle: boolean;
+  checksum: string | null;
+  progress: { step?: string; percent?: number; rows?: Record<string, number>; run_id?: string; code?: string; force?: boolean };
+  report: ImportReport | null;
+  error: string | null;
+  catalog_version_id: number | null;
+  requested_by: string | null;
+  queued_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string | null;
+}
+
+export interface CatalogVersionRow {
+  id: number;
+  version: string;
+  status: string;
+  dgda_release_ref: string | null;
+  applied_at: string | null;
+  applied_by: string | null;
+  notes: string | null;
+  row_counts: Record<string, { rows?: number; inserted?: number; updated?: number; deactivated?: number }>;
+  checksum: string | null;
+  issues_open: number;
+  issues_total: number;
+  is_current: boolean;
+}
+
+export interface CatalogImportIssueRow {
+  id: number;
+  kind: string;
+  source_row: number | null;
+  payload: Record<string, unknown>;
+  resolved_at: string | null;
+  resolution: Record<string, unknown> | null;
+}
+
+export interface SearchIndexStatus {
+  driver: string;
+  reachable: boolean;
+  indexes: Record<string, number | null>;
+}
+
+// ── Promotion review, extended (proposed vs master; tenant filter) ──────────────────────────────────────
+
+export interface SimilarMasterStrength {
+  id: number;
+  strength_label: string;
+  form: string | null;
+  pack_size: string | null;
+  is_active: boolean;
+}
+
+export interface PromotionProposed {
+  brand_name: string;
+  manufacturer: string | null;
+  generic_name: string | null;
+  strength: string | null;
+  form: string | null;
+  route: string | null;
+}
+
+export interface PromotionTenantOption {
+  public_id: string;
+  name: string;
+  slug: string;
+}
+
+// ── Reconciliation detail ───────────────────────────────────────────────────────────────────────────────
+
+export interface ReconciliationReference {
+  ref: string;
+  rows: number;
+  name: string | null;
+  is_active: boolean | null;
+  exists: boolean;
+}
+
+export interface ReconciliationRun {
+  run_id: string;
+  started_at: string;
+  rows: number;
+  orphans: number;
+}
+
+// ── Platform notifications (Super/Notifications/Index) ──────────────────────────────────────────────────
+
+export interface PlatformMessageRow {
+  id: number;
+  channel: 'email' | 'sms';
+  kind: string;
+  recipient: string;
+  subject: string | null;
+  locale: string;
+  status: 'sent' | 'failed' | 'rejected';
+  provider: string | null;
+  error: string | null;
+  tenant: { public_id: string; name: string } | null;
+  sent_by: string | null;
+  created_at: string | null;
+}
+
+export type TemplateLocaleRows = { subject: PlatformSettingRow; body: PlatformSettingRow };
+
+export type TemplateRows = Record<string, Record<'en' | 'bn', TemplateLocaleRows>>;
+
+export interface TemplatePreview {
+  subject: string;
+  body: string;
+}
+
+// ── Super admins, profile, dashboard, audit and usage (S1: the console shell) ────────────────────────────
+
+/** SuperAdminDirectory::row(): one platform operator as the Admins list shows it. */
+export type SuperTwoFactorState = 'enabled' | 'enrolling' | 'none';
+
+export interface SuperAdminRow {
+  id: number;
+  name: string;
+  email: string;
+  is_active: boolean;
+  two_factor: SuperTwoFactorState;
+  recovery_codes: number;
+  last_login_at: string | null;
+  last_login_ip: string | null;
+  created_at: string | null;
+  is_self: boolean;
+}
+
+/** SuperAdminDirectory::detail(): the edit page decides between Delete and Deactivate from these two. */
+export interface SuperAdminDetail extends SuperAdminRow {
+  never_used: boolean;
+  is_last_active: boolean;
+}
+
+/** ProfileController::show(). */
+export interface SuperProfile {
+  name: string;
+  email: string;
+  two_factor: SuperTwoFactorState;
+  two_factor_policy: 'required' | 'optional' | 'disabled';
+  recovery_codes: number;
+  last_login_at: string | null;
+  last_login_ip: string | null;
+  created_at: string | null;
+}
+
+/** QueueHealth::snapshot(). `available` false means Horizon's Redis could not be read. */
+export interface QueueSnapshot {
+  available: boolean;
+  running: boolean;
+  depth: number;
+  longest_wait: number;
+  queues: Array<{ name: string; length: number; wait: number }>;
+  failed: number;
+  failed_recent: number;
+  horizon_url: string;
+}
+
+/** PlatformKpis::all(): the dashboard tiles. */
+export interface DashboardKpis {
+  trials_ending_7d: number;
+  past_due: { tenants: number; invoices: number; paisa: number };
+  /** Billing's PlatformRevenueSummary, the slice the tiles show. */
+  revenue: {
+    mrr_paisa: number;
+    arr_paisa: number;
+    outstanding_paisa: number;
+    outstanding_invoices: number;
+    collected_month_paisa: number;
+    collected_month_payments: number;
+  };
+  signups_month: number;
+  appointments_today: number;
+  sms_near_limit: number;
+  over_limit: number;
+  backups: {
+    never: number;
+    stale: number;
+    oldest_hours: number | null;
+    worst: { public_id: string; name: string; slug: string; last_backup_at: string | null } | null;
+  };
+  queue: QueueSnapshot;
+}
+
+export type AttentionSeverity = 'error' | 'warning' | 'info';
+
+/** AttentionItems::all(): one actionable count with the place it is dealt with. */
+export interface AttentionItem {
+  key: string;
+  count: number;
+  severity: AttentionSeverity;
+  route: string | null;
+  params: Record<string, string>;
+  href: string | null;
+  amount_paisa?: number;
+}
+
+/** PlatformTrend::last30Days(): one calendar day (Dhaka). */
+export interface TrendDay {
+  day: string;
+  signups: number;
+  appointments: number;
+}
+
+/** AuditLogSearch::present(): the full row, request context included, for the detail drawer. */
+export interface AuditDetailRow extends AuditRow {
+  actor_id: number | null;
+  user_agent: string | null;
+  request_id: string | null;
+}
+
+export interface AuditFilters {
+  tenant: string;
+  admin: string;
+  action: string;
+  from: string;
+  to: string;
+  q: string;
+}
+
+export interface AuditFilterOptions {
+  admins: Array<{ id: number; name: string; is_active: boolean }>;
+  tenants: AuditTenantRef[];
+}
+
+/** TenantUsageBoard::board() rows: one clinic's counter against its cap for the selected metric. */
+export interface UsageBoardRow {
+  public_id: string;
+  name: string;
+  slug: string;
+  status: string;
+  plan_name: string;
+  value: number;
+  limit: number | null;
+  percent: number | null;
+  exhausted: boolean;
+  near: boolean;
+}
+
+export type UsageBoardFilter = 'all' | 'over' | 'near';
+export type UsageBoardSort = 'percent' | 'value' | 'name';
+
+/** TenantUsageBoard::detail(): a LimitStatus plus its six-month history. */
+export interface TenantUsageMetric extends LimitStatus {
+  near: boolean;
+  capped: boolean;
+  is_gauge: boolean;
+  history: UsagePoint[];
+}
+
+export interface UsageTenantRef {
+  public_id: string;
+  name: string;
+  slug: string;
+  status: string;
+  plan_name: string;
+  plan_code: string | null;
+  timezone: string;
 }

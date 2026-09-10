@@ -13,6 +13,7 @@ final class ImportReport
      * @param  array<string, array{rows: int, inserted: int, updated: int, deactivated: int}>  $rowCounts
      * @param  array<string, list<int>>  $changedIds  table → ids inserted/updated/deactivated (for incremental reindex)
      * @param  array<string, int>  $issues  kind → count
+     * @param  list<array{kind: string, source_row: int|null, payload: array<string, mixed>}>  $issueSamples  the first issues, kept out of the transaction so a dry run can show them
      */
     public function __construct(
         public string $status,
@@ -23,6 +24,7 @@ final class ImportReport
         public array $changedIds = [],
         public array $issues = [],
         public int $durationMs = 0,
+        public array $issueSamples = [],
     ) {}
 
     public function isApplied(): bool
@@ -47,6 +49,7 @@ final class ImportReport
         return [
             'status' => $this->status, 'version_id' => $this->versionId, 'version' => $this->version, 'checksum' => $this->checksum,
             'row_counts' => $this->rowCounts, 'issues' => $this->issues, 'duration_ms' => $this->durationMs,
+            'issue_samples' => $this->issueSamples, 'total_changes' => $this->totalChanges(),
         ];
     }
 }

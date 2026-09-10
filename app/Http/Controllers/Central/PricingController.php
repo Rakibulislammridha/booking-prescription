@@ -27,6 +27,7 @@ final class PricingController extends Controller
             'addons' => $catalog->addons(),
             'feature_labels' => PlanCatalog::featureLabels(),
             'links' => $this->centralLinks(),
+            'platform' => $this->platformProps(),
             'copy' => CentralCopy::for('pricing'),
         ]);
     }

@@ -8,6 +8,8 @@ use App\Domain\Audit\Enums\CentralAuditAction;
 use App\Domain\SaaS\Data\OnboardingData;
 use App\Domain\SaaS\Events\TenantOnboarded;
 use App\Domain\SaaS\Services\CentralAudit;
+use App\Domain\SaaS\Services\PlatformSettings;
+use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Domain\Tenancy\Actions\ProvisionTenant;
 use App\Models\Central\Tenant;
 use App\Tenancy\Facades\Tenancy;
@@ -26,11 +28,13 @@ final class SignUpTenant
     public function __construct(
         private readonly ProvisionTenant $provision,
         private readonly CentralAudit $audit,
+        private readonly PlatformSettings $settings,
     ) {}
 
     public function handle(OnboardingData $data): Tenant
     {
-        $tenant = $this->provision->handle($data->toProvisionData());
+        // A self-service sign-up gets the platform's trial length (`onboarding.trial_days`), whichever plan it picked.
+        $tenant = $this->provision->handle($data->toProvisionData((int) $this->settings->get(PlatformSettingsRegistry::TRIAL_DAYS)));
 
         if (Tenancy::check()) {
             Tenancy::end();                                        // belt and braces: central code never returns inside a tenant

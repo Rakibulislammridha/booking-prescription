@@ -6,7 +6,9 @@ namespace App\Http\Controllers\Central;
 
 use App\Domain\SaaS\Actions\Onboarding\SignUpTenant;
 use App\Domain\SaaS\Queries\PlanCatalog;
+use App\Domain\SaaS\Services\PlatformSettings;
 use App\Domain\SaaS\Support\CentralCopy;
+use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Domain\Tenancy\Exceptions\ProvisioningFailed;
 use App\Domain\Tenancy\Exceptions\SlugReserved;
 use App\Domain\Tenancy\Exceptions\SlugTaken;
@@ -35,20 +37,33 @@ final class OnboardingController extends Controller
 {
     use BuildsCentralLinks;
 
-    public function create(Request $request, PlanCatalog $catalog): Response
+    public function create(Request $request, PlanCatalog $catalog, PlatformSettings $settings): Response
     {
         return Inertia::render('Central/Onboarding/Signup', [
             'plans' => $catalog->publicPlans(),
             'links' => $this->centralLinks(),
+            'platform' => $this->platformProps(),
             'central_domain' => (string) config('tenancy.central_domain'),
             'selected_plan' => $request->query('plan') === null ? null : (string) $request->query('plan'),
             'slug_suggestion' => '',
+            // The platform's defaults for the two fields most clinics never touch (`onboarding.default_*`).
+            'defaults' => [
+                'locale' => (string) $settings->get(PlatformSettingsRegistry::DEFAULT_LOCALE),
+                'timezone' => (string) $settings->get(PlatformSettingsRegistry::DEFAULT_TIMEZONE),
+                'trial_days' => (int) $settings->get(PlatformSettingsRegistry::TRIAL_DAYS),
+            ],
             'copy' => CentralCopy::for('signup'),
         ]);
     }
 
     public function store(SignUpRequest $request, SignUpTenant $signUp): RedirectResponse
     {
+        // `onboarding.signup_open` off: the wizard already shows the closed message instead of the form; a POST
+        // that arrives anyway (an old tab, a script) is refused with the same message and provisions nothing.
+        if (! $this->platformProps()['signup_open']) {
+            throw ValidationException::withMessages(['clinic_name' => $this->platformProps()['signup_closed_message']]);
+        }
+
         try {
             $tenant = $signUp->handle($request->toData());
         } catch (SlugTaken|SlugReserved) {
@@ -76,6 +91,7 @@ final class OnboardingController extends Controller
                 'trial_ends_at' => $tenant->trial_ends_at?->toIso8601String(),
             ],
             'links' => $this->centralLinks(),
+            'platform' => $this->platformProps(),
             'copy' => CentralCopy::for('done'),
         ]);
     }

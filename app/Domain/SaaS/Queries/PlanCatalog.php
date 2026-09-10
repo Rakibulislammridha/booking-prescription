@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Domain\SaaS\Queries;
 
 use App\Domain\SaaS\Enums\PlanFeatureKey;
+use App\Domain\SaaS\Enums\SubscriptionStatus;
 use App\Domain\SaaS\Enums\UsageMetric;
 use App\Models\Central\Plan;
 use App\Models\Central\PlanFeature;
+use Illuminate\Support\Facades\DB;
 
 /**
  * One shape for a plan, used by the pricing page, the sign-up wizard, the tenant's own subscription screen and
@@ -67,6 +69,45 @@ final class PlanCatalog
                 'archived_at' => $plan->archived_at?->toIso8601String(),
             ])
             ->all();
+    }
+
+    /**
+     * One plan for the console's editor: `present()` plus the console-only columns — the same shape `all()`
+     * returns per row, so the list and the editor agree on every field.
+     *
+     * @return array<string, mixed>
+     */
+    public function forConsole(Plan $plan): array
+    {
+        $plan->loadMissing('features');
+
+        return $this->present($plan, false) + [
+            'id' => $plan->id,
+            'is_public' => $plan->is_public,
+            'sort_order' => $plan->sort_order,
+            'archived_at' => $plan->archived_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Live subscribers per plan code (trialing / active / past_due / suspended — the statuses under which a
+     * clinic still depends on the plan's rows), in ONE grouped query for the whole list.
+     *
+     * @return array<string, int>
+     */
+    public function liveSubscriberCounts(): array
+    {
+        /** @var array<string, int> $counts */
+        $counts = DB::connection('pgsql')->table('public.subscriptions as s')
+            ->join('public.plans as p', 'p.id', '=', 's.plan_id')
+            ->whereIn('s.status', [SubscriptionStatus::Trialing->value, SubscriptionStatus::Active->value, SubscriptionStatus::PastDue->value, SubscriptionStatus::Suspended->value])
+            ->selectRaw('p.code, count(*) as total')
+            ->groupBy('p.code')
+            ->pluck('total', 'p.code')
+            ->map(fn ($v): int => (int) $v)
+            ->all();
+
+        return $counts;
     }
 
     /** @return array<string, mixed> */

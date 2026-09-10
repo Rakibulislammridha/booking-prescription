@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Central\Concerns;
 
+use App\Domain\SaaS\Services\PlatformSettings;
+use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Models\Central\SubscriptionInvoice;
 use App\Models\Central\Tenant;
 use Carbon\CarbonImmutable;
@@ -43,6 +45,28 @@ trait BuildsCentralLinks
     protected function signedInvoiceUrl(SubscriptionInvoice $invoice, string $route = 'central.billing.invoice'): string
     {
         return URL::signedRoute($route, ['invoice' => $invoice->public_id], CarbonImmutable::now()->addDays(60));
+    }
+
+    /**
+     * The platform's own identity for the marketing shell (`PlatformSettingsRegistry`): name, support contacts,
+     * the maintenance banner and whether sign-up is open. Passed as the `platform` prop on every central page so
+     * the shell reads it like `links` — a console change shows on the very next request.
+     *
+     * @return array{name: string, support_email: string, support_phone: string, maintenance_banner: string, signup_open: bool, signup_closed_message: string}
+     */
+    protected function platformProps(): array
+    {
+        $settings = app(PlatformSettings::class);
+        $closedMessage = trim((string) $settings->get(PlatformSettingsRegistry::SIGNUP_CLOSED_MESSAGE));
+
+        return [
+            'name' => (string) $settings->get(PlatformSettingsRegistry::PLATFORM_NAME),
+            'support_email' => (string) $settings->get(PlatformSettingsRegistry::SUPPORT_EMAIL),
+            'support_phone' => (string) $settings->get(PlatformSettingsRegistry::SUPPORT_PHONE),
+            'maintenance_banner' => trim((string) $settings->get(PlatformSettingsRegistry::MAINTENANCE_BANNER)),
+            'signup_open' => (bool) $settings->get(PlatformSettingsRegistry::SIGNUP_OPEN),
+            'signup_closed_message' => $closedMessage !== '' ? $closedMessage : (string) __('saas.onboarding.closed'),
+        ];
     }
 
     /** @return array<string, string> */

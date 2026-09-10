@@ -37,11 +37,13 @@ use Laravel\Pennant\Contracts\FeatureScopeable;
  * @property string|null $suspension_reason
  * @property array<string, mixed> $onboarding
  * @property array<string, mixed> $branding
+ * @property string|null $platform_notes
  * @property CarbonImmutable|null $provisioned_at
  * @property CarbonImmutable|null $last_backup_at
  * @property CarbonImmutable|null $data_export_requested_at
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
+ * @property CarbonImmutable|null $deleted_at
  * @property-read Subscription|null $currentSubscription
  * @property-read Collection<int, Domain> $domains
  */
@@ -56,7 +58,7 @@ final class Tenant extends CentralModel implements FeatureScopeable
 
     protected $fillable = [
         'name', 'slug', 'status', 'timezone', 'locale', 'currency', 'owner_name', 'owner_email', 'owner_mobile',
-        'trial_ends_at', 'suspended_at', 'suspension_reason', 'onboarding', 'branding', 'provisioned_at',
+        'trial_ends_at', 'suspended_at', 'suspension_reason', 'onboarding', 'branding', 'platform_notes', 'provisioned_at',
         'last_backup_at', 'data_export_requested_at',
     ];
 

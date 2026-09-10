@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domain\SaaS\Console;
 
+use App\Domain\SaaS\Support\SuperPassword;
 use App\Models\Central\SuperAdmin;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rules\Password;
 
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
@@ -37,7 +37,7 @@ final class CreateSuperAdminCommand extends Command
 
         $validator = Validator::make(
             ['name' => $name, 'email' => $email, 'password' => $plain],
-            ['name' => ['required', 'string', 'max:120'], 'email' => ['required', 'email', 'max:255'], 'password' => ['required', Password::min(12)->letters()->numbers()]],
+            ['name' => ['required', 'string', 'max:120'], 'email' => ['required', 'email', 'max:255'], 'password' => ['required', SuperPassword::rule()]],
         );
 
         if ($validator->fails()) {

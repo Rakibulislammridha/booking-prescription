@@ -22,6 +22,7 @@ use App\Models\Catalog\CatalogVersion;
 use App\Models\Catalog\DosageForm;
 use App\Models\Catalog\Generic;
 use App\Models\Catalog\Route;
+use Closure;
 use Illuminate\Support\Str;
 
 /**
@@ -56,6 +57,11 @@ final class CatalogImporter
 
     private Upserter $db;
 
+    /** @var (Closure(string, int, int): void)|null step name, step index, step count — the console's progress bar */
+    private ?Closure $progress = null;
+
+    private const STEPS = ['routes', 'forms', 'generics', 'products', 'icd10', 'interactions', 'allergy_classes', 'pregnancy', 'renal', 'hepatic', 'max_doses', 'drug_information'];
+
     public function __construct(
         private readonly CatalogWriteContext $context,
         private readonly CsvReader $csv,
@@ -64,6 +70,17 @@ final class CatalogImporter
         private readonly GenericResolver $resolver,
         private readonly CatalogCache $cache,
     ) {}
+
+    /**
+     * Progress callback for the console's queued import: called before each table step with the step name, its
+     * 1-based index and the step count. Null (the default) is the CLI, which wants nothing.
+     *
+     * @param  (Closure(string, int, int): void)|null  $fn
+     */
+    public function onProgress(?Closure $fn): void
+    {
+        $this->progress = $fn;
+    }
 
     public function run(ImportRequest $request): ImportReport
     {
@@ -94,23 +111,40 @@ final class CatalogImporter
                 ]);
                 $this->versionId = $row->id;
 
+                $this->step('routes');
                 $this->importRoutes($bundle);
+                $this->step('forms');
                 $this->importForms($bundle);
+                $this->step('generics');
                 $this->importGenerics($bundle, $request->source);
+                $this->step('products');
                 $this->importProducts($bundle, $request);
+                $this->step('icd10');
                 $this->importIcd10($bundle);
+                $this->step('interactions');
                 $this->importInteractions($bundle);
+                $this->step('allergy_classes');
                 $this->importAllergyClasses($bundle);
+                $this->step('pregnancy');
                 $this->importPregnancy($bundle);
+                $this->step('renal');
                 $this->importCautions($bundle, 'renal');
+                $this->step('hepatic');
                 $this->importCautions($bundle, 'hepatic');
+                $this->step('max_doses');
                 $this->importMaxDoses($bundle);
+                $this->step('drug_information');
                 $this->importDrugInformation($bundle);
 
                 $this->issues = CatalogImportIssue::query()->where('catalog_version_id', $this->versionId)
                     ->selectRaw('kind, count(*) AS c')->groupBy('kind')->pluck('c', 'kind')->map(fn ($c) => (int) $c)->all();
 
-                $report = new ImportReport('applied', $this->versionId, $version, $checksum, $this->counts, $this->changed, $this->issues, $this->elapsed($started));
+                // The first issues travel with the report: a dry run rolls the rows back, and the console still
+                // has to show WHAT could not be mapped, not only how many.
+                $samples = CatalogImportIssue::query()->where('catalog_version_id', $this->versionId)->orderBy('id')->limit(100)->get()
+                    ->map(fn (CatalogImportIssue $i): array => ['kind' => $i->kind->value, 'source_row' => $i->source_row, 'payload' => (array) $i->payload])->all();
+
+                $report = new ImportReport('applied', $this->versionId, $version, $checksum, $this->counts, $this->changed, $this->issues, $this->elapsed($started), $samples);
 
                 if ($request->dryRun) {
                     $report->status = 'dry_run';
@@ -754,6 +788,13 @@ final class CatalogImporter
     private function elapsed(int $started): int
     {
         return (int) ((hrtime(true) - $started) / 1_000_000);
+    }
+
+    private function step(string $name): void
+    {
+        if ($this->progress !== null) {
+            ($this->progress)($name, (int) array_search($name, self::STEPS, true) + 1, count(self::STEPS));
+        }
     }
 
     private static function nullable(?string $value): ?string

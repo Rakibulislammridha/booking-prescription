@@ -1,8 +1,9 @@
 // The nightly catalogue reconciliation (SCHEMA §2.12): soft references from a clinic's schema into `catalog` that
 // no longer resolve. Orphans are REPORTED, never deleted — a prescription naming a retired molecule is still what
-// the doctor wrote — so the only action here is "a human has looked at this".
+// the doctor wrote — so the actions here are "a human has looked at this" and "tell the clinic".
 //
 // Rows are grouped by run because that is how they are produced and how they are read: one night, one sweep.
+// Filters (clinic, status, run, table) are server-side and live in the URL.
 import { useState, type ReactNode } from 'react';
 import { router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
@@ -13,8 +14,10 @@ import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Collapse from '@mui/material/Collapse';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -22,17 +25,29 @@ import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
 import { SuperNav } from '@panel/Components/Super/SuperNav';
 import { SuperTable, type SuperColumn } from '@panel/Components/Super/SuperTable';
-import type { ConsoleMeta, ReconciliationRow } from '@panel/Components/Super/types';
+import type { ConsoleMeta, ReconciliationRow, ReconciliationRun } from '@panel/Components/Super/types';
 import { formatNumber } from '@shared/format/number';
 import { formatDhaka } from '@shared/format/date';
 import { getLocale } from '@shared/locale';
 import { hasRoute, route } from '@shared/routes';
 import type { PageProps } from '@shared/types/inertia';
 
+interface Filters {
+  unresolved: boolean;
+  status: string;
+  tenant: string;
+  run: string;
+  table: string;
+}
+
 type Props = PageProps<{
   reports: ReconciliationRow[];
   meta: ConsoleMeta;
-  filters: { unresolved: boolean };
+  filters: Filters;
+  statuses: string[];
+  tenants: { public_id: string; name: string }[];
+  tables: string[];
+  runs: ReconciliationRun[];
 }>;
 
 interface RunGroup {
@@ -53,14 +68,18 @@ function group(reports: ReconciliationRow[]): RunGroup[] {
   return groups;
 }
 
-export default function Reconciliation({ reports, meta, filters }: Props) {
+export default function Reconciliation({ reports, meta, filters, statuses, tenants, tables, runs }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
   const [open, setOpen] = useState<number | null>(null);
 
-  const go = (params: { unresolved?: boolean; page?: number }): void => {
-    const unresolved = params.unresolved ?? filters.unresolved;
-    const query: Record<string, string | number> = { unresolved: unresolved ? 1 : 0 };
+  const go = (params: Partial<Filters> & { page?: number }): void => {
+    const next: Filters = { ...filters, ...params };
+    const query: Record<string, string | number> = { unresolved: next.unresolved ? 1 : 0 };
+    if (next.status !== '') query.status = next.status;
+    if (next.tenant !== '') query.tenant = next.tenant;
+    if (next.run !== '') query.run = next.run;
+    if (next.table !== '') query.table = next.table;
     if (params.page !== undefined && params.page > 1) query.page = params.page;
     router.get(route('super.catalog.reconciliation.index'), query, { preserveState: true, replace: true, preserveScroll: true });
   };
@@ -126,6 +145,9 @@ export default function Reconciliation({ reports, meta, filters }: Props) {
           <Button size="small" onClick={() => setOpen(open === row.id ? null : row.id)}>
             {open === row.id ? t('super.reconciliation.hide_samples') : t('super.reconciliation.samples')}
           </Button>
+          <Button size="small" component={RouterLink} href={route('super.catalog.reconciliation.show', { report: row.id })}>
+            {t('super.reconciliation.detail')}
+          </Button>
           <Button size="small" variant="outlined" onClick={() => resolve(row)} disabled={row.resolved_at !== null}>
             {t('super.reconciliation.mark_reviewed')}
           </Button>
@@ -150,6 +172,29 @@ export default function Reconciliation({ reports, meta, filters }: Props) {
             control={<Switch checked={filters.unresolved} onChange={(e) => go({ unresolved: e.target.checked, page: 1 })} />}
             label={t('super.reconciliation.unresolved_only')}
           />
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+          <TextField select size="small" label={t('super.reconciliation.filter.tenant')} value={filters.tenant} onChange={(e) => go({ tenant: e.target.value, page: 1 })} sx={{ minWidth: 200 }}>
+            <MenuItem value="">{t('super.reconciliation.filter.all')}</MenuItem>
+            {tenants.map((tenant) => <MenuItem key={tenant.public_id} value={tenant.public_id}><span lang="bn">{tenant.name}</span></MenuItem>)}
+          </TextField>
+          <TextField select size="small" label={t('super.reconciliation.column.status')} value={filters.status} onChange={(e) => go({ status: e.target.value, page: 1 })} sx={{ minWidth: 180 }}>
+            <MenuItem value="">{t('super.reconciliation.filter.all')}</MenuItem>
+            {statuses.map((s) => <MenuItem key={s} value={s}>{t(`super.reconciliation.status.${s}`, { defaultValue: s })}</MenuItem>)}
+          </TextField>
+          <TextField select size="small" label={t('super.reconciliation.filter.table')} value={filters.table} onChange={(e) => go({ table: e.target.value, page: 1 })} sx={{ minWidth: 200 }}>
+            <MenuItem value="">{t('super.reconciliation.filter.all')}</MenuItem>
+            {tables.map((table) => <MenuItem key={table} value={table}><span style={{ fontFamily: 'monospace' }}>{table}</span></MenuItem>)}
+          </TextField>
+          <TextField select size="small" label={t('super.reconciliation.run')} value={filters.run} onChange={(e) => go({ run: e.target.value, page: 1 })} sx={{ minWidth: 260 }}>
+            <MenuItem value="">{t('super.reconciliation.filter.all')}</MenuItem>
+            {runs.map((run) => (
+              <MenuItem key={run.run_id} value={run.run_id}>
+                {formatDhaka(run.started_at, 'D MMM YYYY, h:mm a', locale)} · {t('super.reconciliation.rows', { count: formatNumber(run.rows, locale) })} · {t('super.reconciliation.column.orphans')} {formatNumber(run.orphans, locale)}
+              </MenuItem>
+            ))}
+          </TextField>
         </Stack>
 
         {groups.length === 0 ? (

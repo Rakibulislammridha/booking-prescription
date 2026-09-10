@@ -30,7 +30,12 @@ final class ImpersonationController extends Controller
             throw ValidationException::withMessages(['tenant' => __('saas.impersonation.cancelled')]);
         }
 
-        $validated = $request->validate(['user_id' => ['nullable', 'integer', 'min:1']]);
+        // `user_id` is the clinic's bigint (the original contract); `user` is the public_id the staff tab sends.
+        // Both name a user INSIDE the tenant's schema and are resolved there by the action, never here.
+        $validated = $request->validate([
+            'user_id' => ['nullable', 'integer', 'min:1'],
+            'user' => ['nullable', 'string', 'regex:/^[0-9A-Za-z]{26}$/'],
+        ]);
         $admin = $request->user('super');
 
         abort_unless($admin instanceof SuperAdmin, 403);
@@ -38,7 +43,7 @@ final class ImpersonationController extends Controller
         $ticket = $issue->handle(
             $admin,
             $tenant,
-            isset($validated['user_id']) ? (int) $validated['user_id'] : null,
+            isset($validated['user']) ? (string) $validated['user'] : (isset($validated['user_id']) ? (int) $validated['user_id'] : null),
             $request->ip(),
             $request->getScheme(),
         );

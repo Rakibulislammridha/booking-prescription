@@ -65,7 +65,7 @@ return [
             'driver' => 'daily',
             'path' => storage_path('logs/clinical.log'),
             'level' => env('LOG_LEVEL', 'info'),
-            'days' => env('LOG_DAILY_DAYS', 90),
+            'days' => env('LOG_CLINICAL_DAYS', 90),   // its own key: LOG_DAILY_DAYS trims the app log, never the clinical trail
             'replace_placeholders' => true,
         ],
 

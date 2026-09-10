@@ -101,11 +101,17 @@ function SettingCard({ row }: { row: PlatformSettingRow }) {
       );
     }
 
+    // The registry's control hints: a textarea for multi-line copy, an email/tel/url box, numeric bounds.
+    const inputType = row.secret && !visible ? 'password' : row.type === 'string' ? (row.input ?? 'text') : 'number';
+    const bounds = row.type === 'number' ? { step: 'any' } : row.type === 'int' ? { step: 1, ...(row.min === null ? {} : { min: row.min }), ...(row.max === null ? {} : { max: row.max }) } : {};
+
     return (
       <TextField
         id={inputId}
         label={row.label}
-        type={row.secret && !visible ? 'password' : row.type === 'string' ? 'text' : 'number'}
+        type={row.multiline ? 'text' : inputType}
+        multiline={row.multiline}
+        minRows={row.multiline ? 3 : undefined}
         size="small"
         value={form.data.value ?? ''}
         placeholder={row.secret && row.is_set ? String(row.value ?? '') : undefined}
@@ -113,9 +119,9 @@ function SettingCard({ row }: { row: PlatformSettingRow }) {
         onFocus={() => setVisible(row.secret)}
         onBlur={() => setVisible(false)}
         error={Boolean(form.errors.value)}
-        helperText={form.errors.value ?? (row.secret ? t('super.settings.secret_keep') : undefined)}
-        slotProps={row.type === 'number' ? { htmlInput: { step: 'any' } } : undefined}
-        sx={{ maxWidth: 360 }}
+        helperText={form.errors.value ?? (row.secret ? t('super.settings.secret_keep') : row.type === 'int' && (row.min !== null || row.max !== null) ? t('super.settings.range', { min: row.min ?? '', max: row.max ?? '' }) : undefined)}
+        slotProps={{ htmlInput: bounds }}
+        sx={{ maxWidth: row.multiline ? 640 : 360 }}
       />
     );
   };

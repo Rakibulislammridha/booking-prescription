@@ -7,6 +7,8 @@ namespace App\Http\Middleware;
 use App\Domain\Clinic\Listeners\RecordStaffSession;
 use App\Domain\Clinic\Services\Settings;
 use App\Domain\Clinic\Services\StaffSessionIndex;
+use App\Domain\SaaS\Services\PlatformSettings;
+use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Models\Tenant\User;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -115,7 +117,9 @@ final class EnforceIdleTimeout
     private function limitMinutes(string $guard, int $idleSeconds): ?int
     {
         if ($guard !== 'web') {
-            return max(0, (int) config('session.idle_timeout_minutes', (int) config('session.lifetime')));
+            // The super console's limit is the platform setting `security.console_idle_minutes` (its registry
+            // default is `session.idle_timeout_minutes`), read at request time so a console change applies at once.
+            return max(0, (int) app(PlatformSettings::class)->get(PlatformSettingsRegistry::CONSOLE_IDLE_MINUTES));
         }
 
         $user = Auth::guard($guard)->user();

@@ -23,7 +23,8 @@ final readonly class OnboardingData
         public ?string $branchName = null,
     ) {}
 
-    public function toProvisionData(): ProvisionTenantData
+    /** @param  int|null  $trialDays  the platform's `onboarding.trial_days`; null lets the plan decide */
+    public function toProvisionData(?int $trialDays = null): ProvisionTenantData
     {
         return new ProvisionTenantData(
             name: $this->clinicName,
@@ -39,6 +40,7 @@ final readonly class OnboardingData
             timezone: $this->timezone,
             adminName: $this->ownerName,
             branchName: $this->branchName ?? $this->clinicName,
+            trialDays: $trialDays,
         );
     }
 }

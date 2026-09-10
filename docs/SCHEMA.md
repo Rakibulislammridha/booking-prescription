@@ -150,6 +150,7 @@ All models extend `App\Models\Central\CentralModel` with `$table = 'public.<name
 | suspension_reason | varchar(255) | yes | | |
 | onboarding | jsonb | no | `'{}'` | Wizard progress |
 | branding | jsonb | no | `'{}'` | Public-site theme |
+| platform_notes | text | yes | | Operator notes kept by the super console (Edit clinic); never sent to the clinic's own surfaces |
 | provisioned_at | timestamptz | yes | | Schema created + migrated + seeded |
 | last_backup_at | timestamptz | yes | | |
 | data_export_requested_at | timestamptz | yes | | Churn export (Module N) |
@@ -383,7 +384,7 @@ come for free. `HostResolutionTest` pins the stripping behaviour.
 |---|---|---|---|---|
 | super_admin_id | bigint | yes | | Null for system jobs |
 | tenant_id | bigint | yes | | Affected tenant if any |
-| action | varchar(32) | no | | `login`, `logout`, `impersonate`, `impersonate_end`, `create`, `update`, `delete`, `suspend`, `reactivate`, `plan_change`, `export`, `restore`, `catalog_promote`, `settings_change`, `view`, `two_factor_enabled`, `two_factor_disabled`, `two_factor_failed`, `two_factor_recovery_used` |
+| action | varchar(32) | no | | `login`, `logout`, `impersonate`, `impersonate_end`, `create`, `update`, `delete`, `suspend`, `reactivate`, `plan_change`, `export`, `restore`, `catalog_promote`, `settings_change`, `view`, `two_factor_enabled`, `two_factor_disabled`, `two_factor_failed`, `two_factor_recovery_used`, `deactivate`, `two_factor_reset`, `password_change`, `session_revoke` |
 | auditable_type | varchar(160) | yes | | Morph class |
 | auditable_id | bigint | yes | | |
 | before | jsonb | yes | | Changed attributes before |
@@ -399,7 +400,11 @@ come for free. `HostResolutionTest` pins the stripping behaviour.
 The CHECK on `action` is rebuilt from `App\Domain\Audit\Enums\CentralAuditAction::values()` by
 `2026_01_02_000100_extend_audit_logs_central_actions`, so the enum is the single source and the two cannot drift.
 The four `two_factor_*` actions are the super console's second factor (ARCHITECTURE §6.5): enrolment, disablement,
-every failed challenge and every recovery code spent.
+every failed challenge and every recovery code spent. `deactivate` (paired with `reactivate`), `two_factor_reset`
+(a colleague clearing an operator's enrolment — the "locked out of the authenticator" path), `password_change`
+(own change, a colleague's, or a mailed set-password link) and `session_revoke` are the console's account
+management (`super.admins.*`, `super.profile.*`); `2026_01_02_000300_extend_audit_logs_central_actions_for_admins`
+rebuilds the CHECK from the enum.
 
 ### 2.14 `personal_access_tokens` (Sanctum, central)
 **Purpose.** API tokens for super admins and platform integrations. Exact Sanctum 4.3 shape.

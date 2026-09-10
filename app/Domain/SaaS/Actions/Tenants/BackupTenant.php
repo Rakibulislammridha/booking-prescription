@@ -8,7 +8,9 @@ use App\Domain\SaaS\Enums\BackupEncryption;
 use App\Domain\SaaS\Enums\BackupStatus;
 use App\Domain\SaaS\Enums\BackupType;
 use App\Domain\SaaS\Services\BackupCipher;
+use App\Domain\SaaS\Services\PlatformSettings;
 use App\Domain\SaaS\Services\TenantSchemaDumper;
+use App\Domain\SaaS\Support\PlatformSettingsRegistry;
 use App\Models\Central\Tenant;
 use App\Models\Central\TenantBackup;
 use Carbon\CarbonImmutable;
@@ -40,16 +42,19 @@ use Throwable;
  */
 final class BackupTenant
 {
+    /** The registry default of `backups.retention_days`; the platform setting is what a daily copy actually gets. */
     public const DAILY_RETENTION_DAYS = 30;
 
     public function __construct(
         private readonly TenantSchemaDumper $dumper,
         private readonly BackupCipher $cipher,
+        private readonly PlatformSettings $settings,
     ) {}
 
     public function handle(Tenant $tenant, BackupType $type = BackupType::Daily, ?int $superAdminId = null, string $disk = 'backups'): TenantBackup
     {
         $now = CarbonImmutable::now();
+        $retentionDays = max(1, (int) $this->settings->get(PlatformSettingsRegistry::BACKUP_RETENTION_DAYS));
 
         $backup = TenantBackup::query()->create([
             'tenant_id' => $tenant->id,
@@ -58,7 +63,7 @@ final class BackupTenant
             'storage_disk' => $disk,
             'encryption' => BackupEncryption::None,
             'started_at' => $now,
-            'expires_at' => $type === BackupType::Daily ? $now->addDays(self::DAILY_RETENTION_DAYS) : null,
+            'expires_at' => $type === BackupType::Daily ? $now->addDays($retentionDays) : null,
             'requested_by_super_admin_id' => $superAdminId,
         ]);
 
