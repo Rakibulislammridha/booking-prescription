@@ -1,5 +1,7 @@
 // Vitals (§4.2): the compounder entered them, the doctor reviews. Read-only with a ☐ Reviewed tick (one click) and
 // an edit pencil; edits PATCH the same row (edited_by_doctor). BMI is computed here too so it moves while typing.
+// Temperature is shown and edited in °F — the row carries °C, `formatTemperature` converts on display and the
+// draft helpers convert on load/save — so what the compounder typed at the desk is what the doctor reads here.
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
@@ -14,8 +16,10 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import EditIcon from '@mui/icons-material/Edit';
 import type { VitalsRow } from '@shared/types/models';
+import { formatTemperature } from '@shared/format/temperature';
+import { getLocale } from '@shared/locale';
 import { recordVitals, updateVitals } from '@panel/api/prescription';
-import { bmiOf, draftFrom, draftNumber, draftToInput, VITALS_FIELDS, type VitalsDraft } from '@panel/lib/prescription/vitals';
+import { bmiOf, draftFrom, draftNumber, draftToInput, fieldPlaceholder, fieldUnit, temperatureHint, VITALS_FIELDS, type VitalsDraft } from '@panel/lib/prescription/vitals';
 
 const FIELDS = VITALS_FIELDS;
 
@@ -31,6 +35,7 @@ export interface VitalsCardProps {
 
 export function VitalsCard({ visitId, vitals, reviewed, ageYears, onChange, onReviewed, containerRef }: VitalsCardProps) {
   const { t } = useTranslation();
+  const locale = getLocale();
   const [editing, setEditing] = useState(vitals === null);
   // Roving tabindex: §1.3 keeps Vitals OUT of the writer's Tab order (it is compounder data, reached with Alt+2 or
   // a click). Once the card itself has focus its controls join the tab sequence, so nothing becomes unreachable.
@@ -45,6 +50,7 @@ export function VitalsCard({ visitId, vitals, reviewed, ageYears, onChange, onRe
   }, [vitals]);
 
   const bmi = editing ? bmiOf(draftNumber(form, 'weight_kg'), draftNumber(form, 'height_cm')) : vitals?.bmi ?? null;
+  const celsiusTyped = editing ? temperatureHint(form, locale) : null;
   const pediatricWeightMissing = ageYears !== null && ageYears < 12 && (vitals?.weight_kg ?? draftNumber(form, 'weight_kg')) === null;
 
   const save = async (): Promise<void> => {
@@ -62,7 +68,7 @@ export function VitalsCard({ visitId, vitals, reviewed, ageYears, onChange, onRe
   const summary: Array<[string, string]> = vitals === null ? [] : [
     [t('prescriptions.vitals.bp'), vitals.bp_systolic != null && vitals.bp_diastolic != null ? `${vitals.bp_systolic}/${vitals.bp_diastolic}` : '—'],
     [t('prescriptions.vitals.pulse'), vitals.pulse_bpm != null ? `${vitals.pulse_bpm}` : '—'],
-    [t('prescriptions.vitals.temperature'), vitals.temperature_c != null ? `${vitals.temperature_c} °C` : '—'],
+    [t('prescriptions.vitals.temperature'), formatTemperature(vitals.temperature_c, locale) ?? '—'],
     [t('prescriptions.vitals.spo2'), vitals.spo2_percent != null ? `${vitals.spo2_percent}%` : '—'],
     [t('prescriptions.vitals.weight'), vitals.weight_kg != null ? `${vitals.weight_kg} kg` : '—'],
     [t('prescriptions.vitals.height'), vitals.height_cm != null ? `${vitals.height_cm} cm` : '—'],
@@ -114,18 +120,26 @@ export function VitalsCard({ visitId, vitals, reviewed, ageYears, onChange, onRe
           </>
         ) : (
           <>
-            {FIELDS.map((field) => (
-              <TextField
-                key={String(field.key)}
-                size="small"
-                variant="standard"
-                label={t(field.labelKey)}
-                value={form[field.key] ?? ''}
-                onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                sx={{ width: field.width }}
-                slotProps={{ htmlInput: { inputMode: 'decimal', 'aria-label': t(field.labelKey), tabIndex: roving } }}
-              />
-            ))}
+            {FIELDS.map((field) => {
+              const unit = fieldUnit(field, locale);
+              const hint = field.key === 'temperature_f' ? celsiusTyped : null;
+
+              return (
+                <TextField
+                  key={String(field.key)}
+                  size="small"
+                  variant="standard"
+                  label={unit === '' ? t(field.labelKey) : `${t(field.labelKey)} (${unit})`}
+                  value={form[field.key] ?? ''}
+                  placeholder={fieldPlaceholder(field, locale)}
+                  error={hint !== null}
+                  helperText={hint === null ? undefined : t('prescriptions.vitals.temperature_hint', hint)}
+                  onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                  sx={{ width: field.width }}
+                  slotProps={{ htmlInput: { inputMode: 'decimal', 'aria-label': t(field.labelKey), tabIndex: roving } }}
+                />
+              );
+            })}
             {bmi !== null ? <Chip size="small" label={`BMI ${bmi}`} sx={{ height: 20 }} /> : null}
             <Box sx={{ flexGrow: 1 }} />
             <Button tabIndex={roving} size="small" onClick={() => setEditing(false)}>

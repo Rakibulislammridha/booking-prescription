@@ -448,7 +448,9 @@ export interface VitalsTrendPoint {
   bp_systolic: number | null;
   bp_diastolic: number | null;
   pulse_bpm: number | null;
+  /** stored unit (SCHEMA §3.4); the panel displays °F via `@shared/format/temperature` */
   temperature_c: number | null;
+  temperature_f: number | null;
   spo2_percent: number | null;
   respiratory_rate: number | null;
   weight_kg: number | null;
@@ -597,6 +599,8 @@ export interface SessionInstance {
 
 export interface AvailabilityDay {
   date: string;
+  /** Why the day has no session — not in the weekly template, a holiday, or doctor leave; `null` when it has one. */
+  closed: 'off' | 'holiday' | 'leave' | null;
   sessions: Array<{
     code: string;
     public_id: string;
@@ -606,6 +610,10 @@ export interface AvailabilityDay {
     planned_end_at: string;
     delay_minutes: number;
     online_remaining: number;
+    online_quota: number;
+    slot_minutes: number | null;
+    /** Display code of the serial being served while the session is `running`; `null` otherwise. */
+    now_serving: string | null;
     free_slots: string[] | null;
   }>;
 }
@@ -1810,15 +1818,15 @@ export interface VisitRow {
 export interface VitalsRow {
   id: number;
   visit_id: number;
-  bp_systolic: number | null; bp_diastolic: number | null; pulse_bpm: number | null; temperature_c: number | null; spo2_percent: number | null;
+  bp_systolic: number | null; bp_diastolic: number | null; pulse_bpm: number | null; temperature_c: number | null; temperature_f: number | null; spo2_percent: number | null;
   respiratory_rate: number | null; weight_kg: number | null; height_cm: number | null; bmi: number | null; blood_glucose_mgdl: number | null; notes: string | null;
   recorded_by: { id: number; name: string } | null;
   recorded_at: string | null;
   edited_by_doctor: boolean;
   reviewed_by_doctor_at: string | null;
 }
-/** POST /panel/visits/{visit}/vitals · PATCH /panel/vitals/{vital} body (`reviewed: true` = the Reviewed tick). */
-export interface VitalsInput { bp_systolic?: number | null; bp_diastolic?: number | null; pulse_bpm?: number | null; temperature_c?: number | null; spo2_percent?: number | null; respiratory_rate?: number | null; weight_kg?: number | null; height_cm?: number | null; blood_glucose_mgdl?: number | null; notes?: string | null; reviewed?: boolean }
+/** POST /panel/visits/{visit}/vitals · PATCH /panel/vitals/{vital} body (`reviewed: true` = the Reviewed tick). Temperature is sent in °F; the server stores °C. */
+export interface VitalsInput { bp_systolic?: number | null; bp_diastolic?: number | null; pulse_bpm?: number | null; temperature_f?: number | null; spo2_percent?: number | null; respiratory_rate?: number | null; weight_kg?: number | null; height_cm?: number | null; blood_glucose_mgdl?: number | null; notes?: string | null; reviewed?: boolean }
 export interface VisitBrief { id: string; date: string; doctor: string | null; dx: string[]; rx_item_count: number; follow_up_on: string | null; prescription_id: string | null; prescription_status: PrescriptionStatus | null }
 /** The writer's left-pane patient card (§8.1). */
 export interface PatientClinicalCard {

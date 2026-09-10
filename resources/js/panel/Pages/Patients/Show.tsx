@@ -27,6 +27,7 @@ const VitalsTrendCharts = lazy(() => import('@panel/Components/Patients/VitalsTr
 import { PatientDuesPanel } from '@panel/Components/Billing/PatientDuesPanel';
 import { useSharedProps } from '@shared/inertia';
 import { formatBn } from '@shared/format/number';
+import { formatTemperature } from '@shared/format/temperature';
 import { formatDateDhaka } from '@shared/format/date';
 import type { PageProps } from '@shared/types/inertia';
 import type { FamilyMember, PatientRecord, TimelinePage, VitalsTrendPoint } from '@shared/types/models';
@@ -110,7 +111,7 @@ export default function Show({ patient, family, timeline, timeline_kinds, vitals
                     {([
                       [t('patients.vitals.bp'), latestVitals.bp_systolic !== null && latestVitals.bp_diastolic !== null ? `${latestVitals.bp_systolic}/${latestVitals.bp_diastolic}` : null],
                       [t('patients.vitals.pulse'), latestVitals.pulse_bpm],
-                      [t('patients.vitals.temperature'), latestVitals.temperature_c],
+                      [t('patients.vitals.temperature'), formatTemperature(latestVitals.temperature_c, locale)],
                       [t('patients.vitals.spo2'), latestVitals.spo2_percent],
                       [t('patients.vitals.weight'), latestVitals.weight_kg],
                       ['BMI', latestVitals.bmi],

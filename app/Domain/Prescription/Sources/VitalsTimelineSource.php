@@ -7,6 +7,7 @@ namespace App\Domain\Prescription\Sources;
 use App\Domain\Patients\Data\TimelineCursor;
 use App\Domain\Patients\Data\TimelineEntry;
 use App\Domain\Patients\Sources\ModelTimelineSource;
+use App\Domain\Prescription\Support\Temperature;
 use App\Models\Tenant\Patient;
 use App\Models\Tenant\Vital;
 use Illuminate\Support\Facades\Schema;
@@ -32,14 +33,14 @@ final class VitalsTimelineSource extends ModelTimelineSource
                 $parts = array_filter([
                     $v->bp_systolic !== null ? "BP {$v->bp_systolic}/{$v->bp_diastolic}" : null,
                     $v->pulse_bpm !== null ? "P {$v->pulse_bpm}" : null,
-                    $v->temperature_c !== null ? "T {$v->temperature_c}°C" : null,
+                    $v->temperature_c !== null ? 'T '.Temperature::formatF($v->temperature_c) : null,
                     $v->weight_kg !== null ? "W {$v->weight_kg} kg" : null,
                     $v->spo2_percent !== null ? "SpO2 {$v->spo2_percent}%" : null,
                 ]);
 
                 return new TimelineEntry(
                     kind: $this->kind(), id: $v->id, occurredAt: $v->recorded_at, title: 'Vitals', subtitle: implode(' · ', $parts) ?: null, ref: (string) $v->id,
-                    meta: array_intersect_key($v->getAttributes(), array_flip(Vital::MEASUREMENTS)) + ['bmi' => $v->bmi, 'visit_id' => $v->visit_id, 'reviewed_by_doctor_at' => $v->reviewed_by_doctor_at?->toIso8601String()],
+                    meta: array_intersect_key($v->getAttributes(), array_flip(Vital::MEASUREMENTS)) + ['temperature_f' => $v->temperature_c === null ? null : Temperature::cToF($v->temperature_c), 'bmi' => $v->bmi, 'visit_id' => $v->visit_id, 'reviewed_by_doctor_at' => $v->reviewed_by_doctor_at?->toIso8601String()],
                 );
             })->all();
     }

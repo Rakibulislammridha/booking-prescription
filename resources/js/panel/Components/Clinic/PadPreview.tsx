@@ -68,7 +68,7 @@ export function PadPreview({ pad, clinicName, doctorName, degrees, bmdc, logoUrl
       <Box key="vitals" sx={{ mt: '2.5mm' }}>
         {heading('vitals')}
         <Box sx={{ display: 'flex', gap: '4mm', flexWrap: 'wrap', fontSize: '.86em' }}>
-          <span>BP 120/80 mmHg</span><span>Pulse 78/min</span><span>Temp 38.2°C</span><span>Wt 62 kg</span>
+          <span>BP 120/80 mmHg</span><span>Pulse 78/min</span><span>Temp 100.8°F</span><span>Wt 62 kg</span>
         </Box>
       </Box>
     ) : null,

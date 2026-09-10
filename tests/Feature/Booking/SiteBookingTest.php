@@ -9,10 +9,15 @@ use App\Domain\Clinic\Enums\Role;
 use App\Domain\Clinic\Services\Settings;
 use App\Domain\Patients\Enums\OtpPurpose;
 use App\Domain\Patients\Services\OtpService;
+use App\Domain\Scheduling\Enums\SessionStatus;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Doctor;
+use App\Models\Tenant\DoctorLeave;
+use App\Models\Tenant\DoctorSchedule;
+use App\Models\Tenant\Holiday;
 use App\Models\Tenant\PatientOtpCode;
 use App\Models\Tenant\Serial;
+use App\Models\Tenant\SessionInstance;
 use App\Models\Tenant\Specialty;
 use Inertia\Testing\AssertableInertia;
 use Tests\Feature\Serials\Concerns\SerialFixtures;
@@ -92,6 +97,40 @@ final class SiteBookingTest extends TestCase
                 ->where('pay_at_counter', true));
 
         $this->getJson($this->url('api.scheduling.availability', ['slug' => $doctor->slug]))->assertOk()->assertJsonPath('days.0.sessions.0.online_remaining', 9);
+    }
+
+    /**
+     * What the day strip and the session cards draw (site/Components/Booking): why a day has no session (holiday,
+     * leave, or simply not in the weekly template), each session's online quota next to its remaining, and — only
+     * while a session is running — the serial it is serving.
+     */
+    public function test_availability_says_why_a_day_is_closed_and_carries_quota_and_now_serving(): void
+    {
+        $doctor = $this->doctorWithTemplate(10, 10, 5);
+        $today = $this->today();
+        Holiday::factory()->create(['holiday_date' => $today->addDay()->toDateString()]);
+        DoctorLeave::factory()->create(['doctor_id' => $doctor->id, 'starts_on' => $today->addDays(2)->toDateString(), 'ends_on' => $today->addDays(3)->toDateString()]);
+        $onceAWeek = Doctor::factory()->complete()->create();
+        DoctorSchedule::factory()->quotas(10, 10, 5)->create(['doctor_id' => $onceAWeek->id, 'branch_id' => $this->mainBranch()->id, 'weekday' => $today->dayOfWeek, 'session_code' => 'A']);
+
+        $days = $this->getJson($this->url('api.scheduling.availability', ['slug' => $doctor->slug]))->assertOk()->json('days');
+        $this->assertCount(14, $days);
+        $this->assertNull($days[0]['closed']);
+        $this->assertSame(['status' => 'scheduled', 'online_remaining' => 10, 'online_quota' => 10, 'slot_minutes' => null, 'now_serving' => null], array_intersect_key($days[0]['sessions'][0], array_flip(['status', 'online_remaining', 'online_quota', 'slot_minutes', 'now_serving'])));
+        $this->assertSame(['holiday', []], [$days[1]['closed'], $days[1]['sessions']]);
+        $this->assertSame(['leave', 'leave', null], [$days[2]['closed'], $days[3]['closed'], $days[4]['closed']]);
+
+        $weekly = $this->getJson($this->url('api.scheduling.availability', ['slug' => $onceAWeek->slug]))->assertOk()->json('days');
+        $this->assertSame([null, 'holiday', 'off', 'off', 'off', 'off', 'off', null], array_column(array_slice($weekly, 0, 8), 'closed'));
+
+        // The desk calls a serial: the card can say "now serving A-001" without a second request.
+        $session = SessionInstance::query()->where('public_id', $days[0]['sessions'][0]['public_id'])->firstOrFail();
+        $serial = $this->allocate($session);
+        $session->forceFill(['status' => SessionStatus::Running, 'now_serving_serial_id' => $serial->id])->save();
+        $this->getJson($this->url('api.scheduling.availability', ['slug' => $doctor->slug]))->assertOk()
+            ->assertJsonPath('days.0.sessions.0.status', 'running')
+            ->assertJsonPath('days.0.sessions.0.now_serving', $serial->display_code)
+            ->assertJsonPath('days.0.sessions.0.online_remaining', 10);   // the counter serial did not touch the online pool
     }
 
     /**

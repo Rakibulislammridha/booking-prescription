@@ -3,6 +3,8 @@
 // `panel.prescription.vitals.store` endpoint, so `RecordVitals` — and its BMI, its audit row and its permission —
 // is the single write path. The desk is offline-capable but this screen is not: clinical bodies must not sit in a
 // tablet's IndexedDB (OFFLINE.md §6.2, BRIEF §5.N), so saving is blocked and says so while the desk is offline.
+// Temperature is taken in °F (the field says so, the example says so, a °C-looking value is called out); the
+// server converts it once to the °C the row stores, and the reading list shows °F again from that °C.
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
@@ -21,10 +23,11 @@ import DoneIcon from '@mui/icons-material/CheckCircle';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
 import { recordVitals, updateVitals } from '@panel/api/prescription';
-import { bmiOf, draftFrom, draftIsEmpty, draftNumber, draftToInput, VITALS_FIELDS, type VitalsDraft, type VitalsMeasurementKey } from '@panel/lib/prescription/vitals';
+import { bmiOf, draftFrom, draftIsEmpty, draftNumber, draftToInput, fieldPlaceholder, fieldUnit, temperatureHint, VITALS_FIELDS, type VitalsDraft, type VitalsMeasurementKey } from '@panel/lib/prescription/vitals';
 import { useConnection, selectMode } from '@shared/connection/store';
 import { isAllowedOffline, offlineReason } from '@shared/offline';
 import { formatBn } from '@shared/format/number';
+import { formatTemperature } from '@shared/format/temperature';
 import { formatDhaka } from '@shared/format/date';
 import { getLocale } from '@shared/locale';
 import { isApiError } from '@shared/http';
@@ -58,6 +61,7 @@ export default function Vitals({ visit, serial, doctor, session_code, patient, v
   const bmi = bmiOf(draftNumber(form, 'weight_kg'), draftNumber(form, 'height_cm'));
   const pediatricWeightMissing = patient.age_years !== null && patient.age_years < 12 && draftNumber(form, 'weight_kg') === null;
   const empty = useMemo(() => draftIsEmpty(form), [form]);
+  const celsiusTyped = temperatureHint(form, locale);
   const doctorName = locale === 'bn' && doctor.name_bn ? doctor.name_bn : doctor.name;
 
   const submit = (event: FormEvent): void => {
@@ -117,18 +121,26 @@ export default function Vitals({ visit, serial, doctor, session_code, patient, v
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{t('reception.vitals.hint')}</Typography>
 
           <Grid container spacing={2}>
-            {VITALS_FIELDS.map((field, index) => (
-              <Grid key={String(field.key)} size={{ xs: 6, sm: 4, md: 3 }}>
-                <TextField
-                  fullWidth
-                  autoFocus={index === 0}
-                  label={t(field.labelKey)}
-                  value={form[field.key] ?? ''}
-                  onChange={(e) => set(field.key, e.target.value)}
-                  slotProps={{ htmlInput: { inputMode: 'decimal', 'aria-label': t(field.labelKey) }, input: { endAdornment: field.unit ? <Typography variant="caption" color="text.secondary">{field.unit}</Typography> : null } }}
-                />
-              </Grid>
-            ))}
+            {VITALS_FIELDS.map((field, index) => {
+              const unit = fieldUnit(field, locale);
+              const hint = field.key === 'temperature_f' ? celsiusTyped : null;
+
+              return (
+                <Grid key={String(field.key)} size={{ xs: 6, sm: 4, md: 3 }}>
+                  <TextField
+                    fullWidth
+                    autoFocus={index === 0}
+                    label={unit === '' ? t(field.labelKey) : `${t(field.labelKey)} (${unit})`}
+                    value={form[field.key] ?? ''}
+                    placeholder={fieldPlaceholder(field, locale)}
+                    error={hint !== null}
+                    helperText={hint === null ? undefined : t('prescriptions.vitals.temperature_hint', hint)}
+                    onChange={(e) => set(field.key, e.target.value)}
+                    slotProps={{ htmlInput: { inputMode: 'decimal', 'aria-label': t(field.labelKey) }, input: { endAdornment: unit ? <Typography variant="caption" color="text.secondary">{unit}</Typography> : null } }}
+                  />
+                </Grid>
+              );
+            })}
             <Grid size={{ xs: 12, md: 6 }}>
               <TextField fullWidth label={t('reception.vitals.notes')} value={form.notes ?? ''} onChange={(e) => { setSaved(false); setForm({ ...form, notes: e.target.value }); }} slotProps={{ htmlInput: { maxLength: 255 } }} />
             </Grid>
@@ -162,7 +174,7 @@ export default function Vitals({ visit, serial, doctor, session_code, patient, v
                     {[
                       row.bp_systolic !== null && row.bp_diastolic !== null ? `${t('prescriptions.vitals.bp')} ${formatBn(`${row.bp_systolic}/${row.bp_diastolic}`, locale)}` : null,
                       row.pulse_bpm !== null ? `${t('prescriptions.vitals.pulse')} ${formatBn(row.pulse_bpm, locale)}` : null,
-                      row.temperature_c !== null ? `${formatBn(row.temperature_c, locale)} °C` : null,
+                      formatTemperature(row.temperature_c, locale),
                       row.spo2_percent !== null ? `SpO₂ ${formatBn(row.spo2_percent, locale)}%` : null,
                       row.weight_kg !== null ? `${formatBn(row.weight_kg, locale)} kg` : null,
                       row.bmi !== null ? `BMI ${formatBn(row.bmi, locale)}` : null,

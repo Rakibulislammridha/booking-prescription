@@ -6,6 +6,7 @@ namespace App\Domain\Prescription\Services;
 
 use App\Domain\Prescription\Data\ParsedLine;
 use App\Domain\Prescription\Safety\SafetyReport;
+use App\Domain\Prescription\Support\Temperature;
 use App\Models\Tenant\Prescription;
 use App\Models\Tenant\PrescriptionAdvice;
 use App\Models\Tenant\PrescriptionInvestigation;
@@ -145,7 +146,8 @@ final class DraftSerializer
 
         return [
             'id' => $v->id, 'visit_id' => $v->visit_id, 'bp_systolic' => $v->bp_systolic, 'bp_diastolic' => $v->bp_diastolic, 'pulse_bpm' => $v->pulse_bpm,
-            'temperature_c' => $v->temperature_c, 'spo2_percent' => $v->spo2_percent, 'respiratory_rate' => $v->respiratory_rate, 'weight_kg' => $v->weight_kg,
+            'temperature_c' => $v->temperature_c, 'temperature_f' => $v->temperature_c === null ? null : Temperature::cToF($v->temperature_c),
+            'spo2_percent' => $v->spo2_percent, 'respiratory_rate' => $v->respiratory_rate, 'weight_kg' => $v->weight_kg,
             'height_cm' => $v->height_cm, 'bmi' => $v->bmi, 'blood_glucose_mgdl' => $v->blood_glucose_mgdl, 'notes' => $v->notes,
             'recorded_by' => $by === null ? null : ['id' => $by->id, 'name' => $by->name],
             'recorded_at' => $v->recorded_at->toIso8601String(), 'edited_by_doctor' => $v->edited_by_doctor,

@@ -31,3 +31,40 @@ body {
 :lang(bn) body {
   line-height: 1.65;
 }
+
+/* Booking picker (site/Components/Booking): the day strip scrolls edge to edge and snaps one cell at a time. A
+   thumb swipes it, so touch screens get no scrollbar; a mouse cannot, so fine pointers keep a thin one. Smooth
+   scrolling is dropped for people who asked for less motion. */
+.bk-strip {
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.bk-strip::-webkit-scrollbar {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .bk-strip {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+    padding-bottom: 0.5rem;
+  }
+
+  .bk-strip::-webkit-scrollbar {
+    display: block;
+    height: 6px;
+  }
+
+  .bk-strip::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: #cbd5e1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-strip {
+    scroll-behavior: auto;
+  }
+}

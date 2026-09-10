@@ -52,7 +52,7 @@ that keeps the invariants in §0.
   stay integers. The writer's item `key` is a client-generated ULID (`@shared/ulid`).
 - Every JSON body and response uses `snake_case`. Timestamps are ISO-8601 with
   offset (`2026-09-06T10:15:00+06:00`), tenant timezone `Asia/Dhaka`.
-- Money is integer paisa. Weights kg (1 dp), heights cm (integer), temperature °C (1 dp).
+- Money is integer paisa. Weights kg (1 dp), heights cm (integer), temperature °C (1 dp) in storage and in the snapshot — entered and displayed in °F (1 dp) everywhere a person types or reads it (§4.2).
 - Client code (React 19, TS, MUI 9, zustand 5 — CONVENTIONS.md §7.1): page `resources/js/panel/Pages/Prescription/Writer.tsx`,
   components `resources/js/panel/Components/Prescription/**`, hooks `resources/js/panel/hooks/prescription/**`,
   and the pure-TS library (parser, store, types) in `resources/js/panel/lib/prescription/{shorthand,store,types}/**`.
@@ -813,8 +813,17 @@ Quick-pick: doctor's own recent complaints (Redis zset, last 20).
   refuses a non-present serial on its own (`prescriptions.serial_not_present`, 409), so no encounter — and no
   `visit_count` / `last_visit_at` bump — ever exists for a patient who has not arrived.
 - Compounder screen `POST /panel/visits/{visit}/vitals` (`VitalsController::store`, permission `prescriptions.vitals.record` — held by the `receptionist` (compounder) and `doctor` roles):
-  `{bp_systolic, bp_diastolic, pulse_bpm, temperature_c, spo2_percent, respiratory_rate, weight_kg, height_cm, blood_glucose_mgdl, notes}`;
+  `{bp_systolic, bp_diastolic, pulse_bpm, temperature_f, spo2_percent, respiratory_rate, weight_kg, height_cm, blood_glucose_mgdl, notes}`;
   server sets `recorded_by_user_id`, `recorded_at`, computes `bmi`. Several rows per visit are allowed (re-check); the writer shows the latest.
+- **Temperature is °F for people, °C for the database.** `vitals.temperature_c` (SCHEMA §3.4) is the clinical canonical
+  unit — the safety pipeline, the seeders and the frozen snapshot reason in °C, and a stored unit never depends on a UI
+  preference. Every human boundary is °F: the desk and writer fields are labelled °F (placeholder `98.6`, a value that
+  looks like °C is called out, not converted), the request carries `temperature_f` (validated 86–113 °F; a `temperature_c`
+  in the body is refused) and `VitalsData::fromRequest()` converts once through `App\Domain\Prescription\Support\Temperature`
+  (`fToC`/`cToF`, both rounded to 1 dp so 98.6 → 37.0 → 98.6 is stable); every JSON shape returns `temperature_f` next to
+  `temperature_c`; the trend chart, its table, the record card and the timeline show °F (`resources/js/shared/format/temperature.ts`,
+  Bangla digits and `°ফা` in bn); the printed sheet, the PDF and `/rx/{code}` convert at render time from the snapshot's
+  `temperature_c` (`partials/vitals.blade.php`), so a prescription issued before this rule prints in °F too.
 - Writer shows the row read-only with a `☐ Reviewed` tick and an Edit pencil.
   Doctor edits go to `PATCH /panel/vitals/{vital}` (same row, `edited_by_doctor = true`, diff audited as `update` on `Vital`);
   ticking Reviewed (or the first doctor save) sets `reviewed_by_doctor_at` (SCHEMA.md §3.4).
@@ -823,7 +832,7 @@ Quick-pick: doctor's own recent complaints (Redis zset, last 20).
   as **text** while they are typed and parsed once on save — `Number('37.')` is `37`, so parsing per keystroke turns
   37.6 °C into 376.
 - Age-based rules: age < 12 y and `weight_kg` null → banner "Weight needed for pediatric dosing" (PediatricDoseCheck emits `warning`, §5.3).
-- `VitalsRow`: `{id, bp_systolic, bp_diastolic, pulse_bpm, temperature_c, spo2_percent, respiratory_rate, weight_kg, height_cm, bmi, blood_glucose_mgdl, notes, recorded_by:{id,name}, recorded_at, edited_by_doctor, reviewed_by_doctor_at}`.
+- `VitalsRow`: `{id, bp_systolic, bp_diastolic, pulse_bpm, temperature_c, temperature_f, spo2_percent, respiratory_rate, weight_kg, height_cm, bmi, blood_glucose_mgdl, notes, recorded_by:{id,name}, recorded_at, edited_by_doctor, reviewed_by_doctor_at}`.
 
 ### 4.3 On-examination findings
 
@@ -1231,7 +1240,7 @@ as data URIs, both language renderings of every item, the drug-info URL.
     "chief_complaints": [ { "text": "Fever", "text_bn": null, "duration": "3d", "sort": 0, "＋duration_label": { "bn": "৩ দিন", "en": "3 days" } } ],
     "examination_findings": "Throat congested",
     "diagnoses": [ { "icd10_code": "J06.9", "title": "Acute upper respiratory infection", "kind": "provisional", "sort": 0 } ],
-    "vitals": { "bp_systolic": 120, "bp_diastolic": 80, "pulse_bpm": 78, "temperature_c": 98.6, "spo2_percent": 98, "weight_kg": 58.0,
+    "vitals": { "bp_systolic": 120, "bp_diastolic": 80, "pulse_bpm": 78, "temperature_c": 37.0, "spo2_percent": 98, "weight_kg": 58.0,
       "height_cm": 160, "bmi": 22.7, "recorded_at": "…", "＋recorded_by": "…", "＋reviewed_by_doctor_at": "…" } },
   "items": [ { "sort": 0, "generic_name": "Paracetamol", "brand_name": "Napa", "strength": "500 mg", "form": "Tablet", "route": "Oral",
       "dose_schedule": "1+0+1", "dose_json": { "…": "ParsedLine (§2.11)" }, "duration_text": "5 days", "quantity": 10, "quantity_unit": "tab",

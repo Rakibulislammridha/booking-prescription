@@ -1218,7 +1218,7 @@ Decision: queue state for ETag polling lives in **Redis**, not Postgres (§5.7, 
 | bp_systolic | smallint | yes | | mmHg |
 | bp_diastolic | smallint | yes | | |
 | pulse_bpm | smallint | yes | | |
-| temperature_c | numeric(4,1) | yes | | |
+| temperature_c | numeric(4,1) | yes | | °C — the canonical clinical unit. Entered and displayed in °F at every human boundary (`App\Domain\Prescription\Support\Temperature`, PRESCRIPTION.md §4.2); never store °F |
 | spo2_percent | smallint | yes | | |
 | respiratory_rate | smallint | yes | | |
 | weight_kg | numeric(5,2) | yes | | Drives pediatric mg/kg |

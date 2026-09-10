@@ -67,13 +67,15 @@ final class DeskVitalsTest extends TestCase
                 ->where('doctor.name', $doctor->name)
                 ->has('vitals', 0));
 
-        // The write goes through the Prescription module's own endpoint — there is no second write path.
+        // The write goes through the Prescription module's own endpoint — there is no second write path. The
+        // compounder types the temperature in °F (99.5, what the thermometer says); the row stores °C (37.5).
         $this->postJson($this->url('panel.prescription.vitals.store', ['visit' => $visit->public_id]), [
-            'bp_systolic' => 128, 'bp_diastolic' => 84, 'pulse_bpm' => 78, 'temperature_c' => 37.2,
+            'bp_systolic' => 128, 'bp_diastolic' => 84, 'pulse_bpm' => 78, 'temperature_f' => 99.5,
             'spo2_percent' => 97, 'weight_kg' => 68.5, 'height_cm' => 170,
-        ])->assertCreated()->assertJsonPath('vitals.bmi', 23.7);
+        ])->assertCreated()->assertJsonPath('vitals.bmi', 23.7)->assertJsonPath('vitals.temperature_f', 99.5);
 
         $vital = Vital::query()->where('visit_id', $visit->id)->firstOrFail();
+        $this->assertSame(37.5, $vital->temperature_c, 'stored in the clinical canonical unit (SCHEMA §3.4)');
         $this->assertSame($receptionist->id, $vital->recorded_by_user_id);
         $this->assertFalse($vital->edited_by_doctor);
         $this->assertNull($vital->reviewed_by_doctor_at, 'the compounder must not tick the doctor review');
@@ -83,6 +85,7 @@ final class DeskVitalsTest extends TestCase
         $this->get($this->url('panel.reception.vitals.edit', ['visit' => $visit->public_id]))->assertOk()
             ->assertInertia(fn (AssertableInertia $p) => $p->has('vitals', 1)
                 ->where('vitals.0.bp_systolic', 128)
+                ->where('vitals.0.temperature_f', 99.5)
                 ->where('vitals.0.bmi', 23.7)
                 ->where('vitals.0.recorded_by.name', $receptionist->name)
                 ->where('vitals.0.reviewed_by_doctor_at', null));
@@ -95,6 +98,8 @@ final class DeskVitalsTest extends TestCase
                 ->where('visit.id', $visit->public_id)
                 ->where('vitals.bp_systolic', 128)
                 ->where('vitals.bp_diastolic', 84)
+                ->where('vitals.temperature_c', 37.5)     // the stored unit, still on the wire for the safety pipeline
+                ->where('vitals.temperature_f', 99.5)     // what the doctor's card shows — the value the compounder typed
                 ->where('vitals.spo2_percent', 97)
                 ->where('vitals.weight_kg', 68.5)
                 ->where('vitals.bmi', 23.7)

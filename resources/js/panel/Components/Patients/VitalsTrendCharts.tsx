@@ -3,7 +3,8 @@
 // readings a year apart are not drawn next to each other — a categorical axis would make an old reading look
 // recent — and with straight segments, because a smoothed curve invents a shape between two readings weeks apart. Honest about thin data: a metric with no reading says so, and a single reading is shown as a value with
 // the date rather than as a "trend" of one point. The numbers themselves are in the table underneath, because a
-// chart nobody can check against the figures is decoration.
+// chart nobody can check against the figures is decoration. Temperature is charted and tabled in °F — the rows
+// carry the stored °C, `@shared/format/temperature` converts once when the series is built.
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@mui/material/Box';
@@ -19,18 +20,20 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip as
 import { ChartCard } from '@panel/Components/Reports/ChartCard';
 import { useChartTheme } from '@panel/Components/Reports/useChartTheme';
 import { formatBn } from '@shared/format/number';
+import { cToF, formatTemperatureF, temperatureUnit } from '@shared/format/temperature';
 import { formatDateDhaka, formatDhaka } from '@shared/format/date';
 import type { Locale } from '@shared/types/shared-props';
 import type { VitalsTrendPoint } from '@shared/types/models';
 
-type MetricKey = 'bp' | 'pulse_bpm' | 'temperature_c' | 'spo2_percent' | 'weight_kg';
+type MetricKey = 'bp' | 'pulse_bpm' | 'temperature_f' | 'spo2_percent' | 'weight_kg';
 
 interface Row { at: number; recorded_at: string; a: number | null; b: number | null }
 
 interface MetricSpec {
   key: MetricKey;
   titleKey: string;
-  unit: string;
+  /** the unit as a person reads it — a symbol with a Bangla form (°ফা) follows the locale */
+  unit: (locale: Locale) => string;
   /** the second series exists only for blood pressure (systolic over diastolic) */
   pair: boolean;
   domain?: [number | 'auto', number | 'auto'];
@@ -38,11 +41,11 @@ interface MetricSpec {
 }
 
 const METRICS: readonly MetricSpec[] = [
-  { key: 'bp', titleKey: 'patients.vitals.bp', unit: 'mmHg', pair: true, read: (p) => [p.bp_systolic, p.bp_diastolic] },
-  { key: 'pulse_bpm', titleKey: 'patients.vitals.pulse', unit: 'bpm', pair: false, read: (p) => [p.pulse_bpm, null] },
-  { key: 'weight_kg', titleKey: 'patients.vitals.weight', unit: 'kg', pair: false, read: (p) => [p.weight_kg, null] },
-  { key: 'temperature_c', titleKey: 'patients.vitals.temperature', unit: '°C', pair: false, domain: ['auto', 'auto'], read: (p) => [p.temperature_c, null] },
-  { key: 'spo2_percent', titleKey: 'patients.vitals.spo2', unit: '%', pair: false, domain: [85, 100], read: (p) => [p.spo2_percent, null] },
+  { key: 'bp', titleKey: 'patients.vitals.bp', unit: () => 'mmHg', pair: true, read: (p) => [p.bp_systolic, p.bp_diastolic] },
+  { key: 'pulse_bpm', titleKey: 'patients.vitals.pulse', unit: () => 'bpm', pair: false, read: (p) => [p.pulse_bpm, null] },
+  { key: 'weight_kg', titleKey: 'patients.vitals.weight', unit: () => 'kg', pair: false, read: (p) => [p.weight_kg, null] },
+  { key: 'temperature_f', titleKey: 'patients.vitals.temperature', unit: temperatureUnit, pair: false, domain: ['auto', 'auto'], read: (p) => [p.temperature_c === null ? null : cToF(p.temperature_c), null] },
+  { key: 'spo2_percent', titleKey: 'patients.vitals.spo2', unit: () => '%', pair: false, domain: [85, 100], read: (p) => [p.spo2_percent, null] },
 ];
 
 export interface VitalsTrendChartsProps {
@@ -98,6 +101,7 @@ export function VitalsTrendCharts({ points, locale }: VitalsTrendChartsProps) {
         {METRICS.map((metric) => {
           const rows = series.get(metric.key) ?? [];
           const last = rows[rows.length - 1];
+          const unit = metric.unit(locale);
 
           return (
             <ChartCard
@@ -108,8 +112,8 @@ export function VitalsTrendCharts({ points, locale }: VitalsTrendChartsProps) {
                 <Chip
                   size="small"
                   label={metric.pair
-                    ? `${formatBn(`${last.a ?? '—'}/${last.b ?? '—'}`, locale)} ${metric.unit}`
-                    : `${formatBn(last.a ?? 0, locale)} ${metric.unit}`}
+                    ? `${formatBn(`${last.a ?? '—'}/${last.b ?? '—'}`, locale)} ${unit}`
+                    : `${formatBn(last.a ?? 0, locale)} ${unit}`}
                 />
               )}
             >
@@ -119,7 +123,7 @@ export function VitalsTrendCharts({ points, locale }: VitalsTrendChartsProps) {
                 <Stack spacing={0.25}>
                   <Typography variant="h5">
                     {metric.pair ? formatBn(`${last?.a ?? '—'}/${last?.b ?? '—'}`, locale) : formatBn(last?.a ?? 0, locale)}
-                    <Typography component="span" variant="body2" color="text.secondary"> {metric.unit}</Typography>
+                    <Typography component="span" variant="body2" color="text.secondary"> {unit}</Typography>
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     {formatBn(formatDateDhaka(rows[0]?.recorded_at ?? '', locale), locale)} · {t('patients.vitals.single_reading')}
@@ -132,7 +136,7 @@ export function VitalsTrendCharts({ points, locale }: VitalsTrendChartsProps) {
                       <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
                       <XAxis dataKey="at" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={tickDate} tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} minTickGap={24} />
                       <YAxis domain={metric.domain ?? ['auto', 'auto']} tickFormatter={(v: number) => formatBn(v, locale)} tick={{ fontSize: 11, fill: chart.axis }} stroke={chart.grid} width={56} />
-                      <RTooltip contentStyle={chart.tooltip} labelFormatter={tooltipLabel} />
+                      <RTooltip contentStyle={chart.tooltip} labelFormatter={tooltipLabel} formatter={(value) => `${formatBn(typeof value === 'number' ? value : String(value ?? ''), locale)} ${unit}`} />
                       {metric.pair ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
                       <Line type="linear" dataKey="a" name={metric.pair ? t('patients.vitals.systolic') : t(metric.titleKey)} stroke={chart.series[0]} strokeWidth={2} dot={{ r: 2 }} connectNulls={false} isAnimationActive={false} />
                       {metric.pair ? <Line type="linear" dataKey="b" name={t('patients.vitals.diastolic')} stroke={chart.series[1]} strokeWidth={2} dot={{ r: 2 }} connectNulls={false} isAnimationActive={false} /> : null}
@@ -153,7 +157,7 @@ export function VitalsTrendCharts({ points, locale }: VitalsTrendChartsProps) {
               <TableCell align="right">{t('patients.vitals.bp')}</TableCell>
               <TableCell align="right">{t('patients.vitals.pulse')}</TableCell>
               <TableCell align="right">{t('patients.vitals.weight')}</TableCell>
-              <TableCell align="right">{t('patients.vitals.temperature')}</TableCell>
+              <TableCell align="right">{t('patients.vitals.temperature')} ({temperatureUnit(locale)})</TableCell>
               <TableCell align="right">{t('patients.vitals.spo2')}</TableCell>
               <TableCell align="right">BMI</TableCell>
             </TableRow>
@@ -165,7 +169,7 @@ export function VitalsTrendCharts({ points, locale }: VitalsTrendChartsProps) {
                 <TableCell align="right">{p.bp_systolic !== null && p.bp_diastolic !== null ? formatBn(`${p.bp_systolic}/${p.bp_diastolic}`, locale) : '—'}</TableCell>
                 <TableCell align="right">{p.pulse_bpm !== null ? formatBn(p.pulse_bpm, locale) : '—'}</TableCell>
                 <TableCell align="right">{p.weight_kg !== null ? formatBn(p.weight_kg, locale) : '—'}</TableCell>
-                <TableCell align="right">{p.temperature_c !== null ? formatBn(p.temperature_c, locale) : '—'}</TableCell>
+                <TableCell align="right">{p.temperature_c !== null ? formatTemperatureF(p.temperature_c, locale) : '—'}</TableCell>
                 <TableCell align="right">{p.spo2_percent !== null ? formatBn(p.spo2_percent, locale) : '—'}</TableCell>
                 <TableCell align="right">{p.bmi !== null ? formatBn(p.bmi, locale) : '—'}</TableCell>
               </TableRow>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Patients\Queries;
 
+use App\Domain\Prescription\Support\Temperature;
 use App\Models\Tenant\Patient;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -42,6 +43,8 @@ final class VitalsTrendQuery
             'visit_id' => $r->visit_id === null ? null : (int) $r->visit_id,
             'recorded_at' => (string) $r->recorded_at,
             ...array_combine(self::COLUMNS, array_map(fn (string $c) => $r->{$c} === null ? null : (float) $r->{$c}, self::COLUMNS)),
+            // The stored unit is °C (SCHEMA §3.4); the chart, its table and the record card read °F.
+            'temperature_f' => $r->temperature_c === null ? null : Temperature::cToF((float) $r->temperature_c),
         ])->all();
     }
 }
