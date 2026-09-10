@@ -73,6 +73,10 @@ export function ScheduleDialog({ open, onClose, doctorId, branchId, weekday, sch
   const form = useForm<FormData>(initial(doctorId, branchId, weekday, schedule));
   const { setData, setDefaults, reset } = form;
 
+  // Re-seed the form when the dialog opens or its subject changes — and ONLY then. Inertia's useForm
+  // recreates setData/setDefaults/reset whenever the data changes, so listing them as effect deps made
+  // this run after every keystroke and reset the field the user had just typed into.
+  const subject = `${doctorId}:${branchId}:${weekday}:${schedule?.id ?? 'new'}`;
   useEffect(() => {
     if (open) {
       const next = initial(doctorId, branchId, weekday, schedule);
@@ -80,7 +84,8 @@ export function ScheduleDialog({ open, onClose, doctorId, branchId, weekday, sch
       reset();
       setData(next);
     }
-  }, [open, doctorId, branchId, weekday, schedule, setData, setDefaults, reset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
+  }, [open, subject]);
 
   const submit = (): void => {
     form.transform((d) => ({

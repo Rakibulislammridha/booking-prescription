@@ -51,12 +51,15 @@ export function OverrideDialog({ open, onClose, doctorId, branchId, today, sessi
   });
   const { setData, reset } = form;
 
+  // Re-seed only on open / subject change — useForm's setData/reset change identity on every edit, and
+  // depending on them here reset the form after each keystroke (same bug as ScheduleDialog).
   useEffect(() => {
     if (open) {
       reset();
       setData((d) => ({ ...d, doctor_id: doctorId, branch_id: branchId, override_date: today }));
     }
-  }, [open, doctorId, branchId, today, setData, reset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
+  }, [open, doctorId, branchId, today]);
 
   const type = form.data.type;
   const needsTimes = type === 'time_change' || type === 'extra_session';
