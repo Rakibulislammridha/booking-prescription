@@ -30,6 +30,12 @@ final class PdfTextLayerExtractor
         private readonly float $timeout = 10.0,
     ) {}
 
+    /** Whether poppler is actually on this host — a caller that offers "read the text" must not offer a no-op. */
+    public function isAvailable(): bool
+    {
+        return $this->binary !== '' && is_executable($this->binary);
+    }
+
     /** The PDF's text layer, or null when there is none (or no poppler on this host). */
     public function extract(string $disk, string $path): ?string
     {

@@ -74,7 +74,7 @@ function Harness({ onStore }: { onStore?: (api: ReturnType<typeof useWriterStore
       alerts={state.alerts}
       dxCodes={['J06.9']}
       lang="en"
-      focusKey={undefined}
+      focus={state.focus}
       onNextZone={() => undefined}
       onCheatsheet={() => undefined}
       onSaveTemplate={() => undefined}

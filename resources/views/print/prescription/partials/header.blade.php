@@ -1,57 +1,51 @@
 {{--
-  §7.1 header. Three mutually exclusive states, in priority order:
-   1. preprinted_mode — the doctor's pad is ALREADY printed on this paper. Reserve exactly header_height_mm and
-      emit nothing inside it. Anything drawn here lands on top of the printed letterhead.
-   2. letterhead_enabled + pad.header_html — the designer's own markup (sanitised on save, images inlined at issue).
-   3. letterhead_enabled — the generated clinic/doctor block.
-  With letterhead off and no preprinted band we print only a rule: the paper already carries whatever it carries.
+  §7.1 header — the structured letterhead (App\Domain\Prescription\Data\Letterhead), three mutually exclusive states:
+
+   1. preprinted_mode — the doctor's pad is ALREADY printed on this paper. Reserve exactly header_height_mm and emit
+      nothing inside it. Anything drawn here lands on top of the printed letterhead.
+   2. letterhead_enabled — `pad.letterhead` as frozen at issue, or, when the doctor never designed one, the fallback
+      that `Letterhead::fromSnapshot()` builds out of this same snapshot's clinic and doctor blocks. Either way the
+      header is DATA: lines with a palette colour, a weight, an em size and an optional Bangla twin.
+   3. letterhead off, no preprinted band — only a rule; the paper already carries whatever it carries.
+
+  `pad.header_html` is no longer rendered anywhere. The column survives on doctor_pad_settings (and inside every
+  pad_snapshot ever frozen) for one release so nothing is lost, but free HTML is not how a letterhead is described.
 --}}
 @if ($o->preprinted)
   <div class="header-spacer" data-preprinted-header="{{ $pad->headerHeightMm() }}mm" aria-hidden="true"></div>
-@elseif ($o->letterhead && $pad->headerHtml() !== null)
-  <div class="letterhead-html">{!! $pad->headerHtml() !!}</div>
-  <hr class="rule">
 @elseif ($o->letterhead)
-  <div class="letterhead">
-    <div>
-      @if (! empty($clinic['logo_data_uri']))
-        <img class="letterhead-logo" src="{{ $clinic['logo_data_uri'] }}" alt="">
-      @endif
-      <div class="clinic-name en">{{ $clinic['name'] ?? '' }}</div>
-      @if ($o->bn() && ! empty($clinic['name_bn']))
-        <div class="clinic-name bn">{{ $clinic['name_bn'] }}</div>
-      @endif
-      @php $branch = (array) ($clinic['branch'] ?? []); @endphp
-      <div class="small muted">
-        {{ $branch['name'] ?? '' }}@if (! empty($branch['address'])) · {{ $branch['address'] }}@endif
+  @php
+    $lh = $pad->letterhead($clinic, $doctor);
+    // A designed letterhead places the clinic mark itself, through the footer column whose `logo` flag is set.
+    // Only the generated fallback puts it in the header — which is where a pad that was never designed had it.
+    $logo = $lh->generated && ! empty($clinic['logo_data_uri']) ? $clinic['logo_data_uri'] : null;
+  @endphp
+  <div class="letterhead letterhead-{{ $lh->headerAlign }}">
+    @if ($lh->headerAlign === 'split')
+      {{-- split = doctor block left, clinic block right; a line carrying align="right" belongs to the right. --}}
+      <div class="lh-block lh-block-left">
+        @foreach ($lh->headerSide('left') as $line)
+          @include('print.prescription.partials.letterhead-line', ['line' => $line, 'lh' => $lh])
+        @endforeach
       </div>
-      @if (! empty($branch['phone']))
-        <div class="small muted num">{{ $branch['phone'] }}</div>
-      @endif
-    </div>
-    <div style="text-align: right">
-      <div class="doctor-name en">{{ $doctor['name'] ?? '' }}</div>
-      @if ($o->bn() && ! empty($doctor['name_bn']))
-        <div class="doctor-name bn">{{ $doctor['name_bn'] }}</div>
-      @endif
-      @if (! empty($doctor['degrees']))
-        <div class="small en">{{ $doctor['degrees'] }}</div>
-      @endif
-      @if ($o->bn() && ! empty($doctor['degrees_bn']))
-        <div class="small bn">{{ $doctor['degrees_bn'] }}</div>
-      @endif
-      @if (! empty($doctor['designation']))
-        <div class="small muted en">{{ $doctor['designation'] }}</div>
-      @endif
-      @if (! empty($doctor['specialties']))
-        <div class="small muted en">{{ implode(', ', array_map('strval', (array) $doctor['specialties'])) }}</div>
-      @endif
-      @if (! empty($doctor['bmdc_reg_no']))
-        <div class="small muted code">BMDC {{ $doctor['bmdc_reg_no'] }}</div>
-      @endif
-    </div>
+      <div class="lh-block lh-block-right">
+        @if ($logo !== null)<img class="letterhead-logo" src="{{ $logo }}" alt="">@endif
+        @foreach ($lh->headerSide('right') as $line)
+          @include('print.prescription.partials.letterhead-line', ['line' => $line, 'lh' => $lh])
+        @endforeach
+      </div>
+    @else
+      <div class="lh-block">
+        @if ($logo !== null)<img class="letterhead-logo" src="{{ $logo }}" alt="">@endif
+        @foreach ($lh->headerLines as $line)
+          @include('print.prescription.partials.letterhead-line', ['line' => $line, 'lh' => $lh])
+        @endforeach
+      </div>
+    @endif
   </div>
-  <hr class="rule">
+  @if ($lh->headerRule)
+    <hr class="rule" style="border-top-color:{{ $lh->textColor }}">
+  @endif
 @else
   <hr class="rule">
 @endif

@@ -14,7 +14,7 @@ final readonly class PadSettingsData
     private const KEYS = [
         'paper_size', 'orientation', 'letterhead_enabled', 'preprinted_mode', 'logo_path', 'header_html', 'footer_html', 'margins',
         'header_height_mm', 'footer_height_mm', 'font_family', 'font_size_pt', 'show_qr', 'show_vitals', 'show_drug_info_url',
-        'layout', 'token_slip_template', 'default_language', 'signature_path',
+        'layout', 'token_slip_template', 'default_language', 'signature_path', 'letterhead', 'sample_path',
     ];
 
     /** @param  array<string, mixed>  $attributes */

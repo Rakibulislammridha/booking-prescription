@@ -9,7 +9,8 @@ use Database\Seeders\Central\SuperAdminSeeder;
 use Illuminate\Database\Seeder;
 
 /**
- * Central (public) seed for a dev box: plans, one super admin, and the demo tenant (idempotent).
+ * Central (public) seed for a dev box: plans, one super admin, the demo tenant, and the AMZ Hospital reference
+ * clinic the prescription pad was designed against (BRIEF §5.A). All idempotent — safe to re-run.
  */
 final class DatabaseSeeder extends Seeder
 {
@@ -19,6 +20,7 @@ final class DatabaseSeeder extends Seeder
             PlansSeeder::class,
             SuperAdminSeeder::class,
             DemoTenantSeeder::class,
+            AmzTenantSeeder::class,
         ]);
     }
 }

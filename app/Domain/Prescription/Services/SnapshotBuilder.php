@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Prescription\Services;
 
+use App\Domain\Prescription\Data\Letterhead;
 use App\Domain\Prescription\Data\ParsedLine;
 use App\Domain\Prescription\Render\QrCodeRenderer;
 use App\Domain\Prescription\Safety\SafetyReport;
@@ -153,6 +154,13 @@ final class SnapshotBuilder
      */
     public function padArray(DoctorPadSetting $pad): array
     {
+        // The designed letterhead travels INTO the snapshot, normalised once here, so an issued prescription
+        // reprints in 2036 with the pad it was issued under even after the doctor redesigns it (I3/I5). An
+        // undesigned pad freezes `[]` rather than a skeleton of empty lines, and the renderer rebuilds the
+        // fallback from this same snapshot's clinic and doctor blocks. `sample_path` is deliberately absent:
+        // the tracing underlay is a designer aid and is never part of the document.
+        $letterhead = Letterhead::fromArray($pad->letterhead);
+
         return [
             'paper_size' => $pad->paper_size->value, 'orientation' => $pad->orientation->value, 'letterhead_enabled' => $pad->letterhead_enabled,
             'preprinted_mode' => $pad->preprinted_mode, 'logo_path' => $pad->logo_path, 'header_html' => $pad->header_html, 'footer_html' => $pad->footer_html,
@@ -160,6 +168,7 @@ final class SnapshotBuilder
             'font_family' => $pad->font_family, 'font_size_pt' => (float) $pad->font_size_pt, 'show_qr' => $pad->show_qr, 'show_vitals' => $pad->show_vitals,
             'show_drug_info_url' => $pad->show_drug_info_url, 'layout' => $pad->layout, 'signature_path' => $pad->signature_path,
             'default_language' => (string) $pad->default_language,
+            'letterhead' => $letterhead->isEmpty() ? [] : $letterhead->toArray(),
         ];
     }
 

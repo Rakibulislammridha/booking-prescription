@@ -19,6 +19,8 @@ use Illuminate\Http\Request;
 /** GET /panel/doctors/me/favourites?icd · GET …/top-drugs · POST · PATCH/DELETE …/{favourite} (PRESCRIPTION.md §3.5, §3.7). */
 final class FavouriteController extends Controller
 {
+    public function __construct(private readonly DoctorLearningCache $cache) {}
+
     public function index(Request $request): JsonResponse
     {
         $doctorId = (int) ($request->user('web')->doctor()->value('id') ?? 0);
@@ -27,24 +29,24 @@ final class FavouriteController extends Controller
             ->when($icd !== null, fn ($b) => $b->where('icd10_code', $icd), fn ($b) => $b->whereNull('icd10_code'))
             ->orderByDesc('is_pinned')->orderBy('rank')->orderByDesc('use_count')->limit($icd !== null ? 15 : 50)->get();
 
-        return response()->json(['data' => $rows->map(fn (DoctorFavourite $f) => DoctorLearningCache::favouriteRow($f))->values()->all()])->header('Cache-Control', 'private, max-age=30');
+        return response()->json(['data' => $rows->map(fn (DoctorFavourite $f) => $this->cache->row($f))->values()->all()])->header('Cache-Control', 'private, max-age=30');
     }
 
-    public function topDrugs(Request $request, DoctorLearningCache $cache): JsonResponse
+    public function topDrugs(Request $request): JsonResponse
     {
         $doctorId = (int) ($request->user('web')->doctor()->value('id') ?? 0);
 
-        return response()->json(['data' => $cache->top50($doctorId)])->header('Cache-Control', 'private, max-age=30');
+        return response()->json(['data' => $this->cache->top50($doctorId)])->header('Cache-Control', 'private, max-age=30');
     }
 
     public function store(PinFavouriteRequest $request, PinFavourite $pin): JsonResponse
     {
-        return response()->json(['data' => DoctorLearningCache::favouriteRow($pin->handle($request->user('web')->doctor, $request->validated(), Actor::fromRequest($request)))], 201);
+        return response()->json(['data' => $this->cache->row($pin->handle($request->user('web')->doctor, $request->validated(), Actor::fromRequest($request)))], 201);
     }
 
     public function update(UpdateFavouriteRequest $request, DoctorFavourite $favourite, UpdateFavourite $update): JsonResponse
     {
-        return response()->json(['data' => DoctorLearningCache::favouriteRow($update->handle($favourite, $request->validated(), Actor::fromRequest($request)))]);
+        return response()->json(['data' => $this->cache->row($update->handle($favourite, $request->validated(), Actor::fromRequest($request)))]);
     }
 
     public function destroy(Request $request, DoctorFavourite $favourite, RemoveFavourite $remove): JsonResponse

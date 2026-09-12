@@ -134,8 +134,49 @@ final class PadDesignerTest extends TestCase
         $html = (string) $this->get('/panel/clinic/doctors/'.$this->doctor->public_id.'/pad/test-print')->assertOk()->getContent();
 
         $this->assertStringContainsString('@page { size: A5 portrait;', $html);
-        $this->assertStringContainsString('class="letterhead"', $html);
+        $this->assertStringContainsString('class="letterhead letterhead-', $html);
         $this->assertStringNotContainsString('data-preprinted-header', $html);
+    }
+
+    /**
+     * The button that settles the argument: "print a test page" must render the letterhead the designer just
+     * saved — the same lines, the same accent hex, the same em sizes the preview drew — through the REAL renderer.
+     */
+    public function test_the_test_page_prints_the_letterhead_the_designer_just_saved(): void
+    {
+        $this->put('/panel/clinic/doctors/'.$this->doctor->public_id.'/pad', [
+            'paper_size' => 'A5', 'preprinted_mode' => false, 'letterhead_enabled' => true, 'default_language' => 'both',
+            'letterhead' => [
+                'accent_color' => '#7B1E1E', 'text_color' => '#1A1A1A', 'muted_color' => '#666666',
+                'header' => [
+                    'align' => 'center',
+                    'rule' => true,
+                    'lines' => [
+                        ['text' => 'PROF. DR. A RAHMAN', 'text_bn' => 'প্রফেসর ডা. এ রহমান', 'color' => 'accent', 'weight' => 'bold', 'size' => 1.45, 'transform' => 'uppercase', 'align' => null],
+                        ['text' => 'MBBS (DMC), FCPS (Medicine)', 'text_bn' => null, 'color' => 'text', 'weight' => 'normal', 'size' => 0.95, 'transform' => 'none', 'align' => null],
+                    ],
+                ],
+                'footer' => [
+                    'rule' => true,
+                    'columns' => [
+                        ['align' => 'left', 'logo' => true, 'lines' => [['text' => '12 Green Road, Dhaka', 'text_bn' => null, 'color' => 'muted', 'weight' => 'normal', 'size' => 0.82, 'transform' => 'none', 'align' => null]]],
+                        ['align' => 'right', 'logo' => false, 'lines' => [['text' => '01711-000000', 'text_bn' => null, 'color' => 'accent', 'weight' => 'bold', 'size' => 1.0, 'transform' => 'none', 'align' => null]]],
+                    ],
+                ],
+            ],
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $html = (string) $this->get('/panel/clinic/doctors/'.$this->doctor->public_id.'/pad/test-print')->assertOk()->getContent();
+
+        $this->assertStringContainsString('PROF. DR. A RAHMAN', $html);
+        $this->assertStringContainsString('প্রফেসর ডা. এ রহমান', $html);
+        $this->assertStringContainsString('MBBS (DMC), FCPS (Medicine)', $html);
+        // The designer's three colours and em sizes reach the paper as themselves, not as a theme's approximation.
+        $this->assertStringContainsString('color:#7B1E1E;font-size:1.45em;font-weight:700;text-transform:uppercase', $html);
+        $this->assertStringContainsString('01711-000000', $html);
+        $this->assertStringContainsString('12 Green Road, Dhaka', $html);
+        // …and the free-HTML field is gone from the print path even when the column still holds something.
+        $this->assertStringNotContainsString('letterhead-html', $html);
     }
 
     public function test_logo_and_signature_uploads_land_under_the_tenant_prefix(): void

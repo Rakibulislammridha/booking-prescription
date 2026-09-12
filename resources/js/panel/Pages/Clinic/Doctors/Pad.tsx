@@ -25,21 +25,26 @@ import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import AddIcon from '@mui/icons-material/Add';
 import ArrowDownIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpIcon from '@mui/icons-material/ArrowUpward';
 import DeleteIcon from '@mui/icons-material/DeleteOutlined';
 import PrintIcon from '@mui/icons-material/Print';
 import ScheduleIcon from '@mui/icons-material/CalendarMonth';
+import TextSnippetIcon from '@mui/icons-material/TextSnippet';
 import UploadIcon from '@mui/icons-material/UploadFile';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
+import { PadLetterheadEditor } from '@panel/Components/Clinic/PadLetterheadEditor';
+import { PadUnderlayControls } from '@panel/Components/Clinic/PadUnderlayControls';
 import { PadPreview } from '@panel/Components/Clinic/PadPreview';
+import { blankLine, MAX_LINES } from '@panel/lib/clinic/letterhead';
 import { route } from '@shared/routes';
 import { useSharedProps } from '@shared/inertia';
 import { formatBn } from '@shared/format/number';
 import { getLocale } from '@shared/locale';
 import type { PageProps } from '@shared/types/inertia';
-import type { ClinicDoctor, PadLimits, PadSectionKey, PadSettings } from '@shared/types/models';
+import type { ClinicDoctor, Letterhead, PadLimits, PadSectionKey, PadSettings } from '@shared/types/models';
 
 type Props = PageProps<{
   doctor: ClinicDoctor;
@@ -53,18 +58,29 @@ type Props = PageProps<{
     sections: PadSectionKey[];
   };
   limits: PadLimits;
-  assets: { logo_url: string | null; signature_url: string | null };
+  assets: { logo_url: string | null; signature_url: string | null; sample_url: string | null; sample_kind: 'image' | 'pdf' | null };
+  /** `Letterhead::defaults()` — what "Reset to my profile" loads: the doctor's real name, degrees and clinic. */
+  letterhead_defaults: Letterhead;
+  /** Whether "read text from the sample" can do anything on this tenant, and why not when it cannot. */
+  ocr: { available: boolean; reason: string | null };
+  /** One-shot: the lines the last read produced, offered per line rather than applied behind the doctor's back. */
+  sample_lines: string[];
 }>;
 
-export default function Pad({ doctor, pad, defaults, options, limits, assets }: Props) {
+export default function Pad({ doctor, pad, defaults, options, limits, assets, letterhead_defaults: letterheadDefaults, ocr, sample_lines: sampleLines }: Props) {
   const { t } = useTranslation();
   const shared = useSharedProps();
   const locale = getLocale();
   const form = useForm<PadSettings>({ ...pad });
   const logoInput = useRef<HTMLInputElement | null>(null);
   const signatureInput = useRef<HTMLInputElement | null>(null);
-  const [uploading, setUploading] = useState<'logo' | 'signature' | null>(null);
+  const sampleInput = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState<'logo' | 'signature' | 'sample' | null>(null);
+  // The underlay is a viewing aid, not pad data: it lives in component state and is never saved or printed.
+  const [underlayOn, setUnderlayOn] = useState(true);
+  const [underlayOpacity, setUnderlayOpacity] = useState(0.4);
   const data = form.data;
+  const underlayVisible = underlayOn && assets.sample_url !== null;
 
   const clampTo = (bound: { min: number; max: number }, value: number, fallback: number): number =>
     Number.isFinite(value) ? Math.min(bound.max, Math.max(bound.min, value)) : fallback;
@@ -114,6 +130,31 @@ export default function Pad({ doctor, pad, defaults, options, limits, assets }: 
   };
   const removeAsset = (kind: 'logo' | 'signature'): void => {
     router.delete(route('panel.clinic.doctors.pad.asset.destroy', { doctor: doctor.public_id }), { data: { kind }, preserveScroll: true });
+  };
+
+  const uploadSample = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setUploading('sample');
+    router.post(route('panel.clinic.doctors.pad.sample', { doctor: doctor.public_id }), { file }, {
+      forceFormData: true,
+      preserveScroll: true,
+      onFinish: () => setUploading(null),
+    });
+  };
+  const removeSample = (): void => {
+    router.delete(route('panel.clinic.doctors.pad.sample.destroy', { doctor: doctor.public_id }), { preserveScroll: true });
+  };
+  const readSample = (): void => {
+    router.post(route('panel.clinic.doctors.pad.sample.read', { doctor: doctor.public_id }), {}, { preserveScroll: true });
+  };
+
+  // A prefilled line is APPENDED for the doctor to style, never applied as a design: the OCR read text, not a pad.
+  const setLetterhead = (next: Letterhead): void => form.setData('letterhead', next);
+  const acceptSampleLine = (text: string): void => {
+    if (data.letterhead.header.lines.length >= MAX_LINES) return;
+    setLetterhead({ ...data.letterhead, header: { ...data.letterhead.header, lines: [...data.letterhead.header.lines, blankLine({ text })] } });
   };
 
   const testPrintUrl = route('panel.clinic.doctors.pad.test_print', { doctor: doctor.public_id });
@@ -222,24 +263,6 @@ export default function Pad({ doctor, pad, defaults, options, limits, assets }: 
                   <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => uploadAsset('logo', e)} />
                 </Stack>
 
-                <TextField
-                  label={t('clinic.pad.header_html')}
-                  multiline minRows={2} size="small" fullWidth
-                  value={data.header_html ?? ''}
-                  helperText={t('clinic.pad.header_html_help')}
-                  onChange={(e) => form.setData('header_html', e.target.value === '' ? null : e.target.value)}
-                  slotProps={{ htmlInput: { lang: 'bn', maxLength: 20000 } }}
-                  error={Boolean(form.errors.header_html)}
-                />
-                <TextField
-                  label={t('clinic.pad.footer_html')}
-                  multiline minRows={2} size="small" fullWidth
-                  value={data.footer_html ?? ''}
-                  onChange={(e) => form.setData('footer_html', e.target.value === '' ? null : e.target.value)}
-                  slotProps={{ htmlInput: { lang: 'bn', maxLength: 20000 } }}
-                  error={Boolean(form.errors.footer_html)}
-                />
-
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                   <Button size="small" variant="outlined" startIcon={<UploadIcon />} disabled={uploading !== null} onClick={() => signatureInput.current?.click()}>
                     {t('clinic.pad.upload_signature')}
@@ -255,6 +278,92 @@ export default function Pad({ doctor, pad, defaults, options, limits, assets }: 
               </Stack>
             </CardContent>
           </Card>
+
+          <PadLetterheadEditor
+            value={data.letterhead}
+            disabled={data.preprinted_mode}
+            onChange={setLetterhead}
+            onReset={() => setLetterhead(letterheadDefaults)}
+          />
+
+          {/* The sample pad. The copy here is deliberately blunt about what this is: a photo you trace against,
+              not an import. Promising "we will match your design" is a promise this cannot keep. */}
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" gutterBottom>{t('clinic.pad.underlay.title')}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>{t('clinic.pad.underlay.help')}</Typography>
+
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <Button size="small" variant="outlined" startIcon={<UploadIcon />} disabled={uploading !== null} onClick={() => sampleInput.current?.click()}>
+                  {assets.sample_url ? t('clinic.pad.underlay.replace') : t('clinic.pad.underlay.upload')}
+                </Button>
+                {assets.sample_url ? (
+                  <IconButton size="small" aria-label={t('clinic.pad.underlay.remove')} onClick={removeSample}><DeleteIcon fontSize="small" /></IconButton>
+                ) : <Typography variant="caption" color="text.secondary">{t('clinic.pad.underlay.none')}</Typography>}
+                <input ref={sampleInput} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" hidden onChange={uploadSample} />
+              </Stack>
+
+              {assets.sample_url ? (
+                <PadUnderlayControls
+                  shown={underlayOn}
+                  opacity={underlayOpacity}
+                  isPdf={assets.sample_kind === 'pdf'}
+                  onShown={setUnderlayOn}
+                  onOpacity={setUnderlayOpacity}
+                />
+              ) : null}
+
+              <Divider sx={{ my: 2 }} />
+
+              {/* OCR is a seam, not a promise: with no engine configured the button is not rendered at all and
+                  the reason is stated, rather than a control that looks alive and does nothing. */}
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t('clinic.pad.underlay.read_help')}</Typography>
+              {ocr.available ? (
+                <Button size="small" sx={{ mt: 1 }} startIcon={<TextSnippetIcon />} onClick={readSample}>{t('clinic.pad.underlay.read')}</Button>
+              ) : (
+                <Alert severity="info" sx={{ mt: 1 }}>{t(`clinic.pad.underlay.read_off_${ocr.reason ?? 'not_configured'}`)}</Alert>
+              )}
+
+              {sampleLines.length > 0 ? (
+                <Box data-testid="pad-sample-lines" sx={{ mt: 1.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{t('clinic.pad.underlay.prefill')}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: .5 }}>{t('clinic.pad.underlay.prefill_help')}</Typography>
+                  <Stack spacing={.5}>
+                    {sampleLines.map((line, index) => (
+                      <Stack key={`${index}-${line}`} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <Typography variant="body2" sx={{ flexGrow: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{line}</Typography>
+                        <Button size="small" startIcon={<AddIcon />} onClick={() => acceptSampleLine(line)}>{t('clinic.pad.underlay.prefill_add')}</Button>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          {/* Kept only for a pad designed before the letterhead above existed: nothing new writes these, and the
+              designer will not grow a rich-text box again. Clearing them hands the sheet back to the letterhead. */}
+          {(data.header_html ?? '') !== '' || (data.footer_html ?? '') !== '' ? (
+            <Card>
+              <CardContent>
+                <Typography variant="subtitle2" gutterBottom>{t('clinic.pad.legacy_html')}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{t('clinic.pad.legacy_html_help')}</Typography>
+                <Stack spacing={1}>
+                  <TextField label={t('clinic.pad.header_html')} multiline minRows={2} size="small" fullWidth value={data.header_html ?? ''}
+                    onChange={(e) => form.setData('header_html', e.target.value === '' ? null : e.target.value)}
+                    slotProps={{ htmlInput: { lang: 'bn', maxLength: 20000 } }} error={Boolean(form.errors.header_html)} />
+                  <TextField label={t('clinic.pad.footer_html')} multiline minRows={2} size="small" fullWidth value={data.footer_html ?? ''}
+                    onChange={(e) => form.setData('footer_html', e.target.value === '' ? null : e.target.value)}
+                    slotProps={{ htmlInput: { lang: 'bn', maxLength: 20000 } }} error={Boolean(form.errors.footer_html)} />
+                  <Box>
+                    <Button size="small" onClick={() => form.setData((current) => ({ ...current, header_html: null, footer_html: null }))}>
+                      {t('clinic.pad.legacy_html_clear')}
+                    </Button>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardContent>
@@ -350,6 +459,10 @@ export default function Pad({ doctor, pad, defaults, options, limits, assets }: 
             bmdc={doctor.profile?.bmdc_reg_no ?? null}
             logoUrl={assets.logo_url}
             signatureUrl={assets.signature_url}
+            sampleUrl={assets.sample_url}
+            sampleKind={assets.sample_kind}
+            sampleOpacity={underlayOpacity}
+            sampleVisible={underlayVisible}
           />
         </Box>
       </Grid>

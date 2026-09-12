@@ -10,8 +10,6 @@
   @if (! $isDraft && $pad->showQr() && ! empty($qr['svg_data_uri']))
     <img src="{{ $qr['svg_data_uri'] }}" alt="{{ $labels->in('en', 'verify_hint') }}">
   @endif
-  <div class="tiny muted code" style="margin-top:.6mm">{{ $isDraft ? 'DRAFT' : ($rx['verification_code'] ?? '') }}</div>
-  @if (! $isDraft && $sha256 !== '')
-    <div class="tiny muted code">{{ substr($sha256, 0, 8) }}</div>
-  @endif
+  {{-- The code alone under the image; the snapshot hash prints once, beside it, in the verification block. --}}
+  <div class="tiny muted code qr-line" style="margin-top:.6mm">{{ $isDraft ? 'DRAFT' : ($rx['verification_code'] ?? '') }}</div>
 </div>

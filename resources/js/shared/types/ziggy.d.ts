@@ -1280,6 +1280,27 @@ declare module 'ziggy-js' {
             "required": true
         }
     ],
+    "panel.clinic.doctors.pad.sample": [
+        {
+            "name": "doctor",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "panel.clinic.doctors.pad.sample.destroy": [
+        {
+            "name": "doctor",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "panel.clinic.doctors.pad.sample.read": [
+        {
+            "name": "doctor",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
     "panel.clinic.doctors.pad.test_print": [
         {
             "name": "doctor",

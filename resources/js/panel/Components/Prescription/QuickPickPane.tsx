@@ -1,7 +1,12 @@
 // RIGHT pane (§1.1, §3.5–§3.7): everything that makes a routine line ONE click. "For Dx" learns per diagnosis, "Top
 // 50" is the doctor's own ranked list, then templates, the clinic's investigation catalog and the advice library.
 // Ctrl+K focuses the search box, Esc returns to the last Rx line. The pane is never in the Tab order.
-import { useEffect, useMemo, useState } from 'react';
+//
+// One CLICK inserts a drug; one KEYSTROKE does too — from the search box ↑/↓ move the highlight and ⏎ inserts the
+// highlighted row, so `Ctrl+K` `nap` `⏎` is a complete line (drug + the doctor's last dose for it) without leaving
+// the keyboard. Rows are one line tall on purpose: the top of a doctor's top-50 has to be readable without
+// scrolling, and the dose he last used is the thing he is scanning for.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Badge from '@mui/material/Badge';
 import Box from '@mui/material/Box';
@@ -43,6 +48,8 @@ export function QuickPickPane({ topDrugs, templates, snippets, investigations, d
   const [tab, setTab] = useState<QuickPickTab>(primaryDx !== null ? 'dx' : 'top');
   const [query, setQuery] = useState('');
   const [dxDrugs, setDxDrugs] = useState<TopDrug[]>([]);
+  const [highlight, setHighlight] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (primaryDx === null) {
@@ -62,26 +69,62 @@ export function QuickPickPane({ topDrugs, templates, snippets, investigations, d
 
   const protocols = useMemo(() => templates.filter((tpl) => tpl.icd10_code !== null && primaryDx !== null && tpl.icd10_code === primaryDx), [templates, primaryDx]);
   const shownDrugs = (tab === 'dx' ? dxDrugs : topDrugs).filter((d) => match(d.label));
+  const onDrugTab = tab === 'dx' || tab === 'top';
+  const cursor = shownDrugs.length === 0 ? 0 : Math.min(highlight, shownDrugs.length - 1);
   const shownTemplates = templates.filter((tpl) => match(tpl.name) || match(tpl.shorthand ?? ''));
   const shownTests = investigations.filter((row) => match(row.name) || match(row.code ?? ''));
   const shownSnippets = snippets.filter((s) => match(s.text) || match(s.text_bn ?? '') || match(s.shorthand ?? ''));
 
-  const drugRow = (drug: TopDrug) => (
-    <ListItemButton key={`${drug.id}-${drug.drug.presentation_key}`} dense onClick={() => onInsertDrug(drug)} sx={{ py: 0.25 }}>
-      <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-        <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+  // Keep the keyboard highlight sane as the list changes under it, and scroll it into view.
+  useEffect(() => {
+    setHighlight(0);
+  }, [tab, query, dxDrugs.length]);
+
+  useEffect(() => {
+    if (!onDrugTab) return;
+    const row = listRef.current?.querySelector('[data-quick-active="true"]');
+    if (row instanceof HTMLElement && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  }, [cursor, onDrugTab]);
+
+  const onSearchKey = (event: React.KeyboardEvent): void => {
+    if (!onDrugTab || shownDrugs.length === 0) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      setHighlight((h) => (Math.min(h, shownDrugs.length - 1) + delta + shownDrugs.length) % shownDrugs.length);
+      return;
+    }
+    if (event.key === 'Enter') {
+      const drug = shownDrugs[cursor];
+      if (drug === undefined) return;
+      event.preventDefault();
+      onInsertDrug(drug);           // focus follows the insert into the line's dose field (Writer.insertTopDrug)
+    }
+  };
+
+  const drugRow = (drug: TopDrug, index: number) => (
+    <ListItemButton
+      key={`${drug.id}-${drug.drug.presentation_key}`}
+      dense
+      data-testid="quick-drug"
+      data-quick-active={onDrugTab && index === cursor ? 'true' : 'false'}
+      selected={onDrugTab && index === cursor}
+      onClick={() => onInsertDrug(drug)}
+      sx={{ py: 0.1, minHeight: 26, gap: 0.5 }}
+    >
+      {/* The use count moved into the tooltip: the list is already ranked by it, and the width buys the dose. */}
+      <Tooltip title={`${drug.label} · ${t('prescriptions.rx.used_times', { count: drug.use_count })}`}>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 600, minWidth: 0, flexGrow: 1, fontSize: 12.5 }}>
           {drug.label}
         </Typography>
-        {drug.default_dose.shorthand ? (
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'primary.main' }}>
-            {drug.default_dose.shorthand}
-          </Typography>
-        ) : null}
-      </Box>
-      {drug.is_pinned ? <PushPinIcon sx={{ fontSize: 14 }} color="warning" /> : null}
-      <Typography variant="caption" color="text.secondary">
-        {drug.use_count}
-      </Typography>
+      </Tooltip>
+      {/* The dose he last prescribed for this drug — pre-filled by the insert, which is why it is worth the width. */}
+      {drug.default_dose.shorthand ? (
+        <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'primary.main', fontSize: 11, whiteSpace: 'nowrap' }}>
+          {drug.default_dose.shorthand}
+        </Typography>
+      ) : null}
+      {drug.is_pinned ? <PushPinIcon sx={{ fontSize: 13 }} color="warning" /> : null}
     </ListItemButton>
   );
 
@@ -92,6 +135,7 @@ export function QuickPickPane({ topDrugs, templates, snippets, investigations, d
         inputRef={searchRef}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={onSearchKey}
         placeholder={t('prescriptions.quick.search')}
         sx={{ m: 0.5 }}
         slotProps={{
@@ -107,7 +151,7 @@ export function QuickPickPane({ topDrugs, templates, snippets, investigations, d
         <Tab value="advice" label={t('prescriptions.quick.advice')} />
       </Tabs>
 
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
+      <Box ref={listRef} sx={{ flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
         {tab === 'dx' && protocols.length > 0 ? (
           <Box sx={{ px: 1, py: 0.5 }}>
             <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
@@ -121,13 +165,18 @@ export function QuickPickPane({ topDrugs, templates, snippets, investigations, d
           </Box>
         ) : null}
 
-        {(tab === 'dx' || tab === 'top') ? (
+        {onDrugTab ? (
           shownDrugs.length === 0 ? (
             <Typography variant="caption" color="text.secondary" sx={{ p: 1, display: 'block' }}>
               {tab === 'dx' && primaryDx === null ? t('prescriptions.quick.pick_dx_first') : t('common.status.none')}
             </Typography>
           ) : (
-            shownDrugs.map(drugRow)
+            <>
+              <Typography variant="caption" sx={{ px: 1, display: 'block', fontSize: 10, lineHeight: 1.4, color: 'text.secondary' }}>
+                {t('prescriptions.quick.insert_hint')}
+              </Typography>
+              {shownDrugs.map(drugRow)}
+            </>
           )
         ) : null}
 

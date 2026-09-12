@@ -36,6 +36,16 @@ final class ClinicUploads
         return $this->put($this->uploadsDisk(), "doctors/{$doctorPublicId}/pad/{$kind}-".Str::ulid(), $file);
     }
 
+    /**
+     * tenants/{id}/doctors/{public_id}/pad/sample-{ulid}.{ext} — the photo or PDF of the clinic's existing pad
+     * that the designer draws under the live preview. Same private disk as the pad assets, and deliberately so:
+     * it is a picture of a named doctor's stationery, not something a public URL should reach.
+     */
+    public function padSample(string $doctorPublicId, UploadedFile $file): string
+    {
+        return $this->put($this->uploadsDisk(), "doctors/{$doctorPublicId}/pad/sample-".Str::ulid(), $file);
+    }
+
     /** tenants/{id}/doctors/{public_id}/photo-{ulid}.{ext} */
     public function doctorPhoto(string $doctorPublicId, UploadedFile $file): string
     {

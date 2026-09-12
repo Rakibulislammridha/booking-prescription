@@ -11,6 +11,7 @@ import {
   padOrderedSections,
   padRxFontSizePt,
 } from '../padGeometry';
+import { emptyLetterhead } from '../letterhead';
 import type { PadSettings } from '@shared/types/models';
 
 // These expectations are the numbers App\Domain\Prescription\Render\PadGeometry produces (PRESCRIPTION.md §7.2).
@@ -38,9 +39,11 @@ function pad(overrides: Partial<PadSettings> = {}): PadSettings {
       rx_font_size_pt: null,
       flags: { icd_codes: true, investigation_prices: true, generic_names: true },
     },
+    letterhead: emptyLetterhead(),
     token_slip_template: 'thermal_58',
     default_language: 'both',
     signature_path: null,
+    sample_path: null,
     ...overrides,
   };
 }

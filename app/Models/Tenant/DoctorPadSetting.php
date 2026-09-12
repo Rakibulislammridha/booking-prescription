@@ -29,6 +29,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $show_vitals
  * @property bool $show_drug_info_url
  * @property array<string, mixed> $layout
+ * @property array<string, mixed> $letterhead
+ * @property string|null $sample_path
  * @property TokenSlipTemplate $token_slip_template
  * @property string $default_language
  */
@@ -45,6 +47,7 @@ final class DoctorPadSetting extends TenantModel
         'doctor_id', 'paper_size', 'orientation', 'letterhead_enabled', 'preprinted_mode', 'logo_path', 'header_html', 'footer_html',
         'margins', 'header_height_mm', 'footer_height_mm', 'font_family', 'font_size_pt', 'show_qr', 'show_vitals',
         'show_drug_info_url', 'layout', 'token_slip_template', 'default_language', 'signature_path',
+        'letterhead', 'sample_path',
     ];
 
     /** @return array<string, mixed> the SCHEMA defaults for a new doctor */
@@ -93,6 +96,7 @@ final class DoctorPadSetting extends TenantModel
             'show_vitals' => 'boolean',
             'show_drug_info_url' => 'boolean',
             'layout' => 'array',
+            'letterhead' => 'array',
             'token_slip_template' => TokenSlipTemplate::class,
         ];
     }

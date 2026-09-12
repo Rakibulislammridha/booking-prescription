@@ -3,7 +3,28 @@
   never a transliteration. The dose line underneath is the patient's line and follows the print language, with
   Bangla digits already frozen into snapshot.items[].display.bn at issue. Both renderings print for `both`.
 --}}
-@php $showTypedHeading = $handwritingPages !== [] && $items !== []; @endphp
+@php
+  $showTypedHeading = $handwritingPages !== [] && $items !== [];
+  // §7.8 drug-information links. `show_drug_info_url` still decides whether they appear at all — what changed is
+  // what "on" looks like. Printed in full they were four wrapped lines of blue URL per two drugs, the loudest
+  // thing on the sheet, and nobody has ever typed one: the QR is how a patient gets there. So the sheet carries a
+  // footnote marker per drug and ONE grey line naming the domain, while the pharmacy table and the verification
+  // page — both read on a screen, where a link is a link — keep the full address.
+  $infoUrls = $pad->showDrugInfoUrl();
+  $infoInline = $infoUrls && $o->purpose === 'verify';
+  $infoHost = null;
+
+  if ($infoUrls && ! $infoInline) {
+      foreach ($items as $candidate) {
+          $host = empty($candidate['info_url']) ? null : parse_url((string) $candidate['info_url'], PHP_URL_HOST);
+
+          if (is_string($host) && $host !== '') {
+              $infoHost = $host;
+              break;
+          }
+      }
+  }
+@endphp
 @if ($items !== [])
   <div class="section" data-section="rx">
     <div style="display:flex; align-items:flex-start; gap:2mm">
@@ -38,6 +59,7 @@
                 <div class="drug-line drug">
                   {{ trim($headline.' '.($item['strength'] ?? '')) }}
                   @if (! empty($item['form']))<span class="muted" style="font-weight:400">{{ $item['form'] }}</span>@endif
+                  @if ($infoUrls && ! $infoInline && ! empty($item['info_url']))<sup class="info-mark" aria-hidden="true">*</sup>@endif
                 </div>
                 @if ($pad->flag('generic_names') && $generic !== null && $generic !== '' && $generic !== $headline)
                   <div class="generic drug tiny">{{ $generic }}</div>
@@ -55,7 +77,7 @@
                 @if ($o->en() && ! empty($item['instruction']))
                   <div class="instruction en {{ $o->both() && ! empty($item['instruction_bn']) ? 'tiny muted' : '' }}">{{ $item['instruction'] }}</div>
                 @endif
-                @if ($pad->showDrugInfoUrl() && ! empty($item['info_url']))
+                @if ($infoInline && ! empty($item['info_url']))
                   <div class="info-url tiny code">{{ $labels->get('more_info') }}: {{ $item['info_url'] }}</div>
                 @endif
               </td>
@@ -72,6 +94,9 @@
           @endforeach
           </tbody>
         </table>
+        @if ($infoHost !== null)
+          <div class="info-note tiny muted">* {{ $labels->get('drug_info') }} · <span class="code">{{ $infoHost }}</span></div>
+        @endif
       </div>
     </div>
   </div>

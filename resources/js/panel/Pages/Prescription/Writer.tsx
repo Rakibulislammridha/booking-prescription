@@ -7,7 +7,9 @@
 //
 // Layout: left history 260px, centre ≥ 640px, right quick-pick 280px. Below 1536px the history pane becomes an
 // overlay sheet so the centre keeps its width on the 1366×768 laptops clinics actually use; the quick-pick stays
-// docked because it is the one-click path.
+// docked because it is the one-click path. The live pad preview (Ctrl+P, remembered per doctor) docks as a fourth
+// column from 1200px and takes the history pane's place on screen — four columns do not fit a clinic laptop, and
+// of the two the one that shows what is being printed wins. Narrower than that, it opens as a right-hand sheet.
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +34,7 @@ import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import BrushIcon from '@mui/icons-material/Brush';
+import DescriptionIcon from '@mui/icons-material/DescriptionOutlined';
 import GestureIcon from '@mui/icons-material/Gesture';
 import HistoryIcon from '@mui/icons-material/History';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
@@ -45,6 +48,9 @@ import { QuickPickPane } from '@panel/Components/Prescription/QuickPickPane';
 // confirmation, the stylus drawing canvas and the handwriting pad. They are opened deliberately, so they load
 // deliberately — the writer's first paint is what the doctor waits for (BRIEF §5.G, §8).
 const Cheatsheet = lazy(() => import('@panel/Components/Prescription/Cheatsheet').then((m) => ({ default: m.Cheatsheet })));
+// The live pad preview is lazy for the same reason: a doctor who writes with it closed never pays for it, and the
+// pane is only ever mounted by a deliberate toggle (Ctrl+P / the button), which is when its chunk is fetched.
+const PadPreviewPane = lazy(() => import('@panel/Components/Prescription/PadPreviewPane').then((m) => ({ default: m.PadPreviewPane })));
 const DrawingDialog = lazy(() => import('@panel/Components/Prescription/DrawingDialog').then((m) => ({ default: m.DrawingDialog })));
 const HandwritingPanel = lazy(() => import('@panel/Components/Prescription/HandwritingPanel').then((m) => ({ default: m.HandwritingPanel })));
 const IssueDialog = lazy(() => import('@panel/Components/Prescription/IssueDialog').then((m) => ({ default: m.IssueDialog })));
@@ -53,15 +59,37 @@ import { VitalsCard } from '@panel/Components/Prescription/VitalsCard';
 import { WriterStoreProvider, useWriter, useWriterStoreApi } from '@panel/hooks/prescription/useWriterStore';
 import { fetchPrescription, saveTemplate } from '@panel/api/prescription';
 import { blockingAlerts, issueReadiness, type FocusZone } from '@panel/lib/prescription/store/writerStore';
+import { insertTopDrug } from '@panel/lib/prescription/quickPick';
 import { resolveGlobalKey, nextZone } from '@panel/lib/prescription/keyboard';
 import { formatTimeDhaka } from '@shared/format/date';
 import { getLocale } from '@shared/locale';
 import { ulid } from '@shared/ulid';
 import { route } from '@shared/routes';
 import type { PageProps } from '@shared/types/inertia';
-import type { AdviceSnippet, DrawingJson, InvestigationCatalogRow, TemplateBrief, TopDrug, VisitBrief, WriterPageProps } from '@shared/types/models';
+import type { AdviceSnippet, DrawingJson, InvestigationCatalogRow, TemplateBrief, VisitBrief, WriterPageProps } from '@shared/types/models';
 
 type Props = PageProps<WriterPageProps>;
+
+// Whether the pad preview is open is the doctor's own habit, not the clinic's setting: remembered per doctor on
+// this machine, so it is back the way he left it on his next patient.
+const PREVIEW_PREF = 'bp.rx.pad-preview';
+
+function readPreviewPref(doctorId: string, fallback: boolean): boolean {
+  try {
+    const stored = localStorage.getItem(`${PREVIEW_PREF}.${doctorId}`);
+    return stored === null ? fallback : stored === '1';
+  } catch {
+    return fallback;                                          // private mode / storage disabled
+  }
+}
+
+function writePreviewPref(doctorId: string, open: boolean): void {
+  try {
+    localStorage.setItem(`${PREVIEW_PREF}.${doctorId}`, open ? '1' : '0');
+  } catch {
+    /* private mode */
+  }
+}
 
 export default function Writer(props: Props) {
   return (
@@ -79,6 +107,8 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
   const locale = getLocale();
   const store = useWriterStoreApi();
   const wide = useMediaQuery(theme.breakpoints.up('xl'));
+  // Below lg there is no room for a fourth column, so the preview opens as a sheet over the page instead.
+  const roomy = useMediaQuery(theme.breakpoints.up('lg'));
 
   const state = useWriter((s) => s);
   const padLang: 'bn' | 'en' = state.language === 'en' ? 'en' : 'bn';
@@ -86,6 +116,7 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
   const readiness = issueReadiness(state);
   const blocking = blockingAlerts(state);
 
+  const [preview, setPreview] = useState(() => readPreviewPref(doctor.public_id, typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width:1200px)').matches));
   const [historyOpen, setHistoryOpen] = useState(false);
   const [cheatsheet, setCheatsheet] = useState(false);
   const [issueOpen, setIssueOpen] = useState(false);
@@ -150,6 +181,13 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
     [store],
   );
 
+  const togglePreview = useCallback(() => {
+    setPreview((open) => {
+      writePreviewPref(doctor.public_id, !open);
+      return !open;
+    });
+  }, [doctor.public_id]);
+
   // Initial focus (§1.3): complaints when empty, otherwise the first empty Rx line.
   useEffect(() => {
     const s = store.getState();
@@ -183,7 +221,9 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
           setIssueOpen(true);
           break;
         case 'print_preview':
-          window.print();
+          // §1.3 Ctrl+P is "print preview of the current draft (watermarked DRAFT)" — that is this pane, which
+          // shows exactly the sheet the print route renders. Printing the writer's own DOM never was the thing.
+          togglePreview();
           break;
         case 'cheatsheet':
           setCheatsheet((c) => !c);
@@ -202,31 +242,9 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [cheatsheet, features.handwriting, focusZone, issueOpen]);
+  }, [cheatsheet, features.handwriting, focusZone, issueOpen, togglePreview]);
 
   // ---- quick-pick insertions (each is exactly one click) -------------------------------------------------------
-
-  const insertTopDrug = (row: TopDrug): void => {
-    const s = store.getState();
-    const empty = s.items.find((i) => i.drug === null && i.shorthand === '');
-    const key = empty?.key ?? s.addItem();
-    // TopDrug carries ids + label, not the presentation metadata the client ParseContext wants: the shorthand is
-    // parsed against defaults for a moment and the server echo (≤ 400 ms) replaces it with the authoritative parse.
-    s.setDrug(key, {
-      kind: row.drug.kind,
-      generic_id: row.drug.generic_id ?? 0,
-      brand_id: row.drug.brand_id ?? null,
-      custom_brand_id: row.drug.custom_brand_id ?? null,
-      strength_id: row.drug.strength_id ?? null,
-      generic_name: row.label,
-      brand_name: null,
-      strength: null,
-      form: null,
-      route: null,
-    });
-    if (row.default_dose.shorthand) s.setShorthand(key, row.default_dose.shorthand);
-    s.setFocus('rx', key);
-  };
 
   const insertInvestigation = (row: InvestigationCatalogRow): void => {
     const s = store.getState();
@@ -309,15 +327,23 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
       <Chip size="small" variant="outlined" sx={{ height: 22 }} label={t('prescriptions.writer.saved_at', { time: formatTimeDhaka(state.lastSavedAt, locale) })} />
     ) : null;
 
+  // Four columns do not fit a clinic laptop: when the pad is docked it takes the history pane's place on screen
+  // and the history moves to its overlay sheet (the icon in the header opens it).
+  const previewDocked = preview && roomy;
+  const historyDocked = wide && !previewDocked;
+  // The ONLY things that can change the printed sheet: the saved draft (its version + updated_at), the print
+  // language, and the vitals row the compounder recorded. Anything else is still in the doctor's fingers.
+  const previewVersion = `${state.version}:${state.serverUpdatedAt ?? ''}:${state.language}:${state.vitals?.id ?? 0}:${state.vitals?.recorded_at ?? ''}:${state.vitalsReviewed ? 1 : 0}`;
+
   const history = <HistoryPane patient={patient} recentVisits={recent_visits} onCopyVisit={copyVisit} />;
 
   return (
     <Box sx={{ mx: { xs: -2, md: -3 }, mt: { xs: -2, md: -3 }, mb: { xs: -2, md: -3 }, px: 1, py: 1, display: 'flex', gap: 1, height: { xs: 'auto', md: 'calc(100vh - 104px)' }, minHeight: 520, overflow: 'hidden' }}>
-      {wide ? <Box sx={{ width: 260, flexShrink: 0, minHeight: 0 }}>{history}</Box> : null}
+      {historyDocked ? <Box sx={{ width: 260, flexShrink: 0, minHeight: 0 }}>{history}</Box> : null}
 
       <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 0.5, flexWrap: 'wrap' }}>
-          {!wide ? (
+          {!historyDocked ? (
             <Tooltip title={t('prescriptions.history.title')}>
               <IconButton size="small" onClick={() => setHistoryOpen(true)} aria-label={t('prescriptions.history.title')}>
                 <HistoryIcon fontSize="inherit" />
@@ -339,6 +365,11 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
             <MenuItem value="bn">{t('prescriptions.language.bn')}</MenuItem>
             <MenuItem value="en">{t('prescriptions.language.en')}</MenuItem>
           </Select>
+          <Tooltip title={t('prescriptions.preview.toggle')}>
+            <IconButton size="small" color={preview ? 'primary' : 'default'} onClick={togglePreview} aria-label={t('prescriptions.preview.toggle')} data-testid="preview-toggle">
+              <DescriptionIcon fontSize="inherit" />
+            </IconButton>
+          </Tooltip>
           {features.handwriting ? (
             <Tooltip title={t('prescriptions.handwriting.toggle')}>
               <IconButton size="small" color={handwriting ? 'primary' : 'default'} onClick={() => setHandwriting((h) => !h)} aria-label={t('prescriptions.handwriting.toggle')}>
@@ -420,7 +451,7 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
             alerts={state.alerts}
             dxCodes={dxCodes}
             lang={padLang}
-            focusKey={state.focus.zone === 'rx' ? state.focus.itemKey : undefined}
+            focus={state.focus}
             containerRef={rxRef}
             onNextZone={() => focusZone(nextZone('rx', 1))}
             onCheatsheet={() => setCheatsheet(true)}
@@ -456,6 +487,14 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
         </Box>
       </Box>
 
+      {previewDocked ? (
+        <Box sx={{ width: { lg: 340, xl: 400 }, flexShrink: 0, minHeight: 0 }}>
+          <Suspense fallback={null}>
+            <PadPreviewPane prescriptionId={state.prescriptionId} version={previewVersion} paper={doctor.pad.paper_size} pending={state.dirty || state.saving} onClose={togglePreview} />
+          </Suspense>
+        </Box>
+      ) : null}
+
       <Box sx={{ width: { xs: 240, lg: 280 }, flexShrink: 0, display: { xs: 'none', md: 'block' }, minHeight: 0 }}>
         <QuickPickPane
           topDrugs={quick_pick.top_drugs}
@@ -464,7 +503,7 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
           investigations={quick_pick.investigations}
           dxCodes={dxCodes}
           searchRef={quickPickRef}
-          onInsertDrug={insertTopDrug}
+          onInsertDrug={(row) => insertTopDrug(store, row)}
           onApplyTemplate={applyTemplate}
           onInsertInvestigation={insertInvestigation}
           onInsertAdvice={insertAdvice}
@@ -472,8 +511,15 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
         />
       </Box>
 
-      <Drawer anchor="left" open={historyOpen && !wide} onClose={() => setHistoryOpen(false)} slotProps={{ paper: { sx: { width: 300, p: 1 } } }}>
+      <Drawer anchor="left" open={historyOpen && !historyDocked} onClose={() => setHistoryOpen(false)} slotProps={{ paper: { sx: { width: 300, p: 1 } } }}>
         {history}
+      </Drawer>
+
+      {/* Under lg the pad has no column of its own, so it opens over the page — still the same sheet, same source. */}
+      <Drawer anchor="right" open={preview && !roomy} onClose={togglePreview} slotProps={{ paper: { sx: { width: { xs: '100%', sm: 420 }, p: 0.5 } } }}>
+        <Suspense fallback={null}>
+          <PadPreviewPane prescriptionId={state.prescriptionId} version={previewVersion} paper={doctor.pad.paper_size} pending={state.dirty || state.saving} onClose={togglePreview} />
+        </Suspense>
       </Drawer>
 
       {cheatsheet ? <Suspense fallback={null}><Cheatsheet open lang={padLang} onClose={() => setCheatsheet(false)} onInsert={(example) => insertIntoLine.current(example)} /></Suspense> : null}

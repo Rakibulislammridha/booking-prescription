@@ -658,8 +658,8 @@ Seeded roles per tenant (guard `web`): `hospital_admin`, `doctor`, `receptionist
 | letterhead_enabled | boolean | no | `true` | |
 | preprinted_mode | boolean | no | `false` | Leave header/footer areas blank |
 | logo_path | varchar(255) | yes | | |
-| header_html | text | yes | | Sanitised HTML |
-| footer_html | text | yes | | |
+| header_html | text | yes | | Legacy free-HTML letterhead. **No longer rendered by any print path** (superseded by `letterhead`); kept for one release so nothing a doctor typed is lost |
+| footer_html | text | yes | | Legacy free-HTML footer; no longer rendered — see `header_html` |
 | margins | jsonb | no | `'{"top":20,"right":15,"bottom":20,"left":15}'` | mm |
 | header_height_mm | smallint | no | `35` | Reserved band in preprinted mode |
 | footer_height_mm | smallint | no | `20` | |
@@ -669,6 +669,8 @@ Seeded roles per tenant (guard `web`): `hospital_admin`, `doctor`, `receptionist
 | show_vitals | boolean | no | `true` | |
 | show_drug_info_url | boolean | no | `true` | |
 | layout | jsonb | no | `'{}'` | Section order/visibility |
+| letterhead | jsonb | no | `'{}'` | The structured letterhead: three palette hexes, header lines, footer columns (PRESCRIPTION.md §7.2). `{}` = never designed; the renderer then builds it from the doctor's profile and the clinic |
+| sample_path | varchar(255) | yes | | Photo or PDF of the clinic's existing pad, used by the designer as a tracing underlay. **Never printed** and never copied into `pad_snapshot` |
 | token_slip_template | varchar(32) | no | `'thermal_58'` | `thermal_58`, `thermal_80`, `a5` |
 | default_language | varchar(5) | no | `'both'` | Print language `bn`, `en`, `both`; seeds `prescriptions.language` for new drafts |
 | signature_path | varchar(255) | yes | | Scanned signature image; inlined as a data URI into the snapshot at issue |

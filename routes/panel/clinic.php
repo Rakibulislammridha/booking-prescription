@@ -74,7 +74,12 @@ Route::prefix('clinic')->name('clinic.')->group(function (): void {
         Route::put('{doctor:public_id}/pad', [PadDesignerController::class, 'update'])->name('pad.update');
         Route::post('{doctor:public_id}/pad/asset', [PadDesignerController::class, 'asset'])->name('pad.asset');
         Route::delete('{doctor:public_id}/pad/asset', [PadDesignerController::class, 'removeAsset'])->name('pad.asset.destroy');
-        Route::get('{doctor:public_id}/pad/asset/{kind}', [PadDesignerController::class, 'assetFile'])->whereIn('kind', ['logo', 'signature'])->name('pad.asset.show');
+        Route::get('{doctor:public_id}/pad/asset/{kind}', [PadDesignerController::class, 'assetFile'])->whereIn('kind', ['logo', 'signature', 'sample'])->name('pad.asset.show');
+        // The sample pad: a tracing underlay for the designer only. Separate from the pad assets because it
+        // accepts a PDF and a phone photo's worth of bytes, and because nothing ever prints it.
+        Route::post('{doctor:public_id}/pad/sample', [PadDesignerController::class, 'sample'])->name('pad.sample');
+        Route::delete('{doctor:public_id}/pad/sample', [PadDesignerController::class, 'removeSample'])->name('pad.sample.destroy');
+        Route::post('{doctor:public_id}/pad/sample/read', [PadDesignerController::class, 'readSample'])->name('pad.sample.read');
         Route::get('{doctor:public_id}/pad/test-print', [PadDesignerController::class, 'testPrint'])->name('pad.test_print');
     });
 

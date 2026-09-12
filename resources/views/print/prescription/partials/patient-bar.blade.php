@@ -1,18 +1,39 @@
-{{-- §7.1 patient bar: name · age/sex · code · date · serial · version. Identifiers stay Latin; the phone is already
-     masked in the snapshot and is never printed on the sheet at all. --}}
+{{-- §7.1 patient bar, two deliberate rows: WHO this is (name · age · sex), then WHICH record it is (patient code ·
+     date · serial · version). Identifiers stay Latin; the phone is already masked in the snapshot and is never
+     printed on the sheet at all.
+
+     Weight is NOT here. It used to print twice — once in this bar and again three lines down under VITALS — which
+     is how a sheet ends up looking like it was assembled by two people who never met. It belongs with the other
+     measurements the compounder took, so vitals is where it prints. --}}
 @php
   $version = (int) ($rx['version'] ?? 1);
   $date = $visit['date'] ?? null;
+  $sex = $labels->sex($patient['gender'] ?? null);
 @endphp
 <div class="patient-bar">
-  <span><b>{{ $patient['name'] ?? '' }}</b></span>
-  @if (! empty($patient['age_text']))<span class="muted">{{ $labels->get('age') }}: <span class="num">{{ $patient['age_text'] }}</span></span>@endif
-  @if (! empty($patient['gender']))<span class="muted">{{ $labels->get('sex') }}: <span class="en">{{ strtoupper((string) $patient['gender']) }}</span></span>@endif
-  @if (! empty($patient['weight_kg']))<span class="muted">{{ $labels->get('weight') }}: <span class="num">{{ $patient['weight_kg'] }} kg</span></span>@endif
-  @if (! empty($patient['patient_code']))<span class="muted">{{ $labels->get('id') }}: <span class="code">{{ $patient['patient_code'] }}</span></span>@endif
-  @if ($date !== null)<span class="muted">{{ $labels->get('date') }}: <span class="num">{{ $date }}</span></span>@endif
-  @if (! empty($visit['serial']))<span class="muted">{{ $labels->get('serial') }}: <span class="code">{{ $visit['serial'] }}</span></span>@endif
-  @if ($version > 1)<span class="muted code">v{{ $version }}</span>@endif
+  <div class="pb-row">
+    <span class="pb-name">{{ $patient['name'] ?? '' }}</span>
+    @if (! empty($patient['age_text']))
+      <span><span class="pb-k">{{ $labels->get('age') }}</span><span class="pb-v num">{{ $patient['age_text'] }}</span></span>
+    @endif
+    @if ($sex !== '')
+      <span><span class="pb-k">{{ $labels->get('sex') }}</span><span class="pb-v">{{ $sex }}</span></span>
+    @endif
+  </div>
+  <div class="pb-row">
+    @if (! empty($patient['patient_code']))
+      <span><span class="pb-k">{{ $labels->get('id') }}</span><span class="pb-v code">{{ $patient['patient_code'] }}</span></span>
+    @endif
+    @if ($date !== null)
+      <span><span class="pb-k">{{ $labels->get('date') }}</span><span class="pb-v num">{{ $date }}</span></span>
+    @endif
+    @if (! empty($visit['serial']))
+      <span><span class="pb-k">{{ $labels->get('serial') }}</span><span class="pb-v code">{{ $visit['serial'] }}</span></span>
+    @endif
+    @if ($version > 1)
+      <span><span class="pb-k">{{ $labels->get('version') }}</span><span class="pb-v code">v{{ $version }}</span></span>
+    @endif
+  </div>
 </div>
 @if (! empty($snapshot->get('allergies')))
   {{-- Allergies print in a box on every copy: this is the line that stops a pharmacy dispensing the wrong drug. --}}

@@ -19,6 +19,11 @@ final readonly class PrintLabels
         'patient' => ['en' => 'Patient', 'bn' => 'রোগী'],
         'age' => ['en' => 'Age', 'bn' => 'বয়স'],
         'sex' => ['en' => 'Sex', 'bn' => 'লিঙ্গ'],
+        // Sex is a value, not an identifier: it is printed like every other field on the sheet rather than
+        // SHOUTED in the raw enum casing, which is how `FEMALE` ended up being the loudest word on a prescription.
+        'sex_male' => ['en' => 'Male', 'bn' => 'পুরুষ'],
+        'sex_female' => ['en' => 'Female', 'bn' => 'মহিলা'],
+        'sex_other' => ['en' => 'Other', 'bn' => 'অন্যান্য'],
         'date' => ['en' => 'Date', 'bn' => 'তারিখ'],
         'serial' => ['en' => 'Serial', 'bn' => 'সিরিয়াল'],
         'id' => ['en' => 'ID', 'bn' => 'আইডি'],
@@ -46,6 +51,7 @@ final readonly class PrintLabels
         'instruction' => ['en' => 'See prescription for instructions', 'bn' => 'নির্দেশনা প্রেসক্রিপশনে দেখুন'],
         'pharmacy_copy' => ['en' => 'Pharmacy copy', 'bn' => 'ফার্মেসি কপি'],
         'more_info' => ['en' => 'More information', 'bn' => 'আরও তথ্য'],
+        'drug_info' => ['en' => 'Drug information', 'bn' => 'ওষুধের তথ্য'],
         'verify_hint' => ['en' => 'Scan to verify this prescription', 'bn' => 'যাচাই করতে স্ক্যান করুন'],
         'verification_code' => ['en' => 'Verification code', 'bn' => 'যাচাই কোড'],
         'typed_rx' => ['en' => 'Rx (typed)', 'bn' => 'Rx (টাইপ করা)'],
@@ -75,6 +81,21 @@ final readonly class PrintLabels
             'bn' => $label['bn'],
             default => $label['en'].' / '.$label['bn'],
         };
+    }
+
+    /**
+     * `patient.gender` → the printed word. An enum value we do not have a translation for is title-cased rather
+     * than dropped: an unexpected value is still information, but it is never printed in shouting capitals.
+     */
+    public function sex(mixed $gender): string
+    {
+        $value = is_string($gender) ? strtolower(trim($gender)) : '';
+
+        if ($value === '') {
+            return '';
+        }
+
+        return isset(self::LABELS['sex_'.$value]) ? $this->get('sex_'.$value) : mb_convert_case($value, MB_CASE_TITLE, 'UTF-8');
     }
 
     public function in(string $language, string $key): string

@@ -156,16 +156,19 @@ final class VitalsTemperatureTest extends TestCase
         $legacy = new PrescriptionSnapshot($document);
 
         $renderer = app(PrescriptionRenderer::class);
+        // Vitals print as a labelled grid (§7.1), so the caption and the value are separate cells of one block.
         $en = $renderer->render($legacy, RenderOptions::fromPad($legacy->pad(), purpose: 'pdf', language: 'en'));
-        $this->assertStringContainsString('Temp 102.9°F', $en);
+        $this->assertStringContainsString('>Temp</span>', $en);
+        $this->assertStringContainsString('>102.9°F</span>', $en);
         $this->assertStringNotContainsString('39.4', $en);
-        $this->assertStringContainsString('BP 120/80 mmHg', $en);
+        $this->assertStringContainsString('>120/80<span class="vital-u"> mmHg</span>', $en);
 
         $both = $renderer->render($legacy, RenderOptions::fromPad($legacy->pad(), purpose: 'print', language: 'both'));
         $this->assertStringContainsString('102.9°F', $both);
 
         $bn = $renderer->render($legacy, RenderOptions::fromPad($legacy->pad(), purpose: 'pdf', language: 'bn'));
-        $this->assertStringContainsString('তাপমাত্রা ১০২.৯°ফা', $bn);
+        $this->assertStringContainsString('>তাপমাত্রা</span>', $bn);
+        $this->assertStringContainsString('>১০২.৯°ফা</span>', $bn);
         $this->assertStringNotContainsString('°C', $bn);
 
         // A snapshot from the pad designer's sample document stores the value as a string — still °F on paper.

@@ -218,6 +218,45 @@ export type PadSectionKey =
   | 'vitals' | 'complaints' | 'examination' | 'diagnosis' | 'rx'
   | 'investigations' | 'advice' | 'followup' | 'referral' | 'signature';
 
+/** Which of the letterhead's three colours a line is printed in. */
+export type LetterheadColor = 'accent' | 'text' | 'muted';
+
+export type LetterheadAlign = 'left' | 'center' | 'right';
+
+/** `split` lays the header out as two columns: lines aligned `right` go right, everything else goes left. */
+export type LetterheadHeaderAlign = 'left' | 'center' | 'split';
+
+/**
+ * One printed line of the letterhead. `text` is plain — the server strips tags before it is stored — and `size`
+ * is in em relative to the pad's body size, so changing the body size scales the whole block with it.
+ */
+export interface LetterheadLine {
+  text: string;
+  text_bn: string | null;
+  color: LetterheadColor;
+  weight: 'normal' | 'bold';
+  size: number;
+  transform: 'none' | 'uppercase';
+  /** Overrides the block's alignment for this line; null follows the block. */
+  align: LetterheadAlign | null;
+}
+
+/** One of the one-to-three footer columns — logo + address, chamber times, the number you ring for a serial. */
+export interface LetterheadColumn {
+  align: LetterheadAlign;
+  logo: boolean;
+  lines: LetterheadLine[];
+}
+
+/** doctor_pad_settings.letterhead (BRIEF §5.A) — the letterhead as DATA, not as a box of free HTML. */
+export interface Letterhead {
+  accent_color: string;
+  text_color: string;
+  muted_color: string;
+  header: { align: LetterheadHeaderAlign; lines: LetterheadLine[]; rule: boolean };
+  footer: { columns: LetterheadColumn[]; rule: boolean };
+}
+
 /** doctor_pad_settings (SCHEMA §3.1) — exactly the keys PadGeometry reads back at print time. */
 export interface PadSettings {
   paper_size: 'A4' | 'A5';
@@ -241,9 +280,12 @@ export interface PadSettings {
     rx_font_size_pt: number | null;
     flags: { icd_codes: boolean; investigation_prices: boolean; generic_names: boolean };
   };
+  letterhead: Letterhead;
   token_slip_template: string;
   default_language: PadLanguage;
   signature_path: string | null;
+  /** A photo or PDF of the clinic's existing pad, shown as a tracing underlay in the designer. Never printed. */
+  sample_path: string | null;
 }
 
 /** The four value shapes SettingsRegistry types allow (`int`, `number`, `bool`, `string`). */
@@ -1767,6 +1809,8 @@ export interface DrugRef {
   strength: string | null;
   form: string | null;
   form_code?: string | null;
+  /** The dosage form's own unit ("tab", "ml", "puff") when the server resolved it; the form table's default otherwise. */
+  default_unit?: string | null;
   route: string | null;
   route_code?: string | null;
   pack_size?: number | null;
@@ -1910,7 +1954,10 @@ export interface PatientClinicalCard {
   medications: { id: number; generic_id: number | null; generic_name: string; brand_name: string | null; dose_text: string | null; source: MedicationSource }[];
   flags: { pregnant: boolean; lactating: boolean; renal: boolean; hepatic: boolean };
 }
-export interface TopDrug { id: number; icd10_code: string | null; drug: DrugRefInput & { kind: 'presentation' | 'generic' | 'custom'; presentation_key: string }; label: string; default_dose: { dose_schedule?: string | null; duration_days?: number | null; timing?: string; instruction?: string | null; shorthand?: string }; use_count: number; is_pinned: boolean; rank: number; last_used_at: string | null }
+/** A quick-pick row (§3.5). `drug` is a full DrugRef — the ids AND the presentation facts the client parser needs —
+ *  so one click inserts a line that parses correctly on its first render; `default_dose.shorthand` is the last dose
+ *  this doctor actually prescribed for it. */
+export interface TopDrug { id: number; icd10_code: string | null; drug: DrugRef & { presentation_key: string }; label: string; default_dose: { dose_schedule?: string | null; duration_days?: number | null; timing?: string; instruction?: string | null; shorthand?: string }; use_count: number; is_pinned: boolean; rank: number; last_used_at: string | null }
 export interface TemplateBrief { id: number; name: string; shorthand: string | null; icd10_code: string | null; diagnosis_title: string | null; item_count: number; follow_up_days: number | null; is_shared: boolean; doctor_id: number | null; use_count: number }
 export interface TemplateItemRow { id: number; sort_order: number; drug: DrugRefInput & { generic_name: string; brand_name: string | null; strength: string | null; form: string | null; route: string | null }; shorthand: string; dose_json: ParsedLine | Record<string, never>; dose_schedule: string | null; duration_days: number | null; quantity: number | null; quantity_unit: string | null; timing: DoseTiming; instruction: string | null; instruction_bn: string | null; is_continued: boolean }
 export interface TemplateFull extends TemplateBrief { body: { chief_complaints: Complaint[]; examination_findings: string | null; advice: { snippet_id: number | null; text: string; text_bn: string | null }[]; investigations: { investigation_catalog_id: number | null; name: string }[]; follow_up_days: number | null }; items: TemplateItemRow[] }

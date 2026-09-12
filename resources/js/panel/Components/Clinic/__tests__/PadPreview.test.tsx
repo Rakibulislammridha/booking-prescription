@@ -1,10 +1,11 @@
 // The preview's whole job is to be the print. These assertions pin the two things a doctor aligns a physical
 // pre-printed pad against: that the blank band is exactly `header_height_mm` and that the sheet is the real paper
 // size in millimetres — the same numbers PadGeometry writes into `@page` and `.header-spacer`.
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PadPreview } from '../PadPreview';
 import { PAD_SECTIONS } from '@panel/lib/clinic/padGeometry';
+import { emptyLetterhead } from '@panel/lib/clinic/letterhead';
 import type { PadSettings } from '@shared/types/models';
 
 function pad(overrides: Partial<PadSettings> = {}): PadSettings {
@@ -30,9 +31,11 @@ function pad(overrides: Partial<PadSettings> = {}): PadSettings {
       rx_font_size_pt: null,
       flags: { icd_codes: true, investigation_prices: true, generic_names: true },
     },
+    letterhead: emptyLetterhead(),
     token_slip_template: 'thermal_58',
     default_language: 'both',
     signature_path: null,
+    sample_path: null,
     ...overrides,
   };
 }
@@ -48,10 +51,37 @@ const props = {
 
 describe('PadPreview', () => {
   it('draws the letterhead when preprinted mode is off', () => {
+    // A pad whose letterhead has never been designed still prints: the block falls back to the three facts the
+    // server would have seeded it with (PadLetterhead::defaults) rather than leaving the top of the sheet blank.
     render(<PadPreview pad={pad()} {...props} />);
 
-    expect(screen.getByText('Seba Hospital')).toBeTruthy();
+    // (The signature block carries the doctor's name too, so scope the look-up to the letterhead.)
+    const block = screen.getByTestId('pad-preview-letterhead');
+    expect(within(block).getByText('Dr. Rahman')).toBeTruthy();
+    expect(within(block).getByText('MBBS, FCPS')).toBeTruthy();
     expect(screen.queryByTestId('pad-preview-blank-band')).toBeNull();
+  });
+
+  it('prints the designed letterhead lines instead, once there are any', () => {
+    const designed = {
+      ...emptyLetterhead(),
+      accent_color: '#004080',
+      header: {
+        align: 'center' as const,
+        rule: true,
+        lines: [
+          { text: 'PROF. DR. A RAHMAN', text_bn: null, color: 'accent' as const, weight: 'bold' as const, size: 1.45, transform: 'uppercase' as const, align: null },
+          { text: 'MBBS (DMC), FCPS (Medicine)', text_bn: null, color: 'text' as const, weight: 'normal' as const, size: .95, transform: 'none' as const, align: null },
+        ],
+      },
+    };
+
+    render(<PadPreview pad={pad({ letterhead: designed })} {...props} />);
+
+    const lines = screen.getAllByTestId('pad-preview-letterhead-line');
+    expect(lines.map((node) => node.textContent)).toEqual(['PROF. DR. A RAHMAN', 'MBBS (DMC), FCPS (Medicine)']);
+    expect(lines[0]?.dataset.color).toBe('#004080');
+    expect(screen.getByTestId('pad-preview-header-rule')).toBeTruthy();
   });
 
   it('replaces the letterhead with a blank band of exactly header_height_mm in preprinted mode', () => {

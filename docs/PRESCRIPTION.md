@@ -1255,7 +1255,7 @@ as data URIs, both language renderings of every item, the drug-info URL.
   "follow_up": { "on": "2026-09-13", "note": null, "＋days": 7, "＋label": { "bn": "৭ দিন পর", "en": "after 7 days" } },
   "handwriting_image_path": null, "＋handwriting_pages": [],
   "drawing_image_path": "tenants/12/patients/…/drawing.png", "＋drawing_json": { "…": "DrawingJson (§4.11)" },
-  "pad": { "…": "pad_snapshot (doctor_pad_settings row at issue, §7.2)", "＋header_html_inlined": "<…images as data URIs…>" },
+  "pad": { "…": "pad_snapshot (doctor_pad_settings row at issue, §7.2)", "＋letterhead": { "…": "Letterhead (§7.2.1); [] when the doctor never designed one" }, "＋header_html_inlined": "<…legacy, no longer rendered…>" },
   "allergies": ["Penicillin"],
   "＋safety": { "alerts": [ "…final alert set…" ], "overrides": [ { "fingerprint": "interaction:major:17:203", "reason": "…", "overridden_by_user_id": 7, "overridden_at": "…" } ] },
   "＋qr": { "url": "https://clinic.example.com/rx/7Q3K9M2VXH4B", "svg_data_uri": "data:image/svg+xml;base64,…" },
@@ -1342,7 +1342,8 @@ resources/views/print/prescription/
   layout.blade.php              <html lang> · <style> (@page from pad, fonts, .bn/.en) · @yield('sheet') · print script for purpose=print
   sheet.blade.php               full layout: header → patient-bar → vitals → clinical → body → footer
   pharmacy.blade.php            drug + strength + form + quantity table only, patient name/age, code, QR
-  partials/header.blade.php     letterhead (pad.header_html / clinic+doctor block) OR blank spacer of pad.header_height_mm when preprinted
+  partials/header.blade.php     the structured letterhead (pad.letterhead, or the fallback built from the snapshot) OR a blank spacer of pad.header_height_mm when preprinted
+  partials/letterhead-line.blade.php  one LetterheadLine: text (+ optional Bangla twin) with its palette colour, weight, em size, transform and alignment
   partials/patient-bar.blade.php name · age/sex · code · date · serial · version tag
   partials/vitals.blade.php     one line, omitted when null
   partials/clinical.blade.php   C/C · O/E · Dx (codes per pad flag)
@@ -1352,7 +1353,7 @@ resources/views/print/prescription/
   partials/follow-up.blade.php  date + label + referral block
   partials/handwriting.blade.php one <img> per page, page-break-after
   partials/drawing.blade.php    inline SVG from DrawingSvgRenderer
-  partials/footer.blade.php     signature line · QR (svg data uri) · verification code · first 8 hex of snapshot_sha256 · "v2 · supersedes v1" · pad.footer_html · page x/y (CSS counters)
+  partials/footer.blade.php     signature line · QR (svg data uri) · verification code · first 8 hex of snapshot_sha256 · "v2 · supersedes v1" · then the pad's own footer band: a rule and one to three letterhead columns
 resources/views/site/rx/show.blade.php        verification page (site surface, Blade — not Inertia): status banner + @include sheet (purpose=verify, watermark COPY)
 resources/views/site/drug/show.blade.php      /drug/{slug} (site surface, Blade)
 ```
@@ -1363,14 +1364,19 @@ slips, invoices and receipts of other modules sit beside `prescription/`).
 ### 7.2 Pad settings → CSS
 
 `doctor_pad_settings` (SCHEMA §3.1): `paper_size (A4|A5)`, `orientation`,
-`letterhead_enabled`, `preprinted_mode`, `logo_path`, `header_html`,
-`footer_html` (sanitised on save, images inlined as data URIs at issue),
+`letterhead_enabled`, `preprinted_mode`, `logo_path`,
 `margins {top,right,bottom,left}` mm, `header_height_mm`, `footer_height_mm`,
 `font_family`, `font_size_pt`, `show_qr`, `show_vitals`, `show_drug_info_url`,
 `layout {sections[], columns, rx_font_size_pt, ＋flags:{icd_codes, investigation_prices, generic_names}}`
-(the `flags` key is a JSON-shape extension), plus `signature_path` and
-`default_language` (SCHEMA.md §3.1). The copy frozen in
-`pad_snapshot` is what renders. Rendered as:
+(the `flags` key is a JSON-shape extension), `letterhead` (§7.2.1), plus
+`signature_path` and `default_language` (SCHEMA.md §3.1). The copy frozen in
+`pad_snapshot` is what renders.
+
+`header_html` and `footer_html` are **no longer rendered by any print path**.
+They stay on the table, and inside every `pad_snapshot` ever frozen, for one
+release so that nothing a doctor typed is lost; `letterhead` replaced them.
+`sample_path` (the designer's tracing underlay) is never printed and is
+deliberately absent from `pad_snapshot`. Rendered as:
 
 ```css
 @page { size: A4 portrait; margin: 20mm 15mm 20mm 15mm; }           /* paper_size + orientation + margins */
@@ -1387,6 +1393,46 @@ Bengali resolves to the system-installed font in Chrome (also declared with
 `local()` and a bundled woff2 fallback). Numbers in Bangla renderings use
 Bangla digits (`NumberFormatter` helper `bn_digits()`); drug names always
 print in English (`.drug`).
+
+`.sheet` takes its `min-height` from `PadGeometry::sheetMinHeightMm()` — the
+printable box *minus one millimetre*. Chrome lays the page box out from a
+rounded inch paper size (Puppeteer's A4 is 8.27 × 11.7 in, A5 5.83 × 8.27 in),
+so a `min-height` of exactly the printable height can round past it, overflow
+by a sub-pixel and open a second page for a footer that fits on the first.
+
+### 7.2.1 `letterhead` — the pad's printed identity
+
+`App\Domain\Prescription\Data\Letterhead` (+ `LetterheadLine`,
+`LetterheadColumn`) is the contract; the column, the designer's payload, the
+writer's preview and the print partials all speak this one shape.
+
+```
+letterhead = {
+  accent_color: "#B03A2E",              // #RRGGBB, validated; anything else falls back to the default
+  text_color:   "#1A1A1A",
+  muted_color:  "#666666",
+  header: { align: "left"|"center"|"split", lines: [Line, …0..20], rule: bool },
+  footer: { columns: [ { align: "left"|"center"|"right", logo: bool, lines: [Line, …] }, …1..3 ], rule: bool }
+}
+Line = { text: string(≤160), text_bn: string|null, color: "accent"|"text"|"muted",
+         weight: "normal"|"bold", size: 0.7–2.0 (em over font_size_pt),
+         transform: "none"|"uppercase", align: null|"left"|"center"|"right" }
+```
+
+`split` puts the doctor block left and the clinic block right: a line whose own
+`align` is `right` belongs to the right block, everything else to the left.
+
+`Letterhead::fromArray()` never throws — every malformed field falls back to
+that field's default, `strip_tags` runs on every string on the way in, and
+lines whose text is empty are dropped. A letterhead is text, never markup: the
+same document is served unauthenticated at `/rx/{code}`.
+
+Two fallbacks build the same block for a doctor who has never opened the
+designer, so nothing has to be configured before a pad prints correctly:
+`Letterhead::defaults(Doctor, ?Tenant)` reads the models (the designer's
+"reset to my profile"), and `Letterhead::fromSnapshot(clinic, doctor)` reads
+the frozen snapshot — which is how a prescription issued before this column
+existed still prints its header, with no model access at render time (I6).
 
 ### 7.3 Pharmacy-friendly view
 

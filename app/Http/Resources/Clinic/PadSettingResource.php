@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Clinic;
 
+use App\Domain\Prescription\Data\Letterhead;
 use App\Domain\Prescription\Render\PadGeometry;
 use App\Models\Tenant\DoctorPadSetting;
 use Illuminate\Http\Request;
@@ -51,9 +52,14 @@ final class PadSettingResource extends JsonResource
                     'generic_names' => (bool) ($this->layout['flags']['generic_names'] ?? true),
                 ],
             ],
+            // Always the full contract shape, never the raw column, and normalised through the very DTO the print
+            // partials render from: a pad row written before the letterhead existed (or by an older client) still
+            // reaches the designer as something it can draw, and as exactly what it will print.
+            'letterhead' => Letterhead::fromArray($this->letterhead)->toArray(),
             'token_slip_template' => $this->token_slip_template->value,
             'default_language' => $this->default_language,
             'signature_path' => $this->signature_path,
+            'sample_path' => $this->sample_path,
         ];
     }
 

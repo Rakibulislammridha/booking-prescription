@@ -67,6 +67,18 @@ export interface FollowUp {
 
 export type FocusZone = 'complaints' | 'vitals' | 'findings' | 'diagnosis' | 'rx' | 'investigations' | 'advice' | 'follow_up' | 'referral' | 'issue';
 
+/** Where inside an Rx line focus should land: the drug field, the dose field, or the dose field with its text
+ *  selected — what a quick-pick insert wants, because the dose is already filled with the doctor's last one. */
+export type FocusPhase = 'drug' | 'dose' | 'dose_all';
+
+/** `seq` increments on every focus request so asking for the SAME line twice still moves the caret there. */
+export interface FocusTarget {
+  zone: FocusZone;
+  itemKey?: string;
+  phase?: FocusPhase;
+  seq: number;
+}
+
 export interface WriterApi {
   saveDraft: typeof saveDraft;
   checkSafety: typeof checkSafety;
@@ -119,7 +131,7 @@ export interface WriterState {
   retries: number;
   conflict: PrescriptionDraft | null;
   templateSkipped: string[];
-  focus: { zone: FocusZone; itemKey?: string };
+  focus: FocusTarget;
 
   // ---- actions
   setLanguage(language: PrescriptionLanguage): void;
@@ -150,7 +162,7 @@ export interface WriterState {
   scheduleCheck(): void;
   issue(options: { print: boolean; addToMedicationList?: boolean }): Promise<IssueResult>;
   reloadFromServer(draft: PrescriptionDraft): void;
-  setFocus(zone: FocusZone, itemKey?: string): void;
+  setFocus(zone: FocusZone, itemKey?: string, phase?: FocusPhase): void;
   dismissConflict(): void;
   destroy(): void;
 }
@@ -408,7 +420,7 @@ export function createWriterStore(props: WriterPageProps, options: WriterStoreOp
       retries: 0,
       conflict: null,
       templateSkipped: [],
-      focus: { zone: props.visit.chief_complaints.length === 0 ? 'complaints' : 'rx' },
+      focus: { zone: props.visit.chief_complaints.length === 0 ? 'complaints' : 'rx', seq: 0 },
 
       setLanguage(language) {
         set({ language });
@@ -457,7 +469,7 @@ export function createWriterStore(props: WriterPageProps, options: WriterStoreOp
         items.splice(index, 0, item);
         const next = items.map((i, sort) => ({ ...i, sort_order: sort }));
         // The always-present trailing blank line must never steal focus from the zone the doctor is in.
-        set(options?.focus === false ? { items: next } : { items: next, focus: { zone: 'rx', itemKey: item.key } });
+        set(options?.focus === false ? { items: next } : { items: next, focus: { zone: 'rx', itemKey: item.key, seq: get().focus.seq + 1 } });
         if (seed?.drug !== undefined || seed?.shorthand !== undefined) touch();
         return item.key;
       },
@@ -495,7 +507,7 @@ export function createWriterStore(props: WriterPageProps, options: WriterStoreOp
         if (source === undefined) return key;
         const copy: RxItemDraft = { ...source, key: ulid(), id: null, safety_overrides: [], status: 'editing' };
         items.splice(index + 1, 0, copy);
-        set({ items: items.map((i, sort) => ({ ...i, sort_order: sort })), focus: { zone: 'rx', itemKey: copy.key } });
+        set({ items: items.map((i, sort) => ({ ...i, sort_order: sort })), focus: { zone: 'rx', itemKey: copy.key, seq: get().focus.seq + 1 } });
         touch();
         return copy.key;
       },
@@ -686,8 +698,8 @@ export function createWriterStore(props: WriterPageProps, options: WriterStoreOp
         });
       },
 
-      setFocus(zone, itemKey) {
-        set({ focus: { zone, itemKey } });
+      setFocus(zone, itemKey, phase) {
+        set({ focus: { zone, itemKey, phase, seq: get().focus.seq + 1 } });
       },
 
       dismissConflict() {

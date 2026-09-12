@@ -13,7 +13,7 @@ import AddIcon from '@mui/icons-material/Add';
 import HelpIcon from '@mui/icons-material/HelpOutlined';
 import SaveTemplateIcon from '@mui/icons-material/BookmarkAdd';
 import type { SafetyAlert } from '@shared/types/models';
-import { alertsForItem, type RxItemDraft } from '@panel/lib/prescription/store/writerStore';
+import { alertsForItem, type FocusPhase, type FocusTarget, type RxItemDraft } from '@panel/lib/prescription/store/writerStore';
 import { useWriterStoreApi } from '@panel/hooks/prescription/useWriterStore';
 import { RxLine } from './RxLine';
 
@@ -22,7 +22,9 @@ export interface RxSectionProps {
   alerts: SafetyAlert[];
   dxCodes: string[];
   lang: 'bn' | 'en';
-  focusKey: string | undefined;
+  /** The store's focus target. Its `seq` is what makes a repeated request for the SAME line move the caret again —
+   *  a quick-pick insert into the line the doctor is already on has to land in the dose field. */
+  focus: FocusTarget;
   containerRef?: React.RefObject<HTMLDivElement | null>;
   onNextZone: () => void;
   onCheatsheet: () => void;
@@ -32,21 +34,23 @@ export interface RxSectionProps {
   registerInsert: (insert: (text: string) => void) => void;
 }
 
-export function RxSection({ items, alerts, dxCodes, lang, focusKey, containerRef, onNextZone, onCheatsheet, onSaveTemplate, onFocusAlert, registerInsert }: RxSectionProps) {
+export function RxSection({ items, alerts, dxCodes, lang, focus, containerRef, onNextZone, onCheatsheet, onSaveTemplate, onFocusAlert, registerInsert }: RxSectionProps) {
   const { t } = useTranslation();
   const store = useWriterStoreApi();
-  const focusers = useRef(new Map<string, (phase?: 'drug' | 'dose') => void>());
+  const focusers = useRef(new Map<string, (phase?: FocusPhase) => void>());
 
-  const registerFocus = useCallback((key: string, focus: ((phase?: 'drug' | 'dose') => void) | null) => {
-    if (focus === null) focusers.current.delete(key);
-    else focusers.current.set(key, focus);
+  const registerFocus = useCallback((key: string, focusLine: ((phase?: FocusPhase) => void) | null) => {
+    if (focusLine === null) focusers.current.delete(key);
+    else focusers.current.set(key, focusLine);
   }, []);
 
+  const { zone, itemKey, phase, seq } = focus;
+
   useEffect(() => {
-    if (focusKey === undefined) return;
-    const focus = focusers.current.get(focusKey);
-    if (focus !== undefined) window.setTimeout(() => focus(), 0);
-  }, [focusKey, items.length]);
+    if (zone !== 'rx' || itemKey === undefined) return;
+    const focusLine = focusers.current.get(itemKey);
+    if (focusLine !== undefined) window.setTimeout(() => focusLine(phase), 0);
+  }, [zone, itemKey, phase, seq]);
 
   useEffect(() => {
     registerInsert((text: string) => {

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Prescription\Render;
 
+use App\Domain\Prescription\Data\Letterhead;
+
 /**
  * PRESCRIPTION.md §7.2 — `pad_snapshot` → CSS. Every number the sheet needs (page box, margins, the blank band a
  * preprinted pad reserves, font sizes, section order, layout flags) is read from the frozen pad copy, never from
@@ -30,6 +32,9 @@ final readonly class PadGeometry
     ];
 
     private const DEFAULT_MARGINS = ['top' => 20, 'right' => 15, 'bottom' => 20, 'left' => 15];
+
+    /** Rounding slack between our exact millimetres and Chrome's page box — see `sheetMinHeightMm()`. */
+    private const SHEET_SLACK_MM = 1.0;
 
     /** @param  array<string, mixed>  $pad */
     public function __construct(private array $pad, private RenderOptions $options) {}
@@ -104,6 +109,23 @@ final readonly class PadGeometry
         $m = $this->margins();
 
         return max(20.0, $this->paperHeightMm() - $m['top'] - $m['bottom']);
+    }
+
+    /**
+     * What `.sheet` may actually claim as `min-height`, and the difference between a one-page prescription and a
+     * two-page one.
+     *
+     * `contentHeightMm()` is the printable box in exact ISO 216 millimetres. The box Chrome lays out is not: the
+     * paper size arrives as a rounded *inch* figure (Puppeteer's A4 is 8.27 × 11.7 in, A5 5.83 × 8.27 in) and the
+     * result is converted to CSS pixels, so the real printable height lands a fraction of a millimetre either side
+     * of ours. A `min-height` of exactly the printable height therefore rounds *past* it about half the time, the
+     * flex column overflows by a sub-pixel, and Chrome opens a second page to hold a footer that fits perfectly
+     * well on the first — which is precisely the empty second sheet of signature and QR that came out of the
+     * printer. One millimetre of slack is invisible on paper and removes the coin toss.
+     */
+    public function sheetMinHeightMm(): float
+    {
+        return max(20.0, $this->contentHeightMm() - self::SHEET_SLACK_MM);
     }
 
     public function contentWidthMm(): float
@@ -199,6 +221,26 @@ final readonly class PadGeometry
         return $ordered === [] ? self::SECTIONS : array_values(array_unique($ordered));
     }
 
+    /**
+     * The pad's structured letterhead (§7.2): the frozen `pad.letterhead` when the doctor designed one, otherwise
+     * the fallback built from this same snapshot's clinic and doctor blocks — so a prescription issued before the
+     * column existed prints the header it always printed, still without a single model read (I6).
+     *
+     * @param  array<string, mixed>  $clinic  snapshot.clinic
+     * @param  array<string, mixed>  $doctor  snapshot.doctor
+     */
+    public function letterhead(array $clinic = [], array $doctor = []): Letterhead
+    {
+        $letterhead = Letterhead::fromArray($this->pad['letterhead'] ?? null);
+
+        return $letterhead->isEmpty() ? Letterhead::fromSnapshot($clinic, $doctor) : $letterhead;
+    }
+
+    /**
+     * @deprecated The free-HTML letterhead is no longer rendered by any print path — `letterhead()` replaced it.
+     *             The columns stay on `doctor_pad_settings` (and in every frozen `pad_snapshot`) for one release
+     *             so nothing is lost while doctors migrate; these accessors exist only for that data.
+     */
     public function headerHtml(): ?string
     {
         $html = $this->pad['header_html_inlined'] ?? $this->pad['header_html'] ?? null;
@@ -206,6 +248,7 @@ final readonly class PadGeometry
         return is_string($html) && trim($html) !== '' ? $html : null;
     }
 
+    /** @deprecated See `headerHtml()`. */
     public function footerHtml(): ?string
     {
         $html = $this->pad['footer_html'] ?? null;

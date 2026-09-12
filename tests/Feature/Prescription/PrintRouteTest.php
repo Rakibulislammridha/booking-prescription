@@ -143,7 +143,11 @@ final class PrintRouteTest extends TestCase
         [$withQr] = $this->issuedWithContent(['show_qr' => true]);
         $html = $this->get('/panel/prescriptions/'.$withQr->public_id.'/print')->assertOk()->getContent();
         $this->assertStringContainsString('src="data:image/svg+xml;base64,', $html);       // frozen at issue, no library call
-        $this->assertStringContainsString((string) $withQr->snapshot?->get('prescription.verify_url'), $html);
+        // The sheet names WHERE to verify, not the 50-character URL: that wrapped to four lines in a 30 mm column
+        // and nobody types one. The QR beside it carries the address, and the code is printed twice.
+        $host = (string) parse_url((string) $withQr->snapshot?->get('prescription.verify_url'), PHP_URL_HOST);
+        $this->assertStringContainsString($host.'/rx', $html);
+        $this->assertStringNotContainsString((string) $withQr->snapshot?->get('prescription.verify_url'), $html);
         $this->assertStringContainsString(substr((string) $withQr->snapshot_sha256, 0, 8), $html);
 
         [$withoutQr] = $this->issuedWithContent(['show_qr' => false]);

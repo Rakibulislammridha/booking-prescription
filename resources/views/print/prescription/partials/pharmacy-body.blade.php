@@ -19,7 +19,8 @@
     <div class="patient-bar">
       <span><b>{{ $patient['name'] ?? '' }}</b></span>
       @if (! empty($patient['age_text']))<span class="muted">{{ $labels->get('age') }}: <span class="num">{{ $patient['age_text'] }}</span></span>@endif
-      @if (! empty($patient['gender']))<span class="muted">{{ $labels->get('sex') }}: <span class="en">{{ strtoupper((string) $patient['gender']) }}</span></span>@endif
+      @php $sex = $labels->sex($patient['gender'] ?? null); @endphp
+      @if ($sex !== '')<span class="muted">{{ $labels->get('sex') }}: {{ $sex }}</span>@endif
       @if (! empty($visit['date']))<span class="muted">{{ $labels->get('date') }}: <span class="num">{{ $visit['date'] }}</span></span>@endif
       @if (! empty($rx['verification_code']))<span class="muted code">{{ $rx['verification_code'] }}</span>@endif
     </div>
@@ -53,6 +54,11 @@
               <div class="generic drug tiny">{{ $item['generic_name'] }}</div>
             @endif
             <div class="tiny muted">{{ $labels->get('instruction') }}</div>
+            {{-- The dispensing copy is read at a counter, often on a phone: here the drug-information address is
+                 printed in full, which is exactly where the sheet itself only carries a footnote marker. --}}
+            @if ($pad->showDrugInfoUrl() && ! empty($item['info_url']))
+              <div class="info-url tiny code">{{ $item['info_url'] }}</div>
+            @endif
           </td>
           <td class="qty">
             @if (! empty($en['quantity']))

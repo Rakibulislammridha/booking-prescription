@@ -17,7 +17,7 @@ import WarningIcon from '@mui/icons-material/WarningAmber';
 import type { DrugSearchHit, SafetyAlert } from '@shared/types/models';
 import { drugFromHit, drugLabel } from '@panel/lib/prescription/context';
 import { resolveRxLineKey } from '@panel/lib/prescription/keyboard';
-import { itemErrors, itemInfos, itemWarnings, type RxItemDraft } from '@panel/lib/prescription/store/writerStore';
+import { itemErrors, itemInfos, itemWarnings, type FocusPhase, type RxItemDraft } from '@panel/lib/prescription/store/writerStore';
 import { useWriterStoreApi } from '@panel/hooks/prescription/useWriterStore';
 import { DrugAutocomplete } from './DrugAutocomplete';
 
@@ -30,7 +30,7 @@ export interface RxLineProps {
   alerts: SafetyAlert[];
   onNextZone: () => void;
   onFocusAlert: (fingerprint: string) => void;
-  registerFocus: (key: string, focus: ((phase?: 'drug' | 'dose') => void) | null) => void;
+  registerFocus: (key: string, focus: ((phase?: FocusPhase) => void) | null) => void;
 }
 
 interface PopupState {
@@ -67,7 +67,11 @@ export const RxLine = memo(function RxLine({ item, index, isLast, dxCodes, lang,
     registerFocus(item.key, (phase) => {
       const target = phase === 'drug' || item.drug === null ? drugRef.current : doseRef.current;
       target?.focus();
-      if (target === doseRef.current) target?.setSelectionRange(target.value.length, target.value.length);
+      if (target === null || target !== doseRef.current) return;
+      // `dose_all` selects what is already there (a quick-pick insert pre-fills the doctor's last dose, so typing
+      // replaces it and Enter keeps it); anything else parks the caret at the end so typing appends.
+      if (phase === 'dose_all') target.select();
+      else target.setSelectionRange(target.value.length, target.value.length);
     });
     return () => registerFocus(item.key, null);
   }, [item.key, item.drug, registerFocus]);

@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Panel\Clinic;
 
+use App\Domain\Audit\AuditRecorder;
+use App\Domain\Audit\Enums\AuditAction;
 use App\Domain\Clinic\Actions\UpdateDoctorPadSettings;
 use App\Domain\Clinic\Data\PadSettingsData;
 use App\Domain\Clinic\Enums\PadOrientation;
 use App\Domain\Clinic\Enums\PadPaperSize;
 use App\Domain\Clinic\Enums\TokenSlipTemplate;
 use App\Domain\Clinic\Services\ClinicUploads;
+use App\Domain\Clinic\Services\PadSampleText;
 use App\Domain\Clinic\Services\PadTestSheet;
+use App\Domain\Patients\Exceptions\OcrEngineUnavailable;
+use App\Domain\Patients\Exceptions\OcrFailed;
+use App\Domain\Prescription\Data\Letterhead;
 use App\Domain\Prescription\Render\PadGeometry;
 use App\Domain\Prescription\Render\PrescriptionRenderer;
 use App\Domain\Shared\Actor;
@@ -18,11 +24,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Panel\Clinic\RemovePadAssetRequest;
 use App\Http\Requests\Panel\Clinic\UpdatePadSettingsRequest;
 use App\Http\Requests\Panel\Clinic\UploadPadAssetRequest;
+use App\Http\Requests\Panel\Clinic\UploadPadSampleRequest;
 use App\Http\Resources\Clinic\DoctorResource;
 use App\Http\Resources\Clinic\PadSettingResource;
 use App\Models\Tenant\Doctor;
 use App\Models\Tenant\DoctorPadSetting;
+use App\Tenancy\Facades\Tenancy;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -42,7 +51,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 final class PadDesignerController extends Controller
 {
-    public function __construct(private readonly ClinicUploads $uploads) {}
+    /** The sample is a tracing guide, never print output: only these render as an underlay in the browser. */
+    private const SAMPLE_KINDS = ['png' => 'image', 'jpg' => 'image', 'jpeg' => 'image', 'webp' => 'image', 'pdf' => 'pdf'];
+
+    public function __construct(
+        private readonly ClinicUploads $uploads,
+        private readonly PadSampleText $sampleText,
+        private readonly AuditRecorder $audit,
+    ) {}
 
     public function edit(Doctor $doctor): InertiaResponse
     {
@@ -67,7 +83,24 @@ final class PadDesignerController extends Controller
             'assets' => [
                 'logo_url' => $this->assetUrl($doctor, 'logo'),
                 'signature_url' => $this->assetUrl($doctor, 'signature'),
+                'sample_url' => $this->assetUrl($doctor, 'sample'),
+                'sample_kind' => $this->sampleKind($pad->sample_path),
             ],
+            // "Reset to my profile": the letterhead the doctor's own name, degrees, BMDC number and clinic make.
+            // It is the SAME `Letterhead::defaults()` the renderer falls back to for an undesigned pad, so the
+            // designer's starting point is literally what that doctor prints today.
+            'letterhead_defaults' => Letterhead::defaults($doctor, Tenancy::current())->toArray(),
+            // Whether "read text from the sample" can actually do anything here. Absent configuration it is
+            // false with a reason, and the designer says so rather than offering a button that does nothing.
+            'ocr' => [
+                'available' => $this->sampleText->isAvailable($pad->sample_path),
+                'reason' => $this->sampleText->reason($pad->sample_path),
+            ],
+            // One-shot: the lines the last "read text" produced, offered as a per-line prefill.
+            'sample_lines' => array_values(array_filter(
+                (array) session('pad.sample_lines', []),
+                'is_string',
+            )),
         ]);
     }
 
@@ -102,6 +135,71 @@ final class PadDesignerController extends Controller
     }
 
     /**
+     * The sample pad: a photo or PDF of the stationery the clinic already prints, stored on the private uploads
+     * disk and drawn UNDER the live preview at true scale. It is a tracing guide — the designer says so in as
+     * many words — and it is never printed, never inlined into a snapshot and never read automatically.
+     */
+    public function sample(UploadPadSampleRequest $request, Doctor $doctor, UpdateDoctorPadSettings $update): RedirectResponse
+    {
+        $file = $request->sample();
+        $path = $this->uploads->padSample($doctor->public_id, $file);
+        $pad = $update->handle($doctor, PadSettingsData::fromArray(['sample_path' => $path]), Actor::fromRequest($request));
+
+        $this->audit->record(AuditAction::Update, $pad, null, ['sample_path' => $path], [
+            'doctor_public_id' => $doctor->public_id,
+            'mime_type' => $file->getClientMimeType(),
+            'bytes' => $file->getSize(),
+        ]);
+
+        return back()->with('flash.success', __('clinic.pad.flash.sample_saved'));
+    }
+
+    /** Clears the underlay and deletes the object: unlike a logo, no snapshot has ever referenced it. */
+    public function removeSample(Request $request, Doctor $doctor, UpdateDoctorPadSettings $update): RedirectResponse
+    {
+        $this->authorize('designPad', $doctor);
+        $pad = $this->pad($doctor);
+        $path = $pad->sample_path;
+
+        if ($path !== null) {
+            Storage::disk($this->uploads->uploadsDisk())->delete($path);
+        }
+
+        $pad = $update->handle($doctor, PadSettingsData::fromArray(['sample_path' => null]), Actor::fromRequest($request));
+        $this->audit->record(AuditAction::Delete, $pad, ['sample_path' => $path], null, ['doctor_public_id' => $doctor->public_id]);
+
+        return back()->with('flash.success', __('clinic.pad.flash.sample_removed'));
+    }
+
+    /**
+     * "Read text from the sample" — the one automatic step that is honest (BRIEF §5.A). It offers the LINES it
+     * found, per line, for the doctor to accept; it never rebuilds a design, because a wrong guess at colours and
+     * positions costs more to undo than to type. With no engine configured the route is not offered at all.
+     */
+    public function readSample(Request $request, Doctor $doctor): RedirectResponse
+    {
+        $this->authorize('designPad', $doctor);
+        $pad = $this->pad($doctor);
+        $path = $pad->sample_path;
+
+        if ($path === null || ! $this->sampleText->isAvailable($path)) {
+            return back()->with('flash.error', __('clinic.pad.underlay.read_unavailable'));
+        }
+
+        try {
+            $lines = $this->sampleText->lines($this->uploads->uploadsDisk(), $path);
+        } catch (OcrFailed|OcrEngineUnavailable) {
+            return back()->with('flash.error', __('clinic.pad.underlay.read_failed'));
+        }
+
+        $this->audit->record(AuditAction::View, $pad, null, null, ['doctor_public_id' => $doctor->public_id, 'sample_lines' => count($lines)]);
+
+        return back()
+            ->with('pad.sample_lines', $lines)
+            ->with($lines === [] ? 'flash.warning' : 'flash.success', __($lines === [] ? 'clinic.pad.underlay.read_empty' : 'clinic.pad.underlay.read_done', ['count' => count($lines)]));
+    }
+
+    /**
      * The alignment sheet. Same renderer, same Blade tree, same PadGeometry as a real prescription — only the
      * content is sample data, and it carries the DRAFT watermark so a test page can never pass for a prescription.
      */
@@ -123,10 +221,10 @@ final class PadDesignerController extends Controller
     public function assetFile(Doctor $doctor, string $kind): StreamedResponse
     {
         $this->authorize('designPad', $doctor);
-        abort_unless(in_array($kind, ['logo', 'signature'], true), 404);
+        abort_unless(in_array($kind, ['logo', 'signature', 'sample'], true), 404);
 
         $pad = $this->pad($doctor);
-        $path = $kind === 'logo' ? $pad->logo_path : $pad->signature_path;
+        $path = $this->assetPath($pad, $kind);
         $disk = Storage::disk($this->uploads->uploadsDisk());
 
         abort_if($path === null || ! $disk->exists($path), 404);
@@ -144,9 +242,23 @@ final class PadDesignerController extends Controller
 
     private function assetUrl(Doctor $doctor, string $kind): ?string
     {
-        $pad = $this->pad($doctor);
-        $path = $kind === 'logo' ? $pad->logo_path : $pad->signature_path;
+        $path = $this->assetPath($this->pad($doctor), $kind);
 
         return $path === null ? null : route('panel.clinic.doctors.pad.asset.show', ['doctor' => $doctor->public_id, 'kind' => $kind]);
+    }
+
+    private function assetPath(DoctorPadSetting $pad, string $kind): ?string
+    {
+        return match ($kind) {
+            'logo' => $pad->logo_path,
+            'sample' => $pad->sample_path,
+            default => $pad->signature_path,
+        };
+    }
+
+    /** 'image' | 'pdf' | null — the designer draws an image underlay one way and a PDF's first page another. */
+    private function sampleKind(?string $path): ?string
+    {
+        return $path === null ? null : (self::SAMPLE_KINDS[strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? null);
     }
 }

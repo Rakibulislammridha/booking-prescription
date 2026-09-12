@@ -95,6 +95,24 @@ export async function fetchPrescription(prescription: string): Promise<{ prescri
   return data;
 }
 
+// ---- the printed sheet ------------------------------------------------------------------------------------------
+
+/**
+ * The route that renders the sheet — `panel.prescription.print`. For an issued prescription it is the frozen
+ * snapshot; for a DRAFT it is the transient preview with the DRAFT watermark (§7.1), rendered by the same
+ * PrescriptionRenderer through the same Blade tree. This ONE name is why the writer's live pad preview cannot
+ * drift from what the printer puts on paper: the preview does not re-implement the sheet, it loads it.
+ */
+export function printUrl(prescription: string): string {
+  return route('panel.prescription.print', { prescription });
+}
+
+/** The sheet's HTML for the live preview. Accept: text/html — everything else the writer asks for is JSON. */
+export async function fetchPrintHtml(prescription: string, signal?: AbortSignal): Promise<string> {
+  const { data } = await http.get<string>(printUrl(prescription), { signal, responseType: 'text', headers: { Accept: 'text/html' }, transformResponse: (raw: string) => raw });
+  return data;
+}
+
 export async function fetchVersions(prescription: string): Promise<PrescriptionBrief[]> {
   const { data } = await http.get<{ data: PrescriptionBrief[] }>(route('panel.prescription.prescriptions.versions', { prescription }));
   return data.data;

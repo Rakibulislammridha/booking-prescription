@@ -4,14 +4,15 @@
 // margins as padding, the preprinted band as a fixed `headerHeightMm` block — and then scaled as a whole with a
 // single `transform: scale()` to fit the column. Nothing inside is resized independently, so every ratio on screen
 // is the ratio on paper, and the geometry comes from `padGeometry()`, the mirror of the renderer's own PadGeometry.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { padFlag, padGeometry, PX_PER_MM } from '@panel/lib/clinic/padGeometry';
+import { lineSx, lineText, paletteOf, splitHeader } from '@panel/lib/clinic/letterhead';
 import { formatBn } from '@shared/format/number';
 import { getLocale } from '@shared/locale';
-import type { PadSectionKey, PadSettings } from '@shared/types/models';
+import type { LetterheadAlign, LetterheadLine, PadSectionKey, PadSettings } from '@shared/types/models';
 
 interface Props {
   pad: PadSettings;
@@ -21,9 +22,14 @@ interface Props {
   bmdc: string | null;
   logoUrl: string | null;
   signatureUrl: string | null;
+  /** The uploaded sample pad, drawn UNDER the sheet as a tracing guide. Never printed — see Pad.tsx's copy. */
+  sampleUrl?: string | null;
+  sampleKind?: 'image' | 'pdf' | null;
+  sampleOpacity?: number;
+  sampleVisible?: boolean;
 }
 
-export function PadPreview({ pad, clinicName, doctorName, degrees, bmdc, logoUrl, signatureUrl }: Props) {
+export function PadPreview({ pad, clinicName, doctorName, degrees, bmdc, logoUrl, signatureUrl, sampleUrl = null, sampleKind = null, sampleOpacity = 0.4, sampleVisible = false }: Props) {
   const { t } = useTranslation();
   const frame = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(1);
@@ -56,6 +62,46 @@ export function PadPreview({ pad, clinicName, doctorName, degrees, bmdc, logoUrl
 
   const sheetPx = { width: g.paperWidthMm * PX_PER_MM, height: g.paperHeightMm * PX_PER_MM };
   const mm = (value: number): string => `${value}mm`;
+
+  // The designed letterhead (BRIEF §5.A). The palette and every line's styling come from `letterhead.ts`, the
+  // mirror of PadLetterhead — so the block drawn here is the block the print partials draw from the same array.
+  const lh = pad.letterhead;
+  const palette = paletteOf(lh);
+  const language = pad.default_language;
+  const showLetterhead = g.letterhead && !g.preprinted;
+  // Letterhead off but not preprinted keeps the plain rule the sheet has always drawn under its header.
+  const headerRule = !g.preprinted && (showLetterhead ? lh.header.rule : true);
+
+  const renderLine = (line: LetterheadLine, key: string, fallbackAlign?: LetterheadAlign): ReactNode => {
+    const { primary, secondary } = lineText(line, language);
+    return (
+      <Box key={key} data-testid="pad-preview-letterhead-line" data-color={palette[line.color]} sx={lineSx(line, lh, fallbackAlign)}>
+        {primary}
+        {secondary === null ? null : <Box sx={{ fontSize: '.88em' }}>{secondary}</Box>}
+      </Box>
+    );
+  };
+
+  const headerLines = lh.header.lines;
+  const split = splitHeader(headerLines);
+  // `split` is a LAYOUT, not a text alignment: the two columns it makes are themselves left and right aligned.
+  const blockAlign: LetterheadAlign = lh.header.align === 'center' ? 'center' : 'left';
+  const headerBlock: ReactNode = lh.header.align === 'split' ? (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: '4mm' }}>
+      <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
+        {logoUrl ? <Box component="img" src={logoUrl} alt="" sx={{ maxHeight: '14mm', maxWidth: '30mm', objectFit: 'contain', display: 'block', mb: '1mm' }} /> : null}
+        {split.left.map((line, index) => renderLine(line, `l${index}`, 'left'))}
+      </Box>
+      <Box sx={{ flex: '1 1 0', minWidth: 0 }}>{split.right.map((line, index) => renderLine(line, `r${index}`, 'right'))}</Box>
+    </Box>
+  ) : (
+    <Box sx={{ textAlign: blockAlign }}>
+      {logoUrl ? (
+        <Box component="img" src={logoUrl} alt="" sx={{ maxHeight: '14mm', maxWidth: '30mm', objectFit: 'contain', display: 'inline-block', mb: '1mm' }} />
+      ) : null}
+      {headerLines.map((line, index) => renderLine(line, `h${index}`, blockAlign))}
+    </Box>
+  );
 
   const heading = (key: string) => (
     <Box sx={{ fontWeight: 700, fontSize: '.82em', letterSpacing: '.04em', textTransform: 'uppercase', color: 'grey.700', mb: '.8mm' }}>
@@ -173,10 +219,29 @@ export function PadPreview({ pad, clinicName, doctorName, degrees, bmdc, logoUrl
             lineHeight: 1.45,
             display: 'flex',
             flexDirection: 'column',
+            position: 'relative',
           }}
         >
+          {/* The tracing underlay: the clinic's real pad, at the same true scale, UNDER everything the designer
+              draws. It is inert (`pointer-events: none`), it is never part of the print, and Pad.tsx says so. */}
+          {sampleVisible && sampleUrl !== null ? (
+            <Box
+              data-testid="pad-preview-underlay"
+              data-opacity={sampleOpacity}
+              component={sampleKind === 'pdf' ? 'embed' : 'img'}
+              src={sampleUrl}
+              {...(sampleKind === 'pdf' ? { type: 'application/pdf' } : { alt: '' })}
+              sx={{
+                position: 'absolute', inset: 0, zIndex: 0,
+                width: '100%', height: '100%', objectFit: 'contain',
+                opacity: sampleOpacity, pointerEvents: 'none', border: 0,
+              }}
+            />
+          ) : null}
           <Box
             sx={{
+              position: 'relative',
+              zIndex: 1,
               flex: '1 1 auto',
               minHeight: 0,
               overflow: 'hidden',
@@ -203,21 +268,25 @@ export function PadPreview({ pad, clinicName, doctorName, degrees, bmdc, logoUrl
               >
                 {t('clinic.pad.preview.blank_band', { mm: mmLabel(g.headerHeightMm) })}
               </Box>
-            ) : g.letterhead ? (
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: '4mm', pb: '2mm' }}>
-                <Box>
-                  {logoUrl ? <Box component="img" src={logoUrl} alt="" sx={{ maxHeight: '18mm', maxWidth: '34mm', objectFit: 'contain', display: 'block', mb: '1mm' }} /> : null}
-                  <Box sx={{ fontSize: '1.35em', fontWeight: 700, lineHeight: 1.2 }}>{clinicName}</Box>
-                  <Box sx={{ fontSize: '.86em', color: 'grey.600' }}>{t('clinic.pad.sample.branch')} · {t('clinic.pad.sample.address')}</Box>
-                </Box>
-                <Box sx={{ textAlign: 'right' }}>
-                  <Box sx={{ fontSize: '1.15em', fontWeight: 700, lineHeight: 1.2 }}>{doctorName}</Box>
-                  {degrees ? <Box sx={{ fontSize: '.86em' }}>{degrees}</Box> : null}
-                  {bmdc ? <Box sx={{ fontSize: '.86em', color: 'grey.600' }}>BMDC {bmdc}</Box> : null}
-                </Box>
+            ) : showLetterhead ? (
+              <Box data-testid="pad-preview-letterhead" data-header-align={lh.header.align} data-lines={headerLines.length} sx={{ pb: '1.5mm' }}>
+                {/* An undesigned pad still prints: the server seeds the letterhead from the doctor's own profile,
+                    and this is the one case where the preview falls back to the same three facts it would. */}
+                {headerLines.length === 0 ? (
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Box sx={{ fontSize: '1.35em', fontWeight: 700, lineHeight: 1.2, color: palette.accent }}>{doctorName || clinicName}</Box>
+                    {degrees ? <Box sx={{ fontSize: '.86em', color: palette.text }}>{degrees}</Box> : null}
+                    {bmdc ? <Box sx={{ fontSize: '.86em', color: palette.muted }}>BMDC {bmdc}</Box> : null}
+                  </Box>
+                ) : headerBlock}
               </Box>
             ) : null}
-            <Box sx={{ borderTop: g.preprinted ? 0 : '1.2pt solid', borderColor: 'common.black', mt: g.preprinted ? '2mm' : '1.5mm', mb: '2mm' }} />
+            {/* The rule is the pad's TEXT colour, not its accent — `partials/header.blade.php` draws
+                `border-top-color: $lh->textColor`, and a preview that picked the accent would promise a maroon
+                line the printer would not deliver. */}
+            {headerRule ? (
+              <Box data-testid="pad-preview-header-rule" data-rule-color={showLetterhead ? palette.text : '#000000'} sx={{ borderTop: '1.2pt solid', borderColor: showLetterhead ? palette.text : 'common.black', mt: '1.5mm', mb: '2mm' }} />
+            ) : <Box sx={{ mt: g.preprinted ? '2mm' : '1.5mm', mb: '2mm' }} />}
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: '1mm 5mm', py: '1.5mm' }}>
               <b>{t('clinic.pad.sample.patient')}</b>
@@ -241,7 +310,7 @@ export function PadPreview({ pad, clinicName, doctorName, degrees, bmdc, logoUrl
             )}
           </Box>
 
-          <Box sx={{ flex: '0 0 auto', pb: g.reservedFooterMm > 0 ? mm(g.reservedFooterMm) : 0 }}>
+          <Box sx={{ position: 'relative', zIndex: 1, flex: '0 0 auto', pb: g.reservedFooterMm > 0 ? mm(g.reservedFooterMm) : 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '3mm', mt: '4mm', pt: '2mm' }}>
               <Box sx={{ flex: '1 1 40mm', minWidth: 0, fontSize: '.78em', color: 'grey.600' }}>
                 {pad.footer_html && !g.preprinted ? <Box sx={{ mb: '.5mm' }}>{stripTags(pad.footer_html)}</Box> : null}
@@ -255,6 +324,31 @@ export function PadPreview({ pad, clinicName, doctorName, degrees, bmdc, logoUrl
               </Box>
               {pad.show_qr ? <Box sx={{ width: '20mm', height: '20mm', border: '.6pt solid', borderColor: 'grey.500', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6pt', color: 'grey.600' }}>QR</Box> : null}
             </Box>
+            {/* The pad's own footer — logo + address, chamber times, the number a patient rings for a serial.
+                One to three columns, the doctor's own, and the last thing on the sheet before the reserved band. */}
+            {showLetterhead && lh.footer.columns.length > 0 ? (
+              <Box
+                data-testid="pad-preview-footer-columns"
+                data-columns={lh.footer.columns.length}
+                data-rule-color={lh.footer.rule ? palette.text : null}
+                sx={{
+                  display: 'flex', gap: '3mm', mt: '2.5mm',
+                  pt: lh.footer.rule ? '1.5mm' : 0,
+                  // Same rule, same 1.2pt, same colour as `partials/footer.blade.php`.
+                  borderTop: lh.footer.rule ? '1.2pt solid' : 0,
+                  borderColor: palette.text,
+                }}
+              >
+                {lh.footer.columns.map((column, index) => (
+                  <Box key={index} sx={{ flex: '1 1 0', minWidth: 0, textAlign: column.align }}>
+                    {column.logo && logoUrl ? (
+                      <Box component="img" src={logoUrl} alt="" sx={{ maxHeight: '10mm', maxWidth: '26mm', objectFit: 'contain', display: 'inline-block', mb: '.5mm' }} />
+                    ) : null}
+                    {column.lines.map((line, lineIndex) => renderLine(line, `f${index}-${lineIndex}`, column.align))}
+                  </Box>
+                ))}
+              </Box>
+            ) : null}
             {g.reservedFooterMm > 0 ? (
               <Box
                 data-testid="pad-preview-footer-band"
