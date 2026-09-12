@@ -21,7 +21,7 @@ const owner: FamilyMember = {
 };
 
 const shared = {
-  surface: 'site' as const, auth: { guard: 'patient' as const, user: null, impersonating: false }, tenant: null, branch: null, branches: [], locale: 'en' as const,
+  surface: 'site' as const, auth: { guard: 'patient' as const, user: null, impersonating: false }, tenant: null, branch: null, branches: [], today_session: null, locale: 'en' as const,
   flash: { success: null, error: null, warning: null, info: null }, features: {}, ziggy: { url: 'http://demo.test', port: null, defaults: {}, routes: {} }, csrf_token: 'x',
   app: { name: 'bp', env: 'testing', version: '1', reverb: { key: 'k', host: 'localhost', port: 8080, scheme: 'http' as const } }, errors: {},
 };

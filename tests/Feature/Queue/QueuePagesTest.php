@@ -185,7 +185,7 @@ final class QueuePagesTest extends TestCase
                 ->where('session_id', $session->public_id)
                 ->where('can.call_next', true)
                 ->where('can.prescribe', true)   // the screen's Prescribe → visits.start → writer (BRIEF §5.G)
-                ->where('patients.'.$serial->public_id.'.name', 'Rahima Begum')
+                ->where('roster.'.$serial->public_id.'.patient.name', 'Rahima Begum')
                 ->has('state.serials', 1)
             );
     }

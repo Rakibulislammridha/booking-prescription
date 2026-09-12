@@ -11,6 +11,7 @@ use App\Domain\Reception\Services\PrintTemplates;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\Prescription;
 use App\Models\Tenant\ReceptionDevice;
 use App\Support\Clock;
 use App\Tenancy\Facades\Tenancy;
@@ -45,6 +46,10 @@ final class BoardController extends Controller
                 'register_device' => $user?->can('register', ReceptionDevice::class) ?? false,
                 'revoke' => $user?->can('reception.blocks.revoke') ?? false,
                 'record_vitals' => $user?->can('prescriptions.vitals.record') ?? false,
+                // BRIEF §5.G.4: the sheet is printed at the desk too. Printing an issued prescription is the
+                // `view` ability of PrescriptionPolicy (what panel.prescription.print authorises and audits as
+                // `print`); `viewAny` is the same three grants without a row in hand, so it is the board's flag.
+                'print_prescription' => $user?->can('viewAny', Prescription::class) ?? false,
             ],
             'actor_public_id' => $user?->public_id,
         ]);

@@ -10,6 +10,11 @@
 //   serial as `pending` until the invoice settles and `booking:expire-holds` takes it back when it does not, so a
 //   held row is a number that may vanish. The chip counts the hold down to its real deadline and tells the board
 //   when it lapses, so the row does not sit there looking booked after the sweep has released it.
+//
+//   NextChip — "who is being called next?" The rows are listed by serial number (the order the waiting room
+//   reads), but "Call next" follows the engine's queue position — check-in order, priority inserts, reorders
+//   (SERIAL_ENGINE §7) — so the head of the queue is rarely the top of the list. This marks it, on the row
+//   CallNext::nextOf / shared/offline/board.ts `nextToCall` picks, so a priority insert is visible as exactly that.
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Chip from '@mui/material/Chip';
@@ -48,6 +53,16 @@ export function VitalsChip({ vitals, stale, locale }: VitalsChipProps) {
         data-testid={`vitals-${vitals.recorded ? 'recorded' : 'due'}`}
         sx={{ ml: 0.5, opacity: stale ? 0.72 : 1 }}
       />
+    </Tooltip>
+  );
+}
+
+export function NextChip() {
+  const { t } = useTranslation();
+
+  return (
+    <Tooltip title={t('reception.board.next_tooltip')}>
+      <Chip size="small" color="primary" label={t('reception.board.next')} data-testid="next-to-call" sx={{ ml: 0.5, fontWeight: 700 }} />
     </Tooltip>
   );
 }

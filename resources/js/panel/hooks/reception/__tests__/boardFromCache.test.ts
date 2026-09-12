@@ -59,3 +59,57 @@ describe('boardFromCache (OFFLINE §5.1)', () => {
     expect(row?.appointment?.hold_expires_at).toBeNull();
   });
 });
+
+/**
+ * The order the desk reads and the row "Call next" would take are NOT cached fields — they are re-derived from
+ * `number` / `position` / `status`, which every cached row already carries (shared/offline/board.ts). That is the
+ * point: a patient this device checked in while offline moves the Next chip here exactly as the server will say
+ * once the event syncs, instead of the board waiting for a server answer it cannot get.
+ */
+describe('boardFromCache: number order and the Next chip', () => {
+  const sessionOf = (...rows: ServerSerial[]) =>
+    boardFromCache([session], rows.map((s) => toCachedSerial(s, session.publicId)), base).sessions[0];
+
+  const at = (number: number, position: number, status: string): ServerSerial =>
+    serial({ public_id: `ser_${number}`, display_code: `B-${String(number).padStart(3, '0')}`, number, position, status, vitals: null });
+
+  it('lists the cached rows by serial number, not by queue position', () => {
+    // The board the owner complained about: position order reads B-001, B-011, B-012, B-002, B-003.
+    const built = sessionOf(
+      at(1, 1_000_000, 'checked_in'),
+      at(11, 2_000_000, 'booked'),
+      at(12, 3_000_000, 'booked'),
+      at(2, 4_000_000, 'checked_in'),
+      at(3, 5_000_000, 'booked'),
+    );
+
+    expect(built?.serials.map((s) => s.display_code)).toEqual(['B-001', 'B-002', 'B-003', 'B-011', 'B-012']);
+  });
+
+  it('names the row CallNext would take, including after a priority insert', () => {
+    const built = sessionOf(
+      at(1, 3_000_000, 'checked_in'),
+      at(2, 4_000_000, 'checked_in'),
+      at(9, 1_500_000, 'checked_in'),   // emergency: moved ahead in the queue, still last in the list
+    );
+
+    expect(built?.serials.map((s) => s.display_code)).toEqual(['B-001', 'B-002', 'B-009']);
+    expect(built?.next_serial).toEqual({ public_id: 'ser_9', display_code: 'B-009' });
+  });
+
+  it('names nobody when nobody has arrived', () => {
+    expect(sessionOf(at(1, 1_000_000, 'booked'), at(2, 2_000_000, 'completed'))?.next_serial).toBeNull();
+  });
+
+  it('keeps the issued prescription handle across the cache, and only the handle', () => {
+    const row = rowFor(serial({ prescription: { public_id: 'rx_1', verification_code: 'A1B2C3D4', version: 2 } }));
+
+    expect(row?.prescription).toEqual({ public_id: 'rx_1', verification_code: 'A1B2C3D4', version: 2 });
+    expect(Object.keys(row?.prescription ?? {})).toEqual(['public_id', 'verification_code', 'version']);
+  });
+
+  it('says there is nothing to print when the row has no issued prescription', () => {
+    expect(rowFor(serial())?.prescription).toBeNull();
+    expect(rowFor(serial({ prescription: null }))?.prescription).toBeNull();
+  });
+});

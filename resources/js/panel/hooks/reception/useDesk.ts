@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConnection, type ConnectionMode } from '@shared/connection/store';
 import { useChannel } from '@shared/realtime/useChannel';
 import {
-  applyBlocks, applyBoard, applyBootstrap, BlockIssuer, cachePatients, canHaveVitals, EventLog, META_KEYS, ReceptionDB, SyncEngine, useConflicts,
+  applyBlocks, applyBoard, applyBootstrap, BlockIssuer, byNumber, cachePatients, canHaveVitals, EventLog, META_KEYS, nextToCall, ReceptionDB, SyncEngine, useConflicts,
   type BootstrapPayload, type CachedBlock, type CachedSerial, type CachedSession, type ConflictResolution, type PrintTemplate, type ServerBoard,
 } from '@shared/offline';
 import { ulid } from '@shared/ulid';
@@ -81,19 +81,27 @@ export function boardFromCache(sessions: CachedSession[], serials: CachedSerial[
     // Rebuilt from the cache, staleness and all — the row shows it as "as of the last sync" while offline
     // (shared/offline/types.ts CachedSerial documents why the flag is cached at all).
     vitals: canHaveVitals(s.status) ? { recorded: s.hasVitals ?? false, readings: s.vitalsReadings ?? 0, recorded_at: s.vitalsAt ?? null, reviewed: s.vitalsReviewed ?? false } : null,
+    prescription: s.prescriptionId ? { public_id: s.prescriptionId, verification_code: s.prescriptionCode ?? null, version: s.prescriptionVersion ?? 1 } : null,
   });
   return {
     ...base,
-    sessions: sessions.filter((s) => s.date === base.date).map((s): BoardSession => ({
-      public_id: s.publicId, code: s.code, date: s.date, status: s.status as BoardSession['status'], mode: s.mode,
-      doctor: { public_id: s.doctor.publicId, slug: s.doctor.slug, name: s.doctor.name, name_bn: s.doctor.nameBn, room: s.doctor.room },
-      planned_start_at: s.plannedStartAt, planned_end_at: s.plannedEndAt, expected_start_at: s.plannedStartAt, delay_minutes: s.delayMinutes,
-      now_serving: s.nowServing ? { public_id: '', display_code: s.nowServing } : null,
-      counts: { booked: s.counts.booked ?? 0, checked_in: s.counts.checked_in ?? 0, in_consultation: s.counts.in_consultation ?? 0, completed: s.counts.completed ?? 0, no_show: s.counts.no_show ?? 0, cancelled: s.counts.cancelled ?? 0, postponed: s.counts.postponed ?? 0 },
-      remaining: { online: s.remaining.online, counter: s.remaining.counter, buffer: s.remaining.buffer, counter_in_blocks: s.remaining.counterInBlocks, released: s.remaining.released },
-      fee_new_paisa: s.feeNewPaisa, fee_followup_paisa: s.feeFollowupPaisa, max_serials: s.maxSerials, version: s.version,
-      serials: (bySession.get(s.publicId) ?? []).sort((a, b) => a.position - b.position || a.number - b.number).map(toDesk),
-    })),
+    sessions: sessions.filter((s) => s.date === base.date).map((s): BoardSession => {
+      // Number order and CallNext's pick, from the cached rows — the same shared rule the tile applies, so a
+      // patient checked in offline is "Next" here exactly as the server would say once it hears about it.
+      const rows = bySession.get(s.publicId) ?? [];
+      const next = nextToCall(rows);
+      return {
+        public_id: s.publicId, code: s.code, date: s.date, status: s.status as BoardSession['status'], mode: s.mode,
+        doctor: { public_id: s.doctor.publicId, slug: s.doctor.slug, name: s.doctor.name, name_bn: s.doctor.nameBn, room: s.doctor.room },
+        planned_start_at: s.plannedStartAt, planned_end_at: s.plannedEndAt, expected_start_at: s.plannedStartAt, delay_minutes: s.delayMinutes,
+        now_serving: s.nowServing ? { public_id: '', display_code: s.nowServing } : null,
+        next_serial: next ? { public_id: next.publicId, display_code: next.displayCode } : null,
+        counts: { booked: s.counts.booked ?? 0, checked_in: s.counts.checked_in ?? 0, in_consultation: s.counts.in_consultation ?? 0, completed: s.counts.completed ?? 0, no_show: s.counts.no_show ?? 0, cancelled: s.counts.cancelled ?? 0, postponed: s.counts.postponed ?? 0 },
+        remaining: { online: s.remaining.online, counter: s.remaining.counter, buffer: s.remaining.buffer, counter_in_blocks: s.remaining.counterInBlocks, released: s.remaining.released },
+        fee_new_paisa: s.feeNewPaisa, fee_followup_paisa: s.feeFollowupPaisa, max_serials: s.maxSerials, version: s.version,
+        serials: byNumber(rows).map(toDesk),
+      };
+    }),
   };
 }
 

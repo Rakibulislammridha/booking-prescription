@@ -29,6 +29,31 @@ final class CallNext
         private readonly ApplyAutoNoShow $autoNoShow,
     ) {}
 
+    /**
+     * The selection rule of handle(), applied to serials already in memory: the checked_in row with the lowest
+     * position, ties by number. The reception board lists its rows by NUMBER (the order the waiting room reads)
+     * and marks the one this action would call, so the desk is never surprised by a priority insert; it uses this
+     * rather than restating the rule, and it runs no query for it. `null` when nothing is checked in.
+     *
+     * @param  iterable<Serial>  $serials
+     */
+    public static function nextOf(iterable $serials): ?Serial
+    {
+        $next = null;
+
+        foreach ($serials as $serial) {
+            if ($serial->status !== SerialStatus::CheckedIn) {
+                continue;
+            }
+
+            if ($next === null || $serial->position < $next->position || ($serial->position === $next->position && $serial->number < $next->number)) {
+                $next = $serial;
+            }
+        }
+
+        return $next;
+    }
+
     /** @return array{called: Serial|null, waiting_booked: int} */
     public function handle(SessionInstance $instance, Actor $actor): array
     {

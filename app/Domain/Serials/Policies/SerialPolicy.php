@@ -40,9 +40,15 @@ final class SerialPolicy
         return $user->is_active && ($user->hasRole(Role::Receptionist->value) || $user->hasRole(Role::HospitalAdmin->value) || $user->hasRole(Role::Doctor->value));
     }
 
+    /**
+     * Call / skip / return (SERIAL_ENGINE §6 "Doctor, Reception"): `queue.call-next`, and — the doctor-channel rule of
+     * ChannelGuards::doctor — a user who IS a doctor only drives their own session. The permission opens every
+     * chamber to an operator (reception, admin), never a colleague's chamber to a doctor.
+     */
     public function call(User $user, Serial $serial): bool
     {
-        return $user->can(Permission::QueueCallNext->value);
+        return $user->can(Permission::QueueCallNext->value)
+            && SessionInstancePolicy::drivesSession($user, (int) $serial->sessionInstance->doctor_id);
     }
 
     public function complete(User $user, Serial $serial): bool

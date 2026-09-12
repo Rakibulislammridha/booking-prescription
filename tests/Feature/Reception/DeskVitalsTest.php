@@ -129,7 +129,7 @@ final class DeskVitalsTest extends TestCase
             'bp_systolic' => 132, 'bp_diastolic' => 86, 'pulse_bpm' => 80,
         ])->assertCreated();
 
-        // The board orders serials by position, so the three rows are in the order they were allocated.
+        // The board orders serials by number, so the three rows are in the order they were allocated.
         $board = $this->getJson($this->url('panel.reception.board.data'))->assertOk();
         $board->assertJsonPath('sessions.0.serials.0.public_id', $done->public_id)
             ->assertJsonPath('sessions.0.serials.0.vitals.recorded', true)

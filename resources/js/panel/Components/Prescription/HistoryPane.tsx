@@ -39,7 +39,7 @@ export function HistoryPane({ patient, recentVisits, onCopyVisit }: HistoryPaneP
           )}
         </Typography>
         <Typography variant="caption" color="text.secondary" component="div">
-          {[patient.age_text, patient.sex, patient.patient_code].filter(Boolean).join(' · ')}
+          {[patient.age_text, patient.sex ? t(`patients.gender.${patient.sex}`) : null, patient.patient_code].filter(Boolean).join(' · ')}
         </Typography>
         <Typography variant="caption" color="text.secondary" component="div">
           {patient.phone}

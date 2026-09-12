@@ -324,11 +324,12 @@ function WriterScreen({ visit, patient, recent_visits, doctor, quick_pick, featu
               </IconButton>
             </Tooltip>
           ) : null}
-          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }} data-testid="writer-patient-name">
             {patient.name}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {[patient.age_text, patient.sex, visit.serial_display ?? visit.type].filter(Boolean).join(' · ')}
+          {/* Who is in the chair (BRIEF §5.G): sex, age, patient code, the masked mobile the desk shows, the serial. */}
+          <Typography variant="caption" color="text.secondary" data-testid="writer-patient-line">
+            {[patient.sex ? t(`patients.gender.${patient.sex}`) : null, patient.age_text, patient.patient_code, patient.mobile_masked, visit.serial_display ?? visit.type].filter(Boolean).join(' · ')}
           </Typography>
           {patient.allergies.length > 0 ? <Chip size="small" color="error" sx={{ height: 20 }} label={patient.allergies.map((a) => a.allergen_name).join(', ')} /> : null}
           <Box sx={{ flexGrow: 1 }} />

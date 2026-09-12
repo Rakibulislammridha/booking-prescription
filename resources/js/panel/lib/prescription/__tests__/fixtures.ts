@@ -85,6 +85,7 @@ export function writerProps(overrides: Partial<WriterPageProps> = {}): WriterPag
       sex: 'female',
       phone: '01712345678',
       mobile: '+8801712345678',
+      mobile_masked: '017*****678',
       blood_group: 'B+',
       dob: '1992-01-01',
       family_head: null,

@@ -44,7 +44,7 @@ const session = { public_id: '01J8ZK4V2Q3W5X6Y7Z8A9B0C2A', code: 'A', status: 's
 const shared = {
   surface: 'site' as const,
   auth: { guard: null, user: null, impersonating: false },
-  tenant: null, branch: null, branches: [], locale: 'en' as const,
+  tenant: null, branch: null, branches: [], today_session: null, locale: 'en' as const,
   flash: { success: null, error: null, warning: null, info: null },
   features: {}, ziggy: { url: 'http://demo.test', port: null, defaults: {}, routes: {} }, csrf_token: 'x',
   app: { name: 'bp', env: 'testing', version: '1', reverb: { key: 'k', host: 'localhost', port: 8080, scheme: 'http' as const } },

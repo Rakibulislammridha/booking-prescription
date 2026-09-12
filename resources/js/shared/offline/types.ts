@@ -36,8 +36,15 @@ export interface CachedSerial {
   //
   // `holdExpiresAt` is an absolute deadline, so the countdown stays correct offline by construction; only "it was
   // paid meanwhile" can be stale, which the desk resolves the moment it syncs.
+  //
+  // `prescriptionId` / `prescriptionCode` / `prescriptionVersion` are the HANDLE of the latest issued prescription
+  // (SerialPresenter's `prescription`, from Prescription's IssuedPrescriptionQuery) — the id the print route binds
+  // on, never the sheet itself, so nothing clinical is ever in this store (BRIEF §5.G.4). Printing is online-only
+  // (§6.2 `prescription`), so the cached handle only decides whether the row SHOWS a print button; a stale one
+  // (issued while offline) means the button appears after the next sync, never that a wrong sheet is printed.
   hasVitals?: boolean; vitalsAt?: string | null; vitalsReviewed?: boolean; vitalsReadings?: number;
   appointmentStatus?: string | null; holdExpiresAt?: string | null;
+  prescriptionId?: string | null; prescriptionCode?: string | null; prescriptionVersion?: number | null;
 }
 
 export interface CachedBlock {

@@ -93,14 +93,16 @@ export const PANEL_MODULE_PREFIXES: Readonly<Record<PanelModule, readonly string
   clinic: ['clinic.'],
   notifications: ['notifications.'],
   patients: ['billing.', 'patients.', 'portal.'],
-  prescription: ['prescriptions.'],
-  queue: ['queue.', 'reception.', 'serials.'],
+  // The writer header and the session roster name a patient's sex with the Patients module's three labels.
+  prescription: ['patients.gender.', 'prescriptions.'],
+  queue: ['patients.gender.', 'queue.', 'reception.', 'serials.'],
   reception: ['billing.', 'booking.', 'patients.', 'prescriptions.', 'reception.', 'scheduling.', 'serials.'],
   reports: ['billing.', 'reports.'],
   saas: ['saas.'],
   scheduling: ['scheduling.', 'serials.'],
   super: ['saas.', 'super.'],
-  telemedicine: ['prescriptions.', 'telemedicine.'],
+  // The console mounts the writer's own panes, so it carries their copy — the sex labels included.
+  telemedicine: ['patients.gender.', 'prescriptions.', 'telemedicine.'],
 };
 
 /**

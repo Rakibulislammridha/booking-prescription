@@ -24,8 +24,6 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import LockIcon from '@mui/icons-material/Lock';
 import LocalPharmacyIcon from '@mui/icons-material/LocalPharmacy';
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
-import PrintIcon from '@mui/icons-material/Print';
 import SendIcon from '@mui/icons-material/Send';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Switch from '@mui/material/Switch';
@@ -33,20 +31,21 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
+import { PostIssueBar } from '@panel/Components/Prescription/PostIssueBar';
 import { amendPrescription, sendPrescription, voidPrescription } from '@panel/api/prescription';
 import { formatDateDhaka, formatDhaka } from '@shared/format/date';
 import { formatBdt } from '@shared/format/money';
 import { route } from '@shared/routes';
 import type { PageProps } from '@shared/types/inertia';
-import type { IssuedPrescription, PrescriptionDraft, PrescriptionSnapshot, VisitRow } from '@shared/types/models';
+import type { IssuedPrescription, PrescriptionDraft, PrescriptionQueueLink, PrescriptionSnapshot, VisitRow } from '@shared/types/models';
 
-type Props = PageProps<{ prescription: IssuedPrescription | PrescriptionDraft; visit?: VisitRow }>;
+type Props = PageProps<{ prescription: IssuedPrescription | PrescriptionDraft; visit?: VisitRow; queue?: PrescriptionQueueLink | null }>;
 
 function isIssued(rx: IssuedPrescription | PrescriptionDraft): rx is IssuedPrescription {
   return 'snapshot' in rx && rx.status !== 'draft';
 }
 
-export default function Show({ prescription, visit }: Props) {
+export default function Show({ prescription, visit, queue }: Props) {
   const { t } = useTranslation();
 
   if (!isIssued(prescription)) {
@@ -65,12 +64,12 @@ export default function Show({ prescription, visit }: Props) {
     );
   }
 
-  return <IssuedView prescription={prescription} />;
+  return <IssuedView prescription={prescription} queue={queue ?? null} />;
 }
 
 Show.layout = (page: ReactNode) => <PanelLayout title="prescriptions.show.title">{page}</PanelLayout>;
 
-function IssuedView({ prescription }: { prescription: IssuedPrescription }) {
+function IssuedView({ prescription, queue }: { prescription: IssuedPrescription; queue: PrescriptionQueueLink | null }) {
   const { t } = useTranslation();
   const snapshot = prescription.snapshot as PrescriptionSnapshot;
   const [dialog, setDialog] = useState<'amend' | 'void' | 'send' | null>(null);
@@ -161,15 +160,13 @@ function IssuedView({ prescription }: { prescription: IssuedPrescription }) {
         </Typography>
       </Alert>
 
+      {/* The way forward first (§5.G: the doctor's next step after issuing is the next patient, not this page) —
+          Print, PDF, Call next patient, Back to today's session — then the rest of the output surface. */}
+      <PostIssueBar queue={queue} onPrint={openPrint} onPdf={downloadPdf} />
+
       <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
-        <Button size="small" variant="contained" startIcon={<PrintIcon />} onClick={openPrint}>
-          {t('common.actions.print')}
-        </Button>
         <Button size="small" startIcon={<LocalPharmacyIcon />} onClick={openPharmacy}>
           {t('prescriptions.show.pharmacy')}
-        </Button>
-        <Button size="small" startIcon={<PictureAsPdfIcon />} onClick={downloadPdf}>
-          {t('prescriptions.show.download_pdf')}
         </Button>
         <Button size="small" startIcon={<SendIcon />} onClick={() => setDialog('send')}>
           {t('prescriptions.send.action')}

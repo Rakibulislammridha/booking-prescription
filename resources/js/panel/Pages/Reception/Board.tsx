@@ -19,7 +19,7 @@ import ReportIcon from '@mui/icons-material/Summarize';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
 import { RouterLink } from '@panel/Layouts/RouterLink';
-import { SessionTile } from '@panel/Components/Reception/SessionTile';
+import { SessionTile, type PrescriptionOutput } from '@panel/Components/Reception/SessionTile';
 import { PatientQuickSearch, type QuickSearchHit } from '@panel/Components/Reception/PatientQuickSearch';
 import type { SlipData, SlipLabels } from '@panel/Components/Reception/TokenSlip';
 
@@ -54,7 +54,7 @@ type Props = PageProps<{
   channel: string | null;
   print_format: PrintTemplate['id'];
   settings: Record<string, unknown>;
-  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; register_device: boolean; revoke: boolean; record_vitals: boolean };
+  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; register_device: boolean; revoke: boolean; record_vitals: boolean; print_prescription: boolean };
   actor_public_id: string | null;
 }>;
 
@@ -153,6 +153,15 @@ export default function Board({ board: initial, tenant_public_id, channel, print
     router.post(route('panel.reception.vitals.open', { serial: serial.public_id }));
   };
 
+  // BRIEF §5.G.4: the prescription is printed at the desk too. The row carries only the issued version's handle;
+  // the sheet itself is the existing output route (view ability, audited `print`), opened the way the writer and
+  // the prescription list open it. Online only — the tile disables the button with the §6.2 reason offline.
+  const openPrescription = (serial: DeskSerial, output: PrescriptionOutput): void => {
+    if (!serial.prescription) return;
+    const prescription = serial.prescription.public_id;
+    window.open(output === 'pdf' ? route('panel.prescription.pdf', { prescription, sync: 1 }) : route('panel.prescription.print', { prescription }), '_blank', 'noopener');
+  };
+
   const doCallNext = (session: BoardSession): void => {
     void run(async () => { const r = await callNext(session.public_id); await desk.refresh(); if (r.called) setToast(t('reception.toast.called', { code: formatBn(r.called.display_code, locale) })); });
   };
@@ -193,7 +202,7 @@ export default function Board({ board: initial, tenant_public_id, channel, print
               <SessionTile key={s.public_id} session={s} mode={desk.mode} blockRemaining={blockRemaining(s)} can={can} busy={busy}
                 onBook={(session, ch) => setBooking({ session, channel: ch })} onCallNext={doCallNext} onCheckIn={checkIn}
                 onCollect={(session, serial) => setCollect({ session, serial })} onPrint={print} onCancel={(session, serial) => setCancel({ session, serial })}
-                onVitals={(_session, serial) => openVitals(serial)} onKiosk={openKiosk}
+                onVitals={(_session, serial) => openVitals(serial)} onPrintPrescription={(_session, serial, output) => openPrescription(serial, output)} onKiosk={openKiosk}
                 onHoldExpired={() => { void desk.refresh(); }} />
             ))}
           </Stack>
@@ -220,7 +229,7 @@ export default function Board({ board: initial, tenant_public_id, channel, print
           const code = serial?.display_code ?? local?.displayCode ?? '';
           setToast(t('reception.toast.booked', { code: formatBn(code, locale) }));
           if (serial) { void desk.refresh(); print(session, serial); }
-          else if (local) print(session, { public_id: local.publicId, display_code: local.displayCode, number: local.number, position: local.position, status: 'booked', priority: local.priority as DeskSerial['priority'], source: 'offline', pool: 'counter', patient_id: null, patient: { public_id: local.patientRef, name: local.patientName, mobile_masked: local.mobileMasked, age_text: null, sex: null, patient_code: '' }, appointment: { public_id: '', type: 'new', channel: 'offline', status: 'confirmed', fee_paisa: local.feePaisa ?? 0, list_fee_paisa: local.feePaisa ?? 0, fee_rule: 'new', payment_status: 'unpaid', hold_expires_at: null }, vitals: null, appointment_id: null, slot_start_at: null, booked_at: '', checked_in_at: null, called_at: null, completed_at: null, no_show_at: null, cancelled_at: null, cancel_reason_code: null, passed_count: 0, skip_count: 0, eta: null });
+          else if (local) print(session, { public_id: local.publicId, display_code: local.displayCode, number: local.number, position: local.position, status: 'booked', priority: local.priority as DeskSerial['priority'], source: 'offline', pool: 'counter', patient_id: null, patient: { public_id: local.patientRef, name: local.patientName, mobile_masked: local.mobileMasked, age_text: null, sex: null, patient_code: '' }, appointment: { public_id: '', type: 'new', channel: 'offline', status: 'confirmed', fee_paisa: local.feePaisa ?? 0, list_fee_paisa: local.feePaisa ?? 0, fee_rule: 'new', payment_status: 'unpaid', hold_expires_at: null }, vitals: null, prescription: null, appointment_id: null, slot_start_at: null, booked_at: '', checked_in_at: null, called_at: null, completed_at: null, no_show_at: null, cancelled_at: null, cancel_reason_code: null, passed_count: 0, skip_count: 0, eta: null });
         }} /> : null}
       {collect !== null ? <CollectFeeDialog open serial={collect?.serial ?? null} offline={offline} busy={busy} error={error} onClose={() => setCollect(null)} onCollect={doCollect} /> : null}
       {cancel !== null ? <CancelDialog open serial={cancel?.serial ?? null} busy={busy} error={error} onClose={() => setCancel(null)} onCancel={doCancel} /> : null}

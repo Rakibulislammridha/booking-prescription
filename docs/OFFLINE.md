@@ -414,8 +414,25 @@ away:
   countdown stays correct offline by construction; only "it was paid meanwhile"
   can be stale, and that resolves on the next sync. When the countdown reaches
   zero the board refreshes itself, so a released number stops looking booked.
+* **`prescriptionId` / `prescriptionCode` / `prescriptionVersion`** (from
+  `SerialPresenter`'s `prescription`, itself from Prescription's
+  `IssuedPrescriptionQuery`) — "is there an issued prescription to print for this
+  row?" (BRIEF §5.G.4, the sheet is printed at the desk too). Only the *handle*
+  of the latest issued version is cached — the id `panel.prescription.print`
+  binds on, the verification code, the version — never the snapshot, so nothing
+  clinical is in this store. Printing is online-only (§6.2 `prescription`), so
+  the cached handle only decides whether the row shows a print button; stale
+  means "issued while this desk was offline, button appears after the next
+  sync", never a wrong sheet.
 
-Neither field is indexed: they are read with the row, never queried on.
+None of these fields is indexed: they are read with the row, never queried on.
+
+Two things the board shows are *not* cached, because they are re-derived from
+fields already on every row (`shared/offline/board.ts`): the row order (serial
+**number**, the order the waiting room reads) and the **Next** chip — the row
+`CallNext` would take, its own rule (`checked_in`, lowest `position`, ties by
+`number`) applied to the rows on screen. A patient checked in offline is "Next"
+on this desk exactly as the server will say once the event syncs.
 
 ---
 

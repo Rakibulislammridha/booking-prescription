@@ -12,6 +12,8 @@ export interface ServerSerial {
   appointment: { public_id: string; fee_paisa: number; payment_status: string; type?: string; status?: string; hold_expires_at?: string | null } | null;
   /** Prescription's answer for the rows that can have a reading; null/absent on the rows that cannot (see CachedSerial). */
   vitals?: { recorded: boolean; readings: number; recorded_at: string | null; reviewed: boolean } | null;
+  /** The handle of the latest issued prescription for the rows that can have one; null/absent otherwise (see CachedSerial). */
+  prescription?: { public_id: string; verification_code: string | null; version: number } | null;
   checked_in_at?: string | null;
 }
 
@@ -19,6 +21,8 @@ export interface ServerBoardSession {
   public_id: string; code: string; date: string; status: string; mode: 'serial' | 'slot'; planned_start_at: string; planned_end_at: string; delay_minutes: number;
   doctor: { public_id: string; slug: string; name: string; name_bn: string | null; room: string | null };
   now_serving: { public_id: string; display_code: string } | null;
+  /** The row CallNext would take (BoardBuilder). Not cached: the desk re-derives it from the rows (shared/offline/board.ts). */
+  next_serial?: { public_id: string; display_code: string } | null;
   counts: Record<string, number>;
   remaining: { online: number; counter: number; buffer: number; counter_in_blocks: number; released: number };
   fee_new_paisa: number; fee_followup_paisa: number; max_serials: number; version: number;
@@ -62,6 +66,7 @@ export function toCachedSerial(s: ServerSerial, sessionId: string): CachedSerial
     appointmentId: s.appointment?.public_id ?? null, feePaisa: s.appointment?.fee_paisa ?? null, paymentStatus: s.appointment?.payment_status ?? null,
     appointmentStatus: s.appointment?.status ?? null, holdExpiresAt: s.appointment?.hold_expires_at ?? null,
     hasVitals: s.vitals?.recorded ?? false, vitalsAt: s.vitals?.recorded_at ?? null, vitalsReviewed: s.vitals?.reviewed ?? false, vitalsReadings: s.vitals?.readings ?? 0,
+    prescriptionId: s.prescription?.public_id ?? null, prescriptionCode: s.prescription?.verification_code ?? null, prescriptionVersion: s.prescription?.version ?? null,
     checkedInAt: s.checked_in_at ?? null, local: false, updatedAt: Date.now(),
   };
 }

@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Middleware;
 
 use App\Domain\Clinic\Services\ActiveBranch;
+use App\Domain\Queue\Services\SessionResolver;
 use App\Models\Central\SuperAdmin;
 use App\Models\Central\Tenant;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\SessionInstance;
 use App\Models\Tenant\User;
+use App\Support\Clock;
 use App\Tenancy\Facades\Tenancy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -58,6 +61,7 @@ final class HandleInertiaRequests extends Middleware
             'tenant' => $tenant === null ? null : $this->tenant($tenant),
             'branch' => fn () => $this->branch(),
             'branches' => fn () => $this->branches($request),
+            'today_session' => fn () => $surface === 'panel' ? $this->todaySession($request) : null,
             'locale' => fn () => app()->getLocale(),
             'flash' => [
                 'success' => fn () => $request->hasSession() ? $request->session()->get('flash.success') : null,
@@ -179,10 +183,57 @@ final class HandleInertiaRequests extends Middleware
                 'name' => $user->name,
                 'roles' => $user->getRoleNames()->values()->all(),
                 'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
-                'doctor_id' => $user->doctor()->value('id'),
+                'doctor_id' => self::doctorId($user),
             ],
             'impersonating' => $impersonating,
         ];
+    }
+
+    /**
+     * The sidebar's "Today's session" badge for a user who is a doctor (BRIEF §5.E / §5.G): the doctor's current
+     * session today — the one `panel.queue.doctor` opens (SessionResolver::pick) — and how many patients are
+     * checked in and waiting for them. One query over session_instances (the doctor id is the same lookup `auth`
+     * makes); null for everyone else, so no page pays for it. The number is a seed: on the session page itself the
+     * live queue state keeps it moving, and every navigation re-reads it here.
+     *
+     * @return array{session_id: string, code: string, status: string, waiting: int}|null
+     */
+    private function todaySession(Request $request): ?array
+    {
+        $user = Tenancy::check() ? $request->user('web') : null;
+
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        $doctorId = self::doctorId($user);
+
+        if ($doctorId === null) {
+            return null;
+        }
+
+        $session = SessionResolver::pick(SessionInstance::query()
+            ->where('doctor_id', $doctorId)
+            ->whereDate('session_date', Clock::today()->toDateString())
+            ->orderBy('planned_start_at')->orderBy('session_code')
+            ->get(['id', 'public_id', 'session_code', 'status', 'checked_in_count']));
+
+        return $session === null ? null : [
+            'session_id' => $session->public_id,
+            'code' => $session->session_code,
+            'status' => $session->status->value,
+            'waiting' => $session->checked_in_count,
+        ];
+    }
+
+    /**
+     * The user's `doctors` row id, or null. Two shared props need it — `auth.user.doctor_id` and the "Today's
+     * session" badge — and they resolve in separate closures, so it goes through the relation, which caches on the
+     * authenticated User instance: one query per request serves both, not one each.
+     */
+    private static function doctorId(User $user): ?int
+    {
+        return $user->doctor?->id;
     }
 
     /** @return array{id: int, name: string, code: string}|null */

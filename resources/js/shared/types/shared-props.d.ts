@@ -65,12 +65,25 @@ export interface SharedApp {
   reverb: ReverbConfig;
 }
 
+/**
+ * The sidebar's "Today's session" seed for a user who is a doctor (HandleInertiaRequests::todaySession): the
+ * session `panel.queue.doctor` opens and how many patients are checked in and waiting. The session page keeps
+ * the number live from its queue subscription; every navigation re-reads it from here. Null for everyone else.
+ */
+export interface TodaySession {
+  session_id: string;
+  code: string;
+  status: 'scheduled' | 'running' | 'paused' | 'closed' | 'cancelled';
+  waiting: number;
+}
+
 export type SharedProps = {
   surface: Surface;                     // which surface served the page; PanelLayout picks its navigation by it
   auth: SharedAuth;
   tenant: SharedTenant | null;
   branch: SharedBranch | null;          // staff's active branch (SetActiveBranch); null on site/super
   branches: BranchOption[];             // for the branch switcher; [] elsewhere
+  today_session: TodaySession | null;   // the doctor's session badge (panel surface only)
   locale: Locale;
   flash: FlashProps;                    // session keys flash.{success,error,warning,info}
   features: Record<string, boolean>;    // Pennant values for the current tenant (Inertia::once)

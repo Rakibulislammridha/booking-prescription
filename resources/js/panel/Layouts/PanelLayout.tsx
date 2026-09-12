@@ -35,6 +35,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import DeskIcon from '@mui/icons-material/PointOfSale';
 import QueueIcon from '@mui/icons-material/Groups';
+import TodaySessionIcon from '@mui/icons-material/EventNote';
 import ScheduleIcon from '@mui/icons-material/CalendarMonth';
 import PatientsIcon from '@mui/icons-material/People';
 import PrescriptionIcon from '@mui/icons-material/Description';
@@ -60,6 +61,8 @@ import { ConnectionIndicator } from '@shared/connection/ConnectionIndicator';
 import { useSharedProps } from '@shared/inertia';
 import { loadEcho } from '@shared/realtime/echo';
 import { hasRoute, isRoute, route } from '@shared/routes';
+import { formatBn } from '@shared/format/number';
+import { useTodaySessionBadge } from '@panel/hooks/queue/useTodaySessionBadge';
 import { usePwa } from '../pwa';
 import { RouterLink } from './RouterLink';
 
@@ -77,6 +80,8 @@ interface NavItem {
   pattern: string;        // isRoute() pattern for the selected state
   permission?: string;    // App\Domain\Clinic\Enums\Permission value; the entry is hidden without it
   feature?: string;       // SharedProps.features key; an add-on module's entry is hidden without the plan (BRIEF §5.M)
+  doctor?: boolean;       // true: only a user with a doctors row sees it; false: hidden from such a user (one queue entry per user)
+  badge?: 'today_session'; // the live count pill on the entry (useTodaySessionBadge, seeded by the `today_session` shared prop)
 }
 
 /**
@@ -98,7 +103,11 @@ const SETUP: NavItem[] = [
 const NAV: NavItem[] = [
   { key: 'dashboard', routeName: 'panel.dashboard', icon: <DashboardIcon />, pattern: 'panel.dashboard' },
   { key: 'reception', routeName: 'panel.reception.board', icon: <DeskIcon />, pattern: 'panel.reception.*', permission: 'serials.issue.counter' },
-  { key: 'queue', routeName: 'panel.queue.index', icon: <QueueIcon />, pattern: 'panel.queue.*' },
+  // One queue entry per user. A doctor gets "Today's session" — their own session page (`panel.queue.doctor`, the
+  // very page `panel.queue.index` would redirect them to) with the checked-in count on it; everyone else keeps
+  // "Live queue", the branch overview. Two labels for one route family, never both in one drawer.
+  { key: 'today_session', routeName: 'panel.queue.doctor', icon: <TodaySessionIcon />, pattern: 'panel.queue.*', doctor: true, badge: 'today_session' },
+  { key: 'queue', routeName: 'panel.queue.index', icon: <QueueIcon />, pattern: 'panel.queue.*', doctor: false },
   { key: 'scheduling', routeName: 'panel.scheduling.index', icon: <ScheduleIcon />, pattern: 'panel.scheduling.*', permission: 'scheduling.schedules.manage' },
   { key: 'patients', routeName: 'panel.patients.index', icon: <PatientsIcon />, pattern: 'panel.patients.*', permission: 'patients.view' },
   // `panel.prescription*`: the list is `panel.prescriptions.index`, the writer / show / templates are `panel.prescription.*`.
@@ -130,10 +139,17 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
   const user = shared.auth.user;
   const isSuper = shared.surface === 'super';
   // Entries a user lacks the permission for are hidden; entries whose module has not shipped its route stay visible but disabled.
+  const isDoctor = user?.doctor_id != null;
   const allowed = (item: NavItem): boolean =>
     (!item.permission || (user?.permissions.includes(item.permission) ?? false))
-    && (!item.feature || shared.features[item.feature] === true);
+    && (!item.feature || shared.features[item.feature] === true)
+    && (item.doctor === undefined || item.doctor === isDoctor);
   const nav = NAV.filter(allowed);
+  // The "Today's session" count: seeded from the shared prop on every visit, kept live by Queue/Doctor's own
+  // queue subscription while that page is open (useTodaySessionBadge).
+  const seed = shared.today_session;
+  const waiting = useTodaySessionBadge((s) => s.waiting);
+  useEffect(() => { useTodaySessionBadge.getState().set(seed?.session_id ?? null, seed?.waiting ?? null); }, [seed?.session_id, seed?.waiting]);
   const setup = SETUP.filter(allowed);
 
   const flash = (['error', 'warning', 'success', 'info'] as const).map((k) => ({ severity: k, message: shared.flash[k] })).find((f) => f.message);
@@ -172,6 +188,9 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
           >
             <ListItemIcon>{item.icon}</ListItemIcon>
             <ListItemText primary={t(`nav.${item.key}`)} />
+            {item.badge === 'today_session' && waiting !== null && waiting > 0 ? (
+              <Chip size="small" color="secondary" label={formatBn(waiting, shared.locale)} aria-label={t('nav.today_session_waiting', { count: formatBn(waiting, shared.locale) })} data-testid="today-session-badge" sx={{ height: 20, fontWeight: 700 }} />
+            ) : null}
           </ListItemButton>
         );
         return available ? button : (

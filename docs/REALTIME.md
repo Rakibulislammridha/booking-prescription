@@ -594,7 +594,39 @@ Clearing the delay (`delay_minutes: 0`) broadcasts `session.delayed` with 0 and 
 
 ---
 
-## 11. Doctor screen — call-next
+## 11. Doctor screen — "Today's session"
+
+The doctor's whole day on one page. The sidebar entry that opens it is **Today's session / আজকের সেশন**
+(`PanelLayout` NAV, `doctor: true` — a user with a `doctors` row gets it *instead of* the generic "Live queue",
+which is the branch overview everyone else lands on; `panel.queue.index` would have redirected them here anyway,
+so the drawer never shows two entries for one route family). Its badge is the checked-in count, seeded on every
+navigation by the `today_session` shared prop (`HandleInertiaRequests::todaySession` — one query over
+`session_instances` for the doctor's current instance today, `SessionResolver::pick`) and kept live, while the
+page itself is open, from the queue state it already subscribes to (`useTodaySessionBadge`). No second poller.
+
+The page carries three things: the **session header** (code, planned hours, room, status and the counts
+booked / checked-in / in-consultation / completed / no-show / remaining, all read off `QueueState.counts`), the
+**now-serving** panel, and the **roster** — every serial of the session in serial-number order (the desk board's
+order), built by `App\Domain\Queue\Services\SessionRosterBuilder` in five queries whatever the session size:
+patient name, sex, age, patient code, the compounder's vitals (°C on the wire, °F on screen) and the visit's
+current prescription. Each row offers only what its state allows — **Call this patient** (`CallSerial`) for a
+checked-in row, **Start**, **Prescribe** (→ `panel.prescription.visits.start` → the writer), **View / Print** once
+issued. The roster re-reads itself through `panel.queue.doctor.roster` when the queue version moves (a check-in at
+the desk) and after a row action — `start` stamps `consultation_started_at` without a status change, so it bumps
+no version and no frame would ever arrive (SERIAL_ENGINE.md §6.4).
+
+Who may drive it: `SerialPolicy::call` / `SessionInstancePolicy::callNext` = permission `queue.call-next`, and a
+user who IS a doctor only on their own session — the same rule `ChannelGuards::doctor` applies to the channel.
+
+**Issue → next patient.** `POST /panel/queue/sessions/{session}/call-next-visit`
+(`panel.queue.call-next-visit`, `CallNextVisitController`) is the post-issue bar's one click: `CallNext` plus the
+called serial's visit through the same idempotent `StartVisit`, answering
+`{called, visit, writer_url, waiting_booked}`. `called: null` means nobody has arrived (the bar returns to the
+session page, which says so); `writer_url: null` means the caller may not write that visit (an operator).
+A serial still `in_consultation` anywhere on the session is refused with **409 `queue.chamber_occupied`** and the
+refusal is shown, never swallowed: issuing is what completes the consultation
+(`CompleteConsultationOnPrescriptionIssued`), so a chamber that is still occupied means something else is, and
+calling on top of it would put two patients in one room.
 
 Panel page `resources/js/panel/Pages/Queue/Doctor.tsx` (MUI, `Inertia::render('Queue/Doctor')`,
 `routes/panel/queue.php` → `panel.queue.doctor`): subscribes with `useChannel()` to

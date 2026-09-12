@@ -55,6 +55,7 @@ const SUPER_ROUTES: Record<string, string> = {
 const PANEL_ROUTES: Record<string, string> = {
   'panel.dashboard': 'panel',
   'panel.queue.index': 'panel/queue',
+  'panel.queue.doctor': 'panel/queue/doctor',
   'panel.prescriptions.index': 'panel/prescriptions',
   'panel.patients.index': 'panel/patients',
   'panel.clinic.settings.index': 'panel/clinic/settings',
@@ -75,7 +76,7 @@ function shared(surface: SharedProps['surface'], overrides: Partial<SharedProps>
     surface,
     auth: { guard, user: { id: 1, name: 'Ayesha', roles: [guard === 'super' ? 'super_admin' : 'hospital_admin'], permissions: [], doctor_id: null }, impersonating: false },
     tenant: surface === 'super' ? null : { id: 1, slug: 'demo', name: 'Demo Hospital', locale: 'en', timezone: 'Asia/Dhaka', logo_url: null, theme: {}, modules: [] },
-    branch: null, branches: [], locale: 'en',
+    branch: null, branches: [], today_session: null, locale: 'en',
     flash: { success: null, error: null, warning: null, info: null },
     features: {}, ziggy: ziggy(surface === 'super' ? SUPER_ROUTES : PANEL_ROUTES), csrf_token: 'x',
     app: { name: 'Clinic Desk', env: 'testing', version: '1', reverb: { key: 'k', host: 'localhost', port: 8080, scheme: 'http' } },
@@ -244,5 +245,61 @@ describe('PanelLayout on the clinic panel', () => {
       expect(within(nav()).queryByText(label)).toBeNull();
     }
     expect(nav().querySelectorAll('[data-testid^="super-nav-"]')).toHaveLength(0);
+  });
+});
+
+// A doctor's day starts and ends on one screen (BRIEF §5.E/§5.G). The drawer says so: "Today's session" in place
+// of the generic "Live queue" — the same route family, the page `panel.queue.index` would have redirected them to
+// anyway — with the count of patients who have arrived and are waiting for them on it.
+describe('PanelLayout — Today\'s session', () => {
+  beforeEach(() => { desktop(true); at('/panel'); });
+
+  const asDoctor = (waiting: number | null) => shared('panel', {
+    auth: { guard: 'web', user: { id: 3, name: 'Dr Rahman', roles: ['doctor'], permissions: ['prescriptions.write'], doctor_id: 7 }, impersonating: false },
+    today_session: waiting === null ? null : { session_id: 'ses_1', code: 'B', status: 'running', waiting },
+  });
+
+  it('gives a doctor Today\'s session with the waiting count, and no second queue entry', () => {
+    show(asDoctor(4));
+
+    // one queue entry, not two — the count rides inside the entry, hence the label check by text
+    expect(within(nav()).getAllByRole('link')).toHaveLength(3);
+    expect(within(nav()).getByText("Today's session")).toBeInTheDocument();
+    expect(within(nav()).queryByText('Live queue')).toBeNull();
+    expect(within(nav()).getByRole('link', { name: /Today's session/ })).toHaveAttribute('href', '/panel/queue/doctor');
+
+    const badge = within(nav()).getByTestId('today-session-badge');
+    expect(badge).toHaveTextContent('4');
+    expect(badge).toHaveAccessibleName('4 waiting');
+  });
+
+  it('drops the badge when nobody has arrived yet, and when there is no session at all', () => {
+    const { unmount } = show(asDoctor(0));
+    expect(within(nav()).getByText("Today's session")).toBeInTheDocument();
+    expect(within(nav()).queryByTestId('today-session-badge')).toBeNull();
+    unmount();
+
+    show(asDoctor(null));
+    expect(within(nav()).getByText("Today's session")).toBeInTheDocument();
+    expect(within(nav()).queryByTestId('today-session-badge')).toBeNull();
+  });
+
+  it('selects the entry on the session page, since it is the same route family', () => {
+    at('/panel/queue/doctor');
+    show(asDoctor(2));
+
+    expect(within(nav()).getByText("Today's session").closest('.MuiListItemButton-root')).toHaveClass('Mui-selected');
+  });
+
+  it('leaves everyone who is not a doctor with Live queue and no badge', () => {
+    show(shared('panel', {
+      auth: { guard: 'web', user: { id: 4, name: 'Ayesha', roles: ['receptionist'], permissions: [], doctor_id: null }, impersonating: false },
+      // even if a stale count arrived, a user without a doctors row has no session of their own to badge
+      today_session: { session_id: 'ses_1', code: 'B', status: 'running', waiting: 9 },
+    }));
+
+    expect(within(nav()).getByText('Live queue')).toBeInTheDocument();
+    expect(within(nav()).queryByText("Today's session")).toBeNull();
+    expect(within(nav()).queryByTestId('today-session-badge')).toBeNull();
   });
 });

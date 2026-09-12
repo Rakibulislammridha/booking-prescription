@@ -1873,6 +1873,14 @@ declare module 'ziggy-js' {
     "panel.queue.today": [],
     "panel.queue.today.data": [],
     "panel.queue.doctor": [],
+    "panel.queue.doctor.roster": [],
+    "panel.queue.call-next-visit": [
+        {
+            "name": "session",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
     "panel.reception.board": [],
     "panel.reception.board.data": [],
     "panel.reception.shift": [],

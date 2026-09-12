@@ -873,6 +873,44 @@ export interface QueuePatientCard {
   sex: PatientGender | null;
   patient_code: string;
 }
+
+/** The compounder's reading as the session roster summarises it (SessionRosterBuilder): °C on the wire, °F on screen. */
+export interface QueueRosterVitals {
+  bp_systolic: number | null;
+  bp_diastolic: number | null;
+  pulse_bpm: number | null;
+  temperature_c: number | null;
+  spo2_percent: number | null;
+  weight_kg: number | null;
+  recorded_at: string | null;
+}
+
+/**
+ * One serial of the doctor's session as "Today's session" lists it (SessionRosterBuilder, keyed by serial public id,
+ * shown in serial-number order): the patient, the vitals, the visit and the current prescription — enough to pick
+ * the row's action (call / start / prescribe / view / print). Staff-only; the public QueueState never carries it.
+ */
+export interface QueueSessionRow {
+  serial_id: string;
+  code: string;
+  number: number;
+  status: SerialStatus;
+  priority: SerialPriority;
+  called_at: string | null;
+  consultation_started_at: string | null;
+  patient: QueuePatientCard | null;
+  vitals: QueueRosterVitals | null;
+  visit_id: string | null;
+  prescription: { id: string; status: PrescriptionStatus } | null;
+}
+
+/** `panel.queue.call-next-visit`: call-next + the called serial's visit in one request (the post-issue bar). */
+export interface CallNextVisitResponse {
+  called: Serial | null;
+  visit: VisitRow | null;
+  writer_url: string | null;
+  waiting_booked: number;
+}
 // queue:end
 
 // reception:start
@@ -890,6 +928,15 @@ export interface DeskSerial extends Omit<Serial, 'patient'> {
   /** `hold_expires_at` is set only while an advance-payment hold is still sweepable (pending + unpaid). */
   appointment: { public_id: string; type: AppointmentType; channel: BookingChannel; status: AppointmentStatus; fee_paisa: number; list_fee_paisa: number; fee_rule: FeeRule; payment_status: PaymentStatus; hold_expires_at: string | null } | null;
   vitals: DeskVitals | null;
+  /** The handle of the latest issued prescription (never the snapshot); `null` when there is nothing to print (BRIEF §5.G.4). */
+  prescription: DeskPrescriptionRef | null;
+}
+
+/** Prescription's IssuedPrescriptionRef: what the desk needs to open panel.prescription.print, and nothing clinical. */
+export interface DeskPrescriptionRef {
+  public_id: string;
+  verification_code: string | null;
+  version: number;
 }
 
 /** One session on today's board (BoardBuilder). */
@@ -905,6 +952,8 @@ export interface BoardSession {
   expected_start_at: string;
   delay_minutes: number;
   now_serving: { public_id: string; display_code: string } | null;
+  /** The row "Call next" would take (CallNext::nextOf) — rows are listed by number, so the queue's head is named. */
+  next_serial: { public_id: string; display_code: string } | null;
   counts: SessionCounts;
   remaining: SessionRemaining;
   fee_new_paisa: number;
@@ -1850,10 +1899,10 @@ export interface VitalsRow {
 /** POST /panel/visits/{visit}/vitals · PATCH /panel/vitals/{vital} body (`reviewed: true` = the Reviewed tick). Temperature is sent in °F; the server stores °C. */
 export interface VitalsInput { bp_systolic?: number | null; bp_diastolic?: number | null; pulse_bpm?: number | null; temperature_f?: number | null; spo2_percent?: number | null; respiratory_rate?: number | null; weight_kg?: number | null; height_cm?: number | null; blood_glucose_mgdl?: number | null; notes?: string | null; reviewed?: boolean }
 export interface VisitBrief { id: string; date: string; doctor: string | null; dx: string[]; rx_item_count: number; follow_up_on: string | null; prescription_id: string | null; prescription_status: PrescriptionStatus | null }
-/** The writer's left-pane patient card (§8.1). */
+/** The writer's left-pane patient card (§8.1). `mobile_masked` is what the header shows (the desk's masking). */
 export interface PatientClinicalCard {
   public_id: string; patient_code: string; name: string; age_text: string | null; age_years: number | null; age_months: number | null;
-  sex: PatientGender | null; phone: string; mobile: string; blood_group: BloodGroup | null; dob: string | null; family_head: string | null;
+  sex: PatientGender | null; phone: string; mobile: string; mobile_masked: string; blood_group: BloodGroup | null; dob: string | null; family_head: string | null;
   allergies: { id: number; allergen_type: AllergenType; allergen_name: string; generic_id: number | null; allergy_class_id: number | null; reaction: string | null; severity: AllergySeverity | null }[];
   conditions: { id: number; icd10_code: string | null; condition_name: string; status: ConditionStatus; onset_date: string | null }[];
   medications: { id: number; generic_id: number | null; generic_name: string; brand_name: string | null; dose_text: string | null; source: MedicationSource }[];
@@ -1938,6 +1987,8 @@ export interface PrescriptionSnapshot {
 }
 /** POST …/issue 200 body (§6.1). */
 export interface IssueResult { prescription: PrescriptionBrief; print_url: string | null; pdf_status: 'pending' | 'ready'; follow_up_draft_appointment_id: string | null }
+/** Prescription/Show `queue`: the way back into today's session after issuing (PrescriptionController::queue); null when the visit is not one of today's open sessions. */
+export interface PrescriptionQueueLink { session_id: string; code: string; session_url: string; can_call_next: boolean }
 /** GET /rx/{code} JSON (§7.4). */
 export interface VerificationDocument { status: 'valid' | 'superseded' | 'voided'; banner: { key: 'valid' } | { key: 'superseded'; by_version: number | null; by_date: string | null; by_code: string | null } | { key: 'voided'; voided_at: string | null }; version: number; verification_code: string | null; issued_at: string | null; snapshot_sha256: string | null; snapshot: PrescriptionSnapshot; pdf_available: boolean; purpose: 'verify'; watermark: 'COPY' | 'VOID' }
 /** GET /panel/search/drugs hits (§3.3). */

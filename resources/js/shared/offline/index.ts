@@ -9,5 +9,7 @@ export type { SyncTransport, SyncEngineOptions } from './sync';
 export { useConflicts, listConflicts, requiresAdminPin } from './conflicts';
 export { isAllowedOffline, offlineReason, OFFLINE_ALLOWED, OFFLINE_BLOCKED } from './policy';
 export type { DeskAction } from './policy';
+export { byNumber, nextToCall } from './board';
+export type { BoardRowKeys } from './board';
 export { applyBootstrap, applyBoard, applyBlocks, cachePatients, rekeyLocalSerial, rekeyLocalPatient, toCachedSession, toCachedSerial, toCachedBlock, tokens } from './bootstrap';
 export type { BootstrapPayload, ServerBoard, ServerBoardSession, ServerSerial, ServerBlock } from './bootstrap';

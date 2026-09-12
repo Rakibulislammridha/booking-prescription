@@ -26,9 +26,10 @@ final class SessionInstancePolicy
         return $user->can(Permission::SerialsIssueCounter->value) || $this->ownsAsDoctor($user, $session);
     }
 
+    /** `queue.call-next`, and a doctor only on their own session (drivesSession — the ChannelGuards::doctor rule). */
     public function callNext(User $user, SessionInstance $session): bool
     {
-        return $user->can(Permission::QueueCallNext->value);
+        return $user->can(Permission::QueueCallNext->value) && self::drivesSession($user, $session->doctor_id);
     }
 
     public function start(User $user, SessionInstance $session): bool
@@ -69,6 +70,18 @@ final class SessionInstancePolicy
     public function transferSession(User $user, SessionInstance $session): bool
     {
         return $user->can(Permission::SerialsTransfer->value);
+    }
+
+    /**
+     * Who may drive a session's queue: anyone without a doctors row (an operator — the permission check is the
+     * caller's), or the doctor whose session it is. Shared with SerialPolicy::call so a serial-level call and a
+     * session-level call-next answer the same way.
+     */
+    public static function drivesSession(User $user, int $doctorId): bool
+    {
+        $own = $user->doctor()->value('id');
+
+        return $own === null || (int) $own === $doctorId;
     }
 
     private function ownsAsDoctor(User $user, SessionInstance $session): bool

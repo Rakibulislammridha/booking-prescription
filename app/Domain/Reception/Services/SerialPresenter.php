@@ -6,8 +6,11 @@ namespace App\Domain\Reception\Services;
 
 use App\Domain\Booking\Services\AdvancePaymentPolicy;
 use App\Domain\Patients\Services\MobileNumber;
+use App\Domain\Prescription\Data\IssuedPrescriptionRef;
 use App\Domain\Prescription\Data\VitalsStatus;
+use App\Domain\Prescription\Queries\IssuedPrescriptionQuery;
 use App\Domain\Prescription\Queries\VitalsStatusQuery;
+use App\Domain\Serials\Enums\SerialStatus;
 use App\Http\Resources\Serials\SerialResource;
 use App\Models\Tenant\Appointment;
 use App\Models\Tenant\Patient;
@@ -16,15 +19,21 @@ use Illuminate\Http\Request;
 
 /**
  * The desk's serial shape: SerialResource (S) + patient {public_id, name, mobile_masked, age_text, sex} +
- * appointment {public_id, type, channel, fee_paisa, payment_status, hold_expires_at} + vitals. Used by the board
- * JSON, the bootstrap and every accepted replay result, so the PWA caches one shape (OFFLINE §5.1).
+ * appointment {public_id, type, channel, fee_paisa, payment_status, hold_expires_at} + vitals + prescription. Used
+ * by the board JSON, the bootstrap and every accepted replay result, so the PWA caches one shape (OFFLINE §5.1).
  *
- * Two of those keys are about things the desk cannot see for itself:
+ * Three of those keys are about things the desk cannot see for itself:
  *
  * `vitals` answers "does this patient still need the compounder?" (BRIEF §5.G.2). It comes from the Prescription
  * module's own VitalsStatusQuery — Reception never reads `vitals`/`visits` — and is present only on the rows that
  * can have a reading at all (checked in / in consultation): a booked patient who has not arrived and a finished
  * one are not part of that question, and `null` says so rather than lying "not recorded".
+ *
+ * `prescription` answers "is there an issued prescription to print for this patient?" (BRIEF §5.G.4 — printed at
+ * the desk too). Same module boundary (IssuedPrescriptionQuery), same honesty: it is the HANDLE of the latest
+ * issued version — public id, verification code, version — and never the snapshot, so the board and the device
+ * cache carry nothing clinical. Asked only for rows that can have an encounter at all (present or completed);
+ * `null` everywhere else, and `null` on such a row when nothing has been issued.
  *
  * `appointment.hold_expires_at` is the deadline of an advance-payment hold (BRIEF §5.C): a `pending` booking whose
  * serial `booking:expire-holds` will release once the hold window passes. It is emitted only when the sweep would
@@ -37,6 +46,7 @@ final class SerialPresenter
 
     public function __construct(
         private readonly VitalsStatusQuery $vitals,
+        private readonly IssuedPrescriptionQuery $prescriptions,
         private readonly AdvancePaymentPolicy $holds,
     ) {}
 
@@ -50,8 +60,18 @@ final class SerialPresenter
         return $serial->status->isPresent();
     }
 
+    /**
+     * Board rows this shape carries a prescription handle for; the board loads them in one query (BoardBuilder).
+     * An encounter exists only once the patient is in the building, and the sheet is most often wanted after the
+     * consultation, so: present or completed. A booked, cancelled or no-show row has nothing to print.
+     */
+    public static function canHavePrescription(Serial $serial): bool
+    {
+        return $serial->status->isPresent() || $serial->status === SerialStatus::Completed;
+    }
+
     /** @return array<string, mixed> */
-    public function present(Serial $serial, ?Patient $patient = null, ?Appointment $appointment = null, ?VitalsStatus $vitals = null): array
+    public function present(Serial $serial, ?Patient $patient = null, ?Appointment $appointment = null, ?VitalsStatus $vitals = null, ?IssuedPrescriptionRef $prescription = null): array
     {
         $patient ??= $serial->patient_id === null ? null : Patient::query()->find($serial->patient_id);
         $appointment ??= $serial->appointment_id === null ? null : Appointment::query()->find($serial->appointment_id);
@@ -73,6 +93,9 @@ final class SerialPresenter
             ],
             'vitals' => self::canHaveVitals($serial)
                 ? ($vitals ?? $this->vitals->forSerial($serial->id))->toArray()
+                : null,
+            'prescription' => self::canHavePrescription($serial)
+                ? ($prescription ?? $this->prescriptions->forSerial($serial->id))->toArray()
                 : null,
         ]);
     }

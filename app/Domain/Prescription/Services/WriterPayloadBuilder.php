@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Prescription\Services;
 
+use App\Domain\Patients\Services\MobileNumber;
 use App\Domain\Prescription\Shorthand\Keywords;
 use App\Models\Tenant\AdviceSnippet;
 use App\Models\Tenant\Doctor;
@@ -86,7 +87,7 @@ final class WriterPayloadBuilder
         return [
             'public_id' => $patient->public_id, 'patient_code' => $patient->patient_code, 'name' => $patient->name, 'age_text' => $patient->age_text,
             'age_years' => $patient->age_years, 'age_months' => $patient->age_months, 'sex' => $patient->gender?->value, 'phone' => $patient->mobile_local,
-            'mobile' => $patient->mobile, 'blood_group' => $patient->blood_group?->value, 'dob' => $patient->dob?->toDateString(),
+            'mobile' => $patient->mobile, 'mobile_masked' => MobileNumber::mask($patient->mobile), 'blood_group' => $patient->blood_group?->value, 'dob' => $patient->dob?->toDateString(),
             'family_head' => $patient->is_mobile_owner ? null : $patient->primaryRelation?->primary?->name,
             'allergies' => $patient->allergies->filter(fn ($a) => $a->is_active)->map(fn ($a) => [
                 'id' => $a->id, 'allergen_type' => $a->allergen_type->value, 'allergen_name' => $a->allergen_name, 'generic_id' => $a->generic_id,
