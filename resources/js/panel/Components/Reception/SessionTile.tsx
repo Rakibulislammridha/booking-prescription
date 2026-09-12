@@ -2,9 +2,9 @@
 // rows with check-in / fee / print / cancel / print prescription. Offline: check-in and the token slip keep working
 // (event log), the rest is disabled with the OFFLINE §6.2 reason.
 //
-// The rows are in serial-NUMBER order and the one "Call next" would take wears the Next chip — both from
-// shared/offline/board.ts, the same functions the device cache applies, so the board reads the same whichever path
-// built it (Inertia props or Dexie).
+// The rows are in serial-NUMBER order, the one "Call next" would take wears the Next chip, and the default view is
+// "active + awaiting print" — all three from shared/offline/board.ts, the same functions the device cache applies,
+// so the board reads the same whichever path built it (Inertia props or Dexie).
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Card from '@mui/material/Card';
@@ -29,12 +29,12 @@ import VitalsIcon from '@mui/icons-material/MonitorHeart';
 import AddIcon from '@mui/icons-material/PersonAdd';
 import PrescriptionIcon from '@mui/icons-material/Description';
 import PdfIcon from '@mui/icons-material/PictureAsPdf';
-import { HoldChip, NextChip, VitalsChip } from '@panel/Components/Reception/BoardRowChips';
+import { AwaitingPrintChip, HoldChip, NextChip, VitalsChip } from '@panel/Components/Reception/BoardRowChips';
 import { formatBn } from '@shared/format/number';
 import { formatTimeDhaka } from '@shared/format/date';
 import { formatBdt } from '@shared/format/money';
 import { getLocale } from '@shared/locale';
-import { byNumber, isAllowedOffline, nextToCall, offlineReason, type DeskAction } from '@shared/offline';
+import { ACTIVE_STATUSES, isAllowedOffline, isAwaitingPrint, nextToCall, offlineReason, visibleRows, type DeskAction } from '@shared/offline';
 import type { ConnectionMode } from '@shared/connection/store';
 import type { BoardSession, DeskSerial, SessionStatus } from '@shared/types/models';
 
@@ -61,7 +61,7 @@ export interface SessionTileProps {
 }
 
 const STATUS_COLOR: Record<SessionStatus, 'default' | 'success' | 'warning' | 'error' | 'info'> = { scheduled: 'default', running: 'success', paused: 'warning', closed: 'info', cancelled: 'error' };
-const ACTIVE = new Set(['booked', 'checked_in', 'in_consultation']);
+const ACTIVE = ACTIVE_STATUSES;
 
 export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, onCallNext, onCheckIn, onCollect, onPrint, onCancel, onVitals, onPrintPrescription, onKiosk, onHoldExpired }: SessionTileProps) {
   const { t } = useTranslation();
@@ -72,8 +72,10 @@ export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, 
   const c = session.counts;
   const r = session.remaining;
   const remainingCounter = r.counter + r.released;
-  const ordered = byNumber(session.serials);
-  const rows = showAll ? ordered : ordered.filter((s) => ACTIVE.has(s.status));
+  // Number order plus the default view's rule: the active rows AND any completed row whose prescription has not
+  // been printed yet — that patient is at the counter waiting for paper, and hiding them behind "Show all" is
+  // exactly the wrong moment to hide anyone (shared/offline/board.ts).
+  const rows = visibleRows(session.serials, showAll);
   // Who "Call next" would call — derived from the rows on screen by CallNext's own rule, not read off a cached
   // flag, so an offline check-in moves the chip the way the server will once it syncs. Only while calling is possible.
   const nextId = open ? nextToCall(session.serials)?.public_id ?? null : null;
@@ -133,8 +135,11 @@ export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, 
                   // lands (BRIEF §5.C). The row is marked down its whole edge, not just with a chip, because the
                   // desk reads this table as a list of people who are coming.
                   const held = s.appointment?.status === 'pending';
+                  // Finished, but the desk still owes this patient their sheet: the row is kept at full strength
+                  // and says why, while its STATUS chip goes on reading "Completed" — it is a job, not a state.
+                  const awaitingPrint = isAwaitingPrint(s);
                   return (
-                    <TableRow key={s.public_id} hover sx={{ opacity: ACTIVE.has(s.status) ? 1 : 0.6 }}>
+                    <TableRow key={s.public_id} hover sx={{ opacity: ACTIVE.has(s.status) || awaitingPrint ? 1 : 0.6 }}>
                       <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, whiteSpace: 'nowrap', borderLeft: held ? '3px solid' : undefined, borderLeftColor: 'warning.main' }}>{formatBn(s.display_code, locale)}{s.public_id.startsWith('local:') ? <Chip size="small" label={t('serials.source.offline')} sx={{ ml: 0.5 }} /> : null}{s.public_id === nextId ? <NextChip /> : null}</TableCell>
                       <TableCell sx={{ minWidth: 140 }}>
                         <Typography variant="body2" sx={{ fontWeight: 600 }} lang="bn">{s.patient?.name ?? t('reception.board.no_patient')}</Typography>
@@ -143,6 +148,7 @@ export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, 
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
                         <Chip size="small" label={t(`serials.status.${s.status}`)} color={s.status === 'checked_in' ? 'info' : s.status === 'in_consultation' ? 'secondary' : s.status === 'completed' ? 'success' : 'default'} />
                         {held ? <HoldChip expiresAt={s.appointment?.hold_expires_at ?? null} locale={locale} onExpired={onHoldExpired} /> : null}
+                        {awaitingPrint ? <AwaitingPrintChip /> : null}
                         {s.vitals ? <VitalsChip vitals={s.vitals} stale={offline} locale={locale} /> : null}
                         {s.priority !== 'normal' ? <Chip size="small" variant="outlined" color="warning" label={t(`serials.priority.${s.priority}`)} sx={{ ml: 0.5 }} /> : null}
                       </TableCell>
@@ -154,7 +160,7 @@ export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, 
                         {can.collect && s.appointment && s.appointment.payment_status !== 'paid' && ACTIVE.has(s.status) ? <Tooltip title={t('reception.board.collect_fee')}><IconButton size="small" disabled={busy} onClick={() => onCollect(session, s)} aria-label={t('reception.board.collect_fee')}><CashIcon fontSize="small" /></IconButton></Tooltip> : null}
                         {can.record_vitals && s.vitals !== null ? <Tooltip title={t(isAllowedOffline('prescription', mode) ? 'reception.vitals.record' : offlineReason('prescription'))}><span><IconButton size="small" disabled={busy || offline || s.public_id.startsWith('local:')} onClick={() => onVitals(session, s)} aria-label={t('reception.vitals.record')}><VitalsIcon fontSize="small" /></IconButton></span></Tooltip> : null}
                         <Tooltip title={t('reception.board.print_slip')}><IconButton size="small" disabled={busy} onClick={() => onPrint(session, s)} aria-label={t('reception.board.print_slip')}><PrintIcon fontSize="small" /></IconButton></Tooltip>
-                        {printable(s) ? <Tooltip title={prescriptionTip('reception.board.print_prescription')}><span><IconButton size="small" disabled={busy || offline} onClick={() => onPrintPrescription(session, s, 'print')} aria-label={t('reception.board.print_prescription')} data-testid="print-prescription"><PrescriptionIcon fontSize="small" /></IconButton></span></Tooltip> : null}
+                        {printable(s) ? <Tooltip title={prescriptionTip('reception.board.print_prescription')}><span><IconButton size="small" color={awaitingPrint ? 'primary' : 'default'} disabled={busy || offline} onClick={() => onPrintPrescription(session, s, 'print')} aria-label={t('reception.board.print_prescription')} data-testid="print-prescription"><PrescriptionIcon fontSize="small" /></IconButton></span></Tooltip> : null}
                         {printable(s) ? <Tooltip title={prescriptionTip('reception.board.prescription_pdf')}><span><IconButton size="small" disabled={busy || offline} onClick={() => onPrintPrescription(session, s, 'pdf')} aria-label={t('reception.board.prescription_pdf')} data-testid="prescription-pdf"><PdfIcon fontSize="small" /></IconButton></span></Tooltip> : null}
                         {can.cancel && ACTIVE.has(s.status) ? guard('cancel', true, <IconButton size="small" disabled={busy || offline || !s.appointment} onClick={() => onCancel(session, s)} aria-label={t('reception.cancel.title')}><CancelIcon fontSize="small" /></IconButton>) : null}
                       </TableCell>

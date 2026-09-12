@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\DB;
  * "Issued" means `status = issued` — the live version of a chain. An amended original is `amended` and a voided one
  * `voided`; neither is a sheet the desk should hand to a patient, so neither is offered. Where a visit holds more
  * than one issued row the most recently issued wins (one `DISTINCT ON` per serial, one grouped query per board).
+ *
+ * The same row also answers "…and has anyone printed it yet?" — `printed_count > 0`, read off the column the print
+ * route already maintains. It is one more column on the `DISTINCT ON` the board was running anyway, NOT one more
+ * query, which is the only way the board could afford to ask (DeskBoardOrderTest pins the count).
  */
 final class IssuedPrescriptionQuery
 {
@@ -36,13 +40,14 @@ final class IssuedPrescriptionQuery
             ->join('visits as vs', 'vs.id', '=', 'rx.visit_id')
             ->whereIn('vs.serial_id', $ids)
             ->where('rx.status', PrescriptionStatus::Issued->value)
-            ->selectRaw('distinct on (vs.serial_id) vs.serial_id as serial_id, rx.public_id as public_id, rx.verification_code as verification_code, rx.version as version')
+            ->selectRaw('distinct on (vs.serial_id) vs.serial_id as serial_id, rx.public_id as public_id, rx.verification_code as verification_code, rx.version as version, rx.printed_count as printed_count')
             ->orderBy('vs.serial_id')->orderByDesc('rx.issued_at')->orderByDesc('rx.version')->orderByDesc('rx.id')
             ->get()
             ->mapWithKeys(fn (object $row): array => [(int) $row->serial_id => new IssuedPrescriptionRef(
                 publicId: (string) $row->public_id,
                 verificationCode: is_string($row->verification_code) ? $row->verification_code : null,
                 version: (int) $row->version,
+                printed: ((int) $row->printed_count) > 0,
             )])
             ->all();
 

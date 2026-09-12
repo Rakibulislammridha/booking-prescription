@@ -105,12 +105,13 @@ describe('SessionTile Next chip', () => {
 });
 
 /**
- * Issuing a prescription completes the serial (CompleteConsultationOnPrescriptionIssued), and the tile's default
- * view is "waiting only" — so the printable row is reached through the tile's existing "Show all" toggle, the same
- * way every other finished patient already is. These drive that real path rather than a contrived active row.
+ * Issuing a prescription completes the serial (CompleteConsultationOnPrescriptionIssued). A row whose sheet has
+ * already been printed is a finished patient like any other and is reached through "Show all"; a row whose sheet
+ * has NOT been printed is the patient standing at the counter, and stays in the default view (the section below).
+ * These drive the printed case through the toggle, the real path for a finished row.
  */
 describe('SessionTile prescription print', () => {
-  const withRx = serial(1, { status: 'completed', prescription: { public_id: 'rx_1', verification_code: 'A1B2C3D4', version: 1 } });
+  const withRx = serial(1, { status: 'completed', prescription: { public_id: 'rx_1', verification_code: 'A1B2C3D4', version: 1, printed: true } });
   const showAll = (): void => { fireEvent.click(screen.getByRole('button', { name: /Show all/ })); };
 
   it('offers print and PDF only on a row that has an issued prescription', () => {
@@ -158,5 +159,59 @@ describe('SessionTile prescription print', () => {
 
     expect(screen.queryByTestId('print-prescription')).toBeNull();
     expect(screen.queryByTestId('prescription-pdf')).toBeNull();
+  });
+});
+
+/**
+ * The fix for the friction the desk actually felt: the doctor issues, the serial completes, and the patient who is
+ * RIGHT THERE waiting for their printout used to vanish behind "Show all". So the default view is now "active +
+ * awaiting print" — and the row has to say why it is there, without pretending the patient is still waiting to be
+ * seen: the status chip goes on reading Completed.
+ */
+describe('SessionTile rows awaiting a printout', () => {
+  const awaiting = (number: number) => serial(number, { status: 'completed', prescription: { public_id: `rx_${number}`, verification_code: 'A1B2C3D4', version: 1, printed: false } });
+  const printed = (number: number) => serial(number, { status: 'completed', prescription: { public_id: `rx_${number}`, verification_code: 'A1B2C3D4', version: 1, printed: true } });
+
+  it('keeps a completed row in the DEFAULT view while its prescription has never been printed', () => {
+    mount(session([serial(1, { status: 'checked_in' }), awaiting(2), serial(3, { status: 'booked' })]));
+
+    expect(renderedCodes()).toEqual(['B-001', 'B-002', 'B-003']);
+    expect(screen.getByTestId('print-prescription')).toBeEnabled();
+  });
+
+  it('says why the row is still there — and does not claim the patient is still waiting to be seen', () => {
+    mount(session([awaiting(2)]));
+
+    const row = screen.getByTestId('awaiting-print').closest('tr') as HTMLElement;
+    expect(screen.getByTestId('awaiting-print')).toHaveTextContent('Waiting for printout');
+    expect(row).toHaveTextContent('Completed');
+  });
+
+  it('drops the row from the default view once the sheet is printed, and keeps it under Show all', () => {
+    mount(session([serial(1, { status: 'checked_in' }), printed(2)]));
+
+    expect(renderedCodes()).toEqual(['B-001']);
+    expect(screen.queryByTestId('awaiting-print')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Show all/ }));
+    expect(renderedCodes()).toEqual(['B-001', 'B-002']);
+    expect(screen.queryByTestId('awaiting-print')).toBeNull();
+  });
+
+  it('does not keep a completed row with nothing to print, or an unfinished row with one', () => {
+    mount(session([serial(1, { status: 'completed' }), serial(2, { status: 'no_show' }), serial(3, { status: 'in_consultation', prescription: { public_id: 'rx_3', verification_code: null, version: 1, printed: false } })]));
+
+    expect(renderedCodes()).toEqual(['B-003']);
+    expect(screen.queryByTestId('awaiting-print')).toBeNull();
+  });
+
+  it('leaves the "Show all" count meaning the whole list', () => {
+    mount(session([serial(1, { status: 'checked_in' }), awaiting(2), printed(3), serial(4, { status: 'no_show' })]));
+
+    expect(renderedCodes()).toEqual(['B-001', 'B-002']);
+    expect(screen.getByRole('button', { name: 'Show all (4)' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all (4)' }));
+    expect(renderedCodes()).toEqual(['B-001', 'B-002', 'B-003', 'B-004']);
   });
 });

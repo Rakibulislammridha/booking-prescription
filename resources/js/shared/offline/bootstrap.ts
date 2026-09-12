@@ -13,7 +13,7 @@ export interface ServerSerial {
   /** Prescription's answer for the rows that can have a reading; null/absent on the rows that cannot (see CachedSerial). */
   vitals?: { recorded: boolean; readings: number; recorded_at: string | null; reviewed: boolean } | null;
   /** The handle of the latest issued prescription for the rows that can have one; null/absent otherwise (see CachedSerial). */
-  prescription?: { public_id: string; verification_code: string | null; version: number } | null;
+  prescription?: { public_id: string; verification_code: string | null; version: number; printed: boolean } | null;
   checked_in_at?: string | null;
 }
 
@@ -67,6 +67,7 @@ export function toCachedSerial(s: ServerSerial, sessionId: string): CachedSerial
     appointmentStatus: s.appointment?.status ?? null, holdExpiresAt: s.appointment?.hold_expires_at ?? null,
     hasVitals: s.vitals?.recorded ?? false, vitalsAt: s.vitals?.recorded_at ?? null, vitalsReviewed: s.vitals?.reviewed ?? false, vitalsReadings: s.vitals?.readings ?? 0,
     prescriptionId: s.prescription?.public_id ?? null, prescriptionCode: s.prescription?.verification_code ?? null, prescriptionVersion: s.prescription?.version ?? null,
+    prescriptionPrinted: s.prescription?.printed ?? false,
     checkedInAt: s.checked_in_at ?? null, local: false, updatedAt: Date.now(),
   };
 }

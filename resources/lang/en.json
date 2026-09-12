@@ -656,6 +656,8 @@
     "booking.weekday_short.5": "Fri",
     "booking.weekday_short.6": "Sat",
     "reception.board.arrived": "Arrived",
+    "reception.board.awaiting_print": "Waiting for printout",
+    "reception.board.awaiting_print_tooltip": "The doctor has issued this prescription and nobody has printed it yet — the patient is at the counter waiting for their copy. The row leaves this list the moment it is printed.",
     "reception.board.block_left": "Block :count left",
     "reception.board.blocks_title": "This device's blocks",
     "reception.board.collect_fee": "Collect fee",

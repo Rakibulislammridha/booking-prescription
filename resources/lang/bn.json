@@ -656,6 +656,8 @@
     "booking.weekday_short.5": "শুক্র",
     "booking.weekday_short.6": "শনি",
     "reception.board.arrived": "এসেছেন",
+    "reception.board.awaiting_print": "প্রিন্টের অপেক্ষায়",
+    "reception.board.awaiting_print_tooltip": "ডাক্তার এই প্রেসক্রিপশন ইস্যু করেছেন, কিন্তু এখনো কেউ প্রিন্ট করেননি — রোগী কাউন্টারে নিজের কপির জন্য অপেক্ষা করছেন। প্রিন্ট হয়ে গেলেই সারিটি এই তালিকা থেকে সরে যাবে।",
     "reception.board.block_left": "ব্লকে :count বাকি",
     "reception.board.blocks_title": "এই ডিভাইসের ব্লক",
     "reception.board.collect_fee": "ফি নিন",

@@ -1,5 +1,5 @@
-// Two things a receptionist could not tell from a board row until now, both of them about a patient who is
-// physically in the waiting room:
+// The things a receptionist could not tell from a board row until now — each of them about where a patient stands
+// in the desk's own work, not about their medicine:
 //
 //   VitalsChip — "has the compounder seen this one yet?" (BRIEF §5.G.2). Without it the desk had to open every
 //   checked-in patient to find out. Recorded / due is a two-state answer, so it is drawn as a two-state chip
@@ -15,11 +15,17 @@
 //   reads), but "Call next" follows the engine's queue position — check-in order, priority inserts, reorders
 //   (SERIAL_ENGINE §7) — so the head of the queue is rarely the top of the list. This marks it, on the row
 //   CallNext::nextOf / shared/offline/board.ts `nextToCall` picks, so a priority insert is visible as exactly that.
+//
+//   AwaitingPrintChip — "why is a finished patient still on my list?" Issuing completes the serial, so a completed
+//   row whose prescription has never been printed is kept in the default view (board.ts `isAwaitingPrint`) because
+//   that patient is at the counter waiting for paper. The row must say so in so many words: its status chip still
+//   reads Completed, and this sits beside it as the JOB, not as a status.
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Chip from '@mui/material/Chip';
 import Tooltip from '@mui/material/Tooltip';
 import HourglassIcon from '@mui/icons-material/HourglassTop';
+import PrintIcon from '@mui/icons-material/Print';
 import VitalsIcon from '@mui/icons-material/MonitorHeart';
 import { formatBn } from '@shared/format/number';
 import { formatTimeDhaka } from '@shared/format/date';
@@ -63,6 +69,24 @@ export function NextChip() {
   return (
     <Tooltip title={t('reception.board.next_tooltip')}>
       <Chip size="small" color="primary" label={t('reception.board.next')} data-testid="next-to-call" sx={{ ml: 0.5, fontWeight: 700 }} />
+    </Tooltip>
+  );
+}
+
+export function AwaitingPrintChip() {
+  const { t } = useTranslation();
+
+  return (
+    <Tooltip title={t('reception.board.awaiting_print_tooltip')}>
+      <Chip
+        size="small"
+        color="primary"
+        variant="outlined"
+        icon={<PrintIcon fontSize="small" />}
+        label={t('reception.board.awaiting_print')}
+        data-testid="awaiting-print"
+        sx={{ ml: 0.5 }}
+      />
     </Tooltip>
   );
 }

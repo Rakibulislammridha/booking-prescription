@@ -81,7 +81,9 @@ export function boardFromCache(sessions: CachedSession[], serials: CachedSerial[
     // Rebuilt from the cache, staleness and all — the row shows it as "as of the last sync" while offline
     // (shared/offline/types.ts CachedSerial documents why the flag is cached at all).
     vitals: canHaveVitals(s.status) ? { recorded: s.hasVitals ?? false, readings: s.vitalsReadings ?? 0, recorded_at: s.vitalsAt ?? null, reviewed: s.vitalsReviewed ?? false } : null,
-    prescription: s.prescriptionId ? { public_id: s.prescriptionId, verification_code: s.prescriptionCode ?? null, version: s.prescriptionVersion ?? 1 } : null,
+    // `printed` decides whether a completed row stays in the default view (board.ts isAwaitingPrint), so an absent
+    // cached value reads as "not printed": err towards showing the patient who is waiting for paper.
+    prescription: s.prescriptionId ? { public_id: s.prescriptionId, verification_code: s.prescriptionCode ?? null, version: s.prescriptionVersion ?? 1, printed: s.prescriptionPrinted ?? false } : null,
   });
   return {
     ...base,

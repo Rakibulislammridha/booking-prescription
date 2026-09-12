@@ -102,10 +102,19 @@ describe('boardFromCache: number order and the Next chip', () => {
   });
 
   it('keeps the issued prescription handle across the cache, and only the handle', () => {
-    const row = rowFor(serial({ prescription: { public_id: 'rx_1', verification_code: 'A1B2C3D4', version: 2 } }));
+    const row = rowFor(serial({ prescription: { public_id: 'rx_1', verification_code: 'A1B2C3D4', version: 2, printed: true } }));
 
-    expect(row?.prescription).toEqual({ public_id: 'rx_1', verification_code: 'A1B2C3D4', version: 2 });
-    expect(Object.keys(row?.prescription ?? {})).toEqual(['public_id', 'verification_code', 'version']);
+    expect(row?.prescription).toEqual({ public_id: 'rx_1', verification_code: 'A1B2C3D4', version: 2, printed: true });
+    expect(Object.keys(row?.prescription ?? {})).toEqual(['public_id', 'verification_code', 'version', 'printed']);
+  });
+
+  /**
+   * `printed` decides whether a completed row stays in the desk's default view (shared/offline/board.ts
+   * isAwaitingPrint), so losing it in the cache would change WHO a registered desk sees, not just a button.
+   */
+  it('keeps "has anyone printed it yet?" across the cache, and errs towards not printed', () => {
+    expect(rowFor(serial({ status: 'completed', vitals: null, prescription: { public_id: 'rx_1', verification_code: null, version: 1, printed: false } }))?.prescription?.printed).toBe(false);
+    expect(rowFor(serial({ status: 'completed', vitals: null, prescription: { public_id: 'rx_1', verification_code: null, version: 1, printed: true } }))?.prescription?.printed).toBe(true);
   });
 
   it('says there is nothing to print when the row has no issued prescription', () => {

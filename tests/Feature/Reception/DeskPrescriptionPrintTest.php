@@ -10,6 +10,7 @@ use App\Domain\Prescription\Actions\AmendPrescription;
 use App\Domain\Prescription\Actions\StartVisit;
 use App\Domain\Serials\Actions\CallSerial;
 use App\Domain\Serials\Actions\CheckInSerial;
+use App\Domain\Serials\Actions\CompleteConsultation;
 use App\Domain\Serials\Actions\StartConsultation;
 use App\Domain\Serials\Enums\SerialStatus;
 use App\Domain\Shared\Actor;
@@ -130,9 +131,9 @@ final class DeskPrescriptionPrintTest extends TestCase
         $this->actingAsStaff(Role::Receptionist);
 
         $this->assertSame(
-            ['public_id' => $rx->public_id, 'verification_code' => $rx->verification_code, 'version' => 1],
+            ['public_id' => $rx->public_id, 'verification_code' => $rx->verification_code, 'version' => 1, 'printed' => false],
             $this->boardRow($done)['prescription'],
-            'the completed row carries exactly the handle of the issued prescription',
+            'the completed row carries exactly the handle of the issued prescription, plus whether it has been printed',
         );
         $this->assertNull($this->boardRow($drafting)['prescription'], 'a draft is not a prescription yet');
         $this->assertNull($this->boardRow($booked)['prescription'], 'a booked patient has no encounter to print');
@@ -162,6 +163,59 @@ final class DeskPrescriptionPrintTest extends TestCase
 
         $this->assertSame($v2->public_id, $row['prescription']['public_id']);
         $this->assertSame(2, $row['prescription']['version']);
+    }
+
+    /**
+     * The friction this rule removes: issuing COMPLETES the serial, and the desk's default view is the active rows,
+     * so the one patient who is certainly still at the counter — the one waiting for their printout — was the one
+     * the default view hid. A completed row whose issued prescription has never been printed is therefore kept in
+     * that view, and the rule clears itself the moment the sheet is printed (`printed_count`, bumped by
+     * PrintController). The board's job is to CARRY the answer; shared/offline/board.ts `isAwaitingPrint` applies
+     * it identically on both board paths.
+     */
+    public function test_a_completed_row_is_flagged_awaiting_print_until_the_sheet_is_actually_printed(): void
+    {
+        Queue::fake();
+        $awaiting = $this->consulting();
+        $rx = $this->issuedFor($awaiting);
+
+        // A finished patient with nothing to print, and one whose prescription is still a draft: neither is waiting
+        // at the counter for paper, so neither may be kept in the default view by this rule.
+        $nothing = $this->consulting();
+        app(CompleteConsultation::class)->handle($nothing->fresh(), $this->staffActor());
+        $drafting = $this->consulting();
+        $this->actingAs($this->doctorUser, 'web');
+        $this->draftFor($this->visitFor($drafting), $this->doctor);
+
+        $this->actingAsStaff(Role::Receptionist);
+
+        $this->assertSame(SerialStatus::Completed, $awaiting->fresh()->status);
+        $this->assertFalse($this->boardRow($awaiting)['prescription']['printed'], 'issued and never printed: the desk still owes this patient their sheet');
+        $this->assertTrue($this->awaitingPrint($awaiting), 'so the row stays in the default view');
+        $this->assertNull($this->boardRow($nothing)['prescription'], 'a completed row with no prescription is just finished');
+        $this->assertFalse($this->awaitingPrint($nothing));
+        $this->assertNull($this->boardRow($drafting)['prescription'], 'a draft is not a prescription to hand over');
+        $this->assertFalse($this->awaitingPrint($drafting));
+
+        // The compounder prints it. Nothing else about the row changes — the status is still Completed — but the
+        // reason to keep it on screen is gone, and it went away without a timer.
+        $this->get(route('panel.prescription.print', ['prescription' => $rx->public_id], false))->assertOk();
+        $this->assertSame(1, $rx->fresh()->printed_count);
+
+        $row = $this->boardRow($awaiting);
+        $this->assertTrue($row['prescription']['printed']);
+        $this->assertSame('completed', $row['status'], 'printing is not a status change');
+        $this->assertFalse($this->awaitingPrint($awaiting), 'the row leaves the default view the moment it is printed');
+    }
+
+    /** The board's own rule, read off the row the board actually sent (shared/offline/board.ts `isAwaitingPrint`). */
+    private function awaitingPrint(Serial $serial): bool
+    {
+        $row = $this->boardRow($serial);
+
+        return $row['status'] === SerialStatus::Completed->value
+            && $row['prescription'] !== null
+            && $row['prescription']['printed'] === false;
     }
 
     public function test_the_receptionist_prints_from_the_desk_and_it_is_audited_the_accountant_cannot(): void

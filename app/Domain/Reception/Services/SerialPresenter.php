@@ -33,7 +33,9 @@ use Illuminate\Http\Request;
  * the desk too). Same module boundary (IssuedPrescriptionQuery), same honesty: it is the HANDLE of the latest
  * issued version — public id, verification code, version — and never the snapshot, so the board and the device
  * cache carry nothing clinical. Asked only for rows that can have an encounter at all (present or completed);
- * `null` everywhere else, and `null` on such a row when nothing has been issued.
+ * `null` everywhere else, and `null` on such a row when nothing has been issued. Its `printed` flag is what keeps
+ * a just-finished patient on the desk's default view until the sheet is actually in their hand — the board's own
+ * rule, applied identically on both board paths (shared/offline/board.ts `isAwaitingPrint`).
  *
  * `appointment.hold_expires_at` is the deadline of an advance-payment hold (BRIEF §5.C): a `pending` booking whose
  * serial `booking:expire-holds` will release once the hold window passes. It is emitted only when the sweep would

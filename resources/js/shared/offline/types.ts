@@ -42,9 +42,16 @@ export interface CachedSerial {
   // on, never the sheet itself, so nothing clinical is ever in this store (BRIEF §5.G.4). Printing is online-only
   // (§6.2 `prescription`), so the cached handle only decides whether the row SHOWS a print button; a stale one
   // (issued while offline) means the button appears after the next sync, never that a wrong sheet is printed.
+  //
+  // `prescriptionPrinted` is the same handle's `printed_count > 0`, and it decides something stronger: a completed
+  // row whose prescription has never been printed stays in the DEFAULT board view, because that patient is at the
+  // counter waiting for paper (shared/offline/board.ts `isAwaitingPrint`). It can only go stale in the "not printed
+  // yet" direction — another desk may print while this device is offline, and printing never un-happens — so the
+  // worst a stale cache does is keep a finished row on screen one sync too long, never hide one that is waiting.
+  // An absent value reads as `false` for the same reason: err towards showing the patient.
   hasVitals?: boolean; vitalsAt?: string | null; vitalsReviewed?: boolean; vitalsReadings?: number;
   appointmentStatus?: string | null; holdExpiresAt?: string | null;
-  prescriptionId?: string | null; prescriptionCode?: string | null; prescriptionVersion?: number | null;
+  prescriptionId?: string | null; prescriptionCode?: string | null; prescriptionVersion?: number | null; prescriptionPrinted?: boolean;
 }
 
 export interface CachedBlock {

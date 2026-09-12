@@ -937,6 +937,8 @@ export interface DeskPrescriptionRef {
   public_id: string;
   verification_code: string | null;
   version: number;
+  /** `printed_count > 0` — has this sheet ever come off a printer? Keeps a just-finished patient on the default board view until it has (shared/offline/board.ts `isAwaitingPrint`). */
+  printed: boolean;
 }
 
 /** One session on today's board (BoardBuilder). */

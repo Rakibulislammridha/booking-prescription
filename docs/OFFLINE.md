@@ -390,7 +390,7 @@ unsynced rows is `local:<clientEventId>`; on `accepted` the row is re-keyed to
 the server id (delete + put inside one transaction) and every event referencing
 the local id is rewritten.
 
-### 5.3 Server-derived answers on a cached row (`hasVitals`, `holdExpiresAt`)
+### 5.3 Server-derived answers on a cached row (`hasVitals`, `holdExpiresAt`, `prescriptionPrinted`)
 
 A registered desk renders the board **out of this cache even while it is
 online** — `useDesk.refresh()` writes the server board into Dexie and re-renders
@@ -424,15 +424,29 @@ away:
   the cached handle only decides whether the row shows a print button; stale
   means "issued while this desk was offline, button appears after the next
   sync", never a wrong sheet.
+* **`prescriptionPrinted`** (the same handle's `printed_count > 0`) — "has
+  anybody printed this sheet yet?" It decides something stronger than a button:
+  a **completed** row whose issued prescription has never been printed stays in
+  the board's *default* view, because that patient is standing at the counter
+  waiting for their paper, and issuing is what completed the serial in the first
+  place. It can only go stale in the **"not printed yet"** direction — another
+  desk may print while this device is offline, and a print never un-happens — so
+  a stale cache keeps a finished row on screen one sync too long, and can never
+  hide one that is still waiting. An absent value reads as `false` for the same
+  reason: err towards showing the patient.
 
 None of these fields is indexed: they are read with the row, never queried on.
 
-Two things the board shows are *not* cached, because they are re-derived from
+Three things the board shows are *not* cached, because they are re-derived from
 fields already on every row (`shared/offline/board.ts`): the row order (serial
-**number**, the order the waiting room reads) and the **Next** chip — the row
+**number**, the order the waiting room reads), the **Next** chip — the row
 `CallNext` would take, its own rule (`checked_in`, lowest `position`, ties by
-`number`) applied to the rows on screen. A patient checked in offline is "Next"
-on this desk exactly as the server will say once the event syncs.
+`number`) applied to the rows on screen — and **which rows the default view
+shows** (`visibleRows`): the active rows plus `isAwaitingPrint` (status
+`completed`, an issued prescription, `printed` false). A patient checked in
+offline is "Next" on this desk exactly as the server will say once the event
+syncs, and a patient the doctor just finished stays on the list until the desk
+has actually handed over the printout.
 
 ---
 
