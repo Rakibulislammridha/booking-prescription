@@ -40,7 +40,7 @@ type Props = PageProps<{
 
 const POLL_MS = 5_000;
 
-export default function Today({ channel, branch, date, board: initial, doctors: initialDoctors }: Props) {
+export default function Today({ channel, branch, date, board: initial, doctors: initialDoctors, can }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
   const [board, setBoard] = useState<QueueBoard>(initial);
@@ -99,7 +99,15 @@ export default function Today({ channel, branch, date, board: initial, doctors: 
                     <TableCell align="right">{formatBn(s.counts.completed, locale)}</TableCell>
                     <TableCell>{s.delay_minutes > 0 ? <Chip size="small" color="warning" label={formatBn(s.delay_minutes, locale)} /> : null}</TableCell>
                     <TableCell align="right">
-                      {doctor ? (
+                      {/* The doctor screen's own door is `queue.call-next` for anyone who is not that doctor
+                          (DoctorScreenController::isOperator). A compounder holds it for nobody, so this button
+                          was a guaranteed 403 on every row of the board they are allowed to read — and the gate
+                          has been in these props, unread, since the page shipped. Still imperfect for the rarest
+                          caller: a DOCTOR who holds the permission may open only their own screen, and this page
+                          cannot tell which row is theirs (`doctors` is keyed by public id, the shared prop carries
+                          the internal `doctor_id`). A doctor lands here only by typing the URL — the drawer sends
+                          them to their own session — and the refusal is now legible when they do. */}
+                      {doctor && can.call_next ? (
                         <Button size="small" component={RouterLink} href={`${route('panel.queue.doctor')}?doctor=${doctor.slug}&session=${s.id}`}>
                           {t('queue.today.open_doctor')}
                         </Button>

@@ -2,6 +2,9 @@
 // rows with check-in / fee / print / cancel / print prescription. Offline: check-in and the token slip keep working
 // (event log), the rest is disabled with the OFFLINE §6.2 reason.
 //
+// Every control here is behind its own `can` flag except the token slip, which reprints a number the desk already
+// has and asks the server for nothing — there is no permission to hang it on and nothing to leak by printing it.
+//
 // The rows are in serial-NUMBER order, the one "Call next" would take wears the Next chip, and the default view is
 // "active + awaiting print" — all three from shared/offline/board.ts, the same functions the device cache applies,
 // so the board reads the same whichever path built it (Inertia props or Dexie).
@@ -44,7 +47,14 @@ export interface SessionTileProps {
   session: BoardSession;
   mode: ConnectionMode;
   blockRemaining: number;
-  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; record_vitals: boolean; print_prescription: boolean };
+  /**
+   * One flag per action the row or the header offers. `check_in` and `kiosk` were the two that had none: the
+   * arrival tick rendered for anyone who could open the board, and so did the kiosk QR — which mints a public
+   * booking link, i.e. issues serials by another name. A compounder holds `serials.check-in` and not
+   * `serials.issue.counter`, so those two had to stop travelling together. Every flag is a display decision only;
+   * the row-level answer is still the policy the action's route authorises.
+   */
+  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; record_vitals: boolean; print_prescription: boolean; check_in: boolean; kiosk: boolean };
   busy: boolean;
   onBook(session: BoardSession, channel: 'counter' | 'walkin'): void;
   onCallNext(session: BoardSession): void;
@@ -108,7 +118,7 @@ export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, 
               </Button>
             ) : null}
             {can.issue ? guard('issue_buffer', true, <Button size="small" variant="outlined" disabled={busy || offline || r.buffer === 0} onClick={() => onBook(session, 'walkin')}>{t('serials.actions.issue_walkin')}</Button>) : null}
-            <Button size="small" disabled={offline} onClick={() => onKiosk(session)}>{t('reception.board.kiosk_qr')}</Button>
+            {can.kiosk ? <Button size="small" disabled={offline} onClick={() => onKiosk(session)}>{t('reception.board.kiosk_qr')}</Button> : null}
           </Stack>
         ) : null}
       />
@@ -156,7 +166,7 @@ export function SessionTile({ session, mode, blockRemaining, can, busy, onBook, 
                         {s.appointment ? <Typography variant="caption" color={s.appointment.payment_status === 'paid' ? 'success.main' : 'text.secondary'}>{formatBdt(s.appointment.fee_paisa, locale)} · {t(`reception.payment.${s.appointment.payment_status}`)}</Typography> : null}
                       </TableCell>
                       <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                        {s.status === 'booked' && open ? <Tooltip title={t('serials.actions.check_in')}><IconButton size="small" disabled={busy} onClick={() => onCheckIn(session, s)} aria-label={t('serials.actions.check_in')}><CheckIcon fontSize="small" /></IconButton></Tooltip> : null}
+                        {can.check_in && s.status === 'booked' && open ? <Tooltip title={t('serials.actions.check_in')}><IconButton size="small" disabled={busy} onClick={() => onCheckIn(session, s)} aria-label={t('serials.actions.check_in')}><CheckIcon fontSize="small" /></IconButton></Tooltip> : null}
                         {can.collect && s.appointment && s.appointment.payment_status !== 'paid' && ACTIVE.has(s.status) ? <Tooltip title={t('reception.board.collect_fee')}><IconButton size="small" disabled={busy} onClick={() => onCollect(session, s)} aria-label={t('reception.board.collect_fee')}><CashIcon fontSize="small" /></IconButton></Tooltip> : null}
                         {can.record_vitals && s.vitals !== null ? <Tooltip title={t(isAllowedOffline('prescription', mode) ? 'reception.vitals.record' : offlineReason('prescription'))}><span><IconButton size="small" disabled={busy || offline || s.public_id.startsWith('local:')} onClick={() => onVitals(session, s)} aria-label={t('reception.vitals.record')}><VitalsIcon fontSize="small" /></IconButton></span></Tooltip> : null}
                         <Tooltip title={t('reception.board.print_slip')}><IconButton size="small" disabled={busy} onClick={() => onPrint(session, s)} aria-label={t('reception.board.print_slip')}><PrintIcon fontSize="small" /></IconButton></Tooltip>

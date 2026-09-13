@@ -74,7 +74,20 @@ Middleware `App\Domain\Reception\Http\Middleware\AuthenticateReceptionDevice` (a
 `routes/api/reception.php` to every route except registration; guard `device`, ARCHITECTURE.md §6.1):
 
 1. `auth('device')->user()` must be an active device of the request tenant; ability checked per route (`reception:sync` etc.).
-2. `X-Actor-User` must be an active user with role Receptionist/Hospital Admin at the device's branch; attached to the request as `actor`. When the receptionist logged into the PWA while online, the user id is cached in `meta.actorUser`; offline, a local 4-digit PIN (hashed with `argon2` in-browser is not available — use PBKDF2 via WebCrypto, 100k iterations, stored in `meta.actorPin`) re-locks the desk after 15 idle minutes. The PIN protects the tablet, not the API: the server always re-validates the actor on replay.
+2. `X-Actor-User` must be an active user with role Receptionist/Hospital Admin at the device's branch; attached to the request as `actor`. When the receptionist logged into the PWA while online, the user id is cached in `meta.actorUser`.
+
+   > **The device PIN is designed, not built — `meta.actorPin` is declared in `shared/offline/db.ts` and written
+   > nowhere.** The design: a local 4-digit PIN (`argon2` is not available in-browser — PBKDF2 via WebCrypto,
+   > 100k iterations, stored in `meta.actorPin`) re-locks the desk after 15 idle minutes
+   > (`reception.pin_idle_minutes`, §13.7). It would protect the tablet, not the API: the server always
+   > re-validates the actor on replay.
+   >
+   > Nothing today depends on it, because nothing offline is allowed to depend on knowing who is holding the
+   > tablet: `useDesk` compares the Dexie cache's `meta.actorUser` with the authenticated viewer before it
+   > renders a row, and §11.1 removed the cached authenticated page a cold boot used to be served. It is the
+   > prerequisite for ever restoring cold-boot-into-the-board, and until it ships the desk's offline answer to
+   > "who are you" is "ask the server" — which is exactly why an offline cold boot lands on a page that names
+   > nobody.
 3. Device `last_seen_at`, `last_ip`, `app_version` updated (throttled to once per minute).
 
 Sanctum's token `expires_at` and `last_used_at` are used as-is. Hospital Admin
@@ -731,32 +744,121 @@ desk reconnects".
 
 ## 11. Service worker (vite-plugin-pwa, `injectManifest`)
 
-The `VitePWA` block of `vite.config.ts` is foundation-owned and is reproduced verbatim in
+> **Changed 2026-09-12 — the offline-shell wave.** Two routes were removed as a cross-actor data leak
+> (`shell-v1`, `api-patients`) and the navigation fallback was rebuilt as a page that names nobody.
+> The table below is the code as it stands. §11.1 is what changed and what the desk can and cannot do
+> offline as a result; §11.2 is how a new worker reaches a tablet nobody ever reloads.
+
+The `VitePWA` block of `vite.config.ts` is foundation-owned and is reproduced in
 ARCHITECTURE.md §7.2 (`strategies: 'injectManifest'`, `srcDir: 'resources/js/panel'`, `filename: 'sw.ts'`,
 `outDir: 'public'`, `scope: '/panel/'`, `registerType: 'prompt'` — never swap the shell mid-shift;
-manifest name `Clinic Desk`). Registration is `resources/js/panel/pwa.ts`. This section owns only the
-worker itself.
+manifest name `Clinic Desk`, `start_url: '/panel/reception'`, `display: 'standalone'`). Registration and
+the update policy are `resources/js/panel/pwa.ts` (§11.2). This section owns the worker itself.
 
-`resources/js/panel/sw.ts` (workbox modules, all already installed):
+`resources/js/panel/sw.ts` (workbox modules, all already installed), **in registration order** — workbox
+matches routes in the order they are registered, so the order is the specification:
 
 | Route | Strategy | Notes |
 |---|---|---|
-| Precache manifest (hashed `build/*`, fonts, icons) | `precacheAndRoute(self.__WB_MANIFEST)` | app shell assets |
-| Navigation `GET /panel/reception*` **except `/panel/reception/visits/*`** (Inertia HTML) | `NetworkFirst`, `networkTimeoutSeconds: 3`, cache `shell-v1`, `cacheableResponse {statuses:[200]}` | cold offline boot serves the last HTML; the page then hydrates from Dexie (`bootstrap` in props is treated as stale) |
-| `GET /panel/reception/visits/*` — the compounder's vitals screen (BRIEF §5.G.2) | `NetworkOnly` (in the guard list, so it is matched **first**) | vitals are a clinical body: §6.2 keeps them off the device, so an offline desk gets a failed navigation rather than yesterday's blood pressure on screen |
-| `GET /api/reception/bootstrap*` | `NetworkFirst`, timeout 4, cache `api-bootstrap`, `expiration {maxEntries: 4, maxAgeSeconds: 259200}` | belt-and-braces; Dexie is the real store |
-| `GET /api/reception/patients*`, `/history*` | `NetworkFirst`, timeout 4, `maxEntries: 500` | |
-| `GET /api/reception/print-templates` | `StaleWhileRevalidate` | |
-| `GET /build/*`, `/fonts/*` | `CacheFirst`, 1 year | hashed |
-| **Any non-GET**, `/api/reception/sync*`, `/api/reception/blocks*`, `/api/ping`, `/broadcasting/*`, `/api/device/broadcasting/*`, `/sanctum/*`, `/queue/*` (the public state/sessions endpoints, REALTIME.md §5), `/panel/reception/visits/*` | `NetworkOnly` (explicit `registerRoute` placed **first**) | mutations, liveness and clinical bodies must never be served from cache |
+| Precache manifest — hashed `build/assets/*.{js,css,woff2}`, `icons/*`, and **`offline.html`** | `precacheAndRoute(self.__WB_MANIFEST)` | app assets plus the offline shell (§11.1). `offline.html` is precached **by name**, not by an `*.html` glob, so nothing else in `public/` can drift into the precache |
+| **Navigation** — any in-scope `GET` with `request.mode === 'navigate'`, except `/panel/reception/print-templates*` | bare `fetch()`; on a **thrown** fetch, `matchPrecache('/offline.html')` | Registered **first**, so every page load has somewhere to land. No `/panel/` response is ever written to a cache. A 4xx/5xx is returned as itself: a server that answered is not an outage, and an expired session must not look like dead wifi |
+| `GET /panel/reception/visits/*` — the compounder's vitals screen (BRIEF §5.G.2) | navigation → the shell; the vitals **body** is never stored | §6.2 keeps clinical bodies off the device. The shell carries none, so a compounder offline gets an explanation rather than a chromeless error page. The prefix stays in the NetworkOnly guard below so no XHR to it can be cached either |
+| `GET /api/reception/bootstrap*` | `NetworkFirst`, timeout 4, cache `api-bootstrap`, `expiration {maxEntries: 4, maxAgeSeconds: 259200}` | Belt-and-braces; Dexie is the real store. A cross-actor hit is harmless only because of what is downstream: `applyBootstrap` writes the **server's** actor into `meta.actorUser` and `useDesk` compares it with the authenticated viewer before rendering a row |
+| `GET /api/reception/print-templates*`, `GET /panel/reception/print-templates*` | `StaleWhileRevalidate`, cache `print-templates` | Versioned server-side. Excluded from the navigation route on purpose: a print frame is a navigation too, and shadowing it would replace a token slip with an apology (§10) |
+| `GET /build/*`, `/fonts/*`, `/icons/*` | `CacheFirst`, 1 year, cache `static-v1` | hashed |
+| **Any non-GET**, `/api/reception/sync*`, `/api/reception/blocks*`, `/api/ping`, `/broadcasting/*`, `/api/device/broadcasting/*`, `/sanctum/*`, `/queue/*` (the public state/sessions endpoints, REALTIME.md §5), `/panel/reception/visits/*` | `NetworkOnly` (explicit `registerRoute`, placed before every caching route) | mutations, liveness and clinical bodies must never be served from cache. It sits after the navigation route and before everything else, so it still shadows every cache |
 | Everything else (other panel routes, Inertia JSON with `X-Inertia`) | `NetworkOnly` | the desk is the only offline surface |
 
-`navigateFallback` is **not** used (an Inertia app must not get a generic
-`index.html`); `navigateFallbackDenylist`/allowlist are unnecessary because the
-navigation route is scoped. Background Sync is not used (no iOS support);
-replay runs in-page (§7.3). `registerSW({ immediate: true, onNeedRefresh })`
-from `virtual:pwa-register` shows "Update ready — apply when the desk is idle";
-the update is applied only when `pendingEvents === 0`.
+`navigateFallback` is still **not** used, for a second reason as well as the first: it is a `generateSW`
+option and has no effect under `injectManifest`, and a generic `index.html` would be the wrong shape for an
+Inertia app anyway. The fallback is the explicit navigation route above, and what it serves is a static file,
+not an app shell — nothing hydrates, nothing routes. Background Sync is not used (no iOS support); replay runs
+in-page (§7.3).
+
+### 11.1 The offline shell — and what a cold boot deliberately does **not** restore
+
+**Removed.** `shell-v1` held the reception board's Inertia HTML (`NetworkFirst`, 3 s) so a cold offline boot
+served the last page. That HTML is a rendered, **authenticated** document: the whole board with patient names,
+fees and payment status, the viewer's `can` flags, their `doctor_scoped` answer and `auth.user`, all inlined in
+`data-page`. It was keyed by URL alone, and a worker cannot tell who is asking — the session cookie is HttpOnly
+and unreadable there, the `Cookie` header is forbidden on a `Request`, and on a cold boot there is no client to
+ask. So on a slow or dead network it handed the previous user's board to the next person to pick the tablet up,
+a Compounder included, and a Compounder's entire boundary is which board they may hold. The page cannot repair
+it either: a page booted from that cache believes it **is** the previous user, because its props say so.
+
+`api-patients` held `/api/reception/patients*` and `/history*` for 30 days / 500 entries — names, mobiles and
+visit history, same URL-only key, same answer to whoever asks. It bought nothing: `/api/reception/history` is
+not a route, `patients/recent` is fetched once per bootstrap and written straight into Dexie (`cachePatients`),
+which is the store the desk actually reads, and `devicePatientLookup` has no caller.
+
+Both caches are **deleted on sight**, in three places, because dropping a route only stops new writes:
+`install` in the worker (as soon as the new worker is downloaded, while the old one is still in control — this
+is the one that matters on a tablet nobody reloads), `activate` (the old worker keeps writing to `shell-v1`
+until it is actually replaced), and `registerPanelServiceWorker()` in the page (Cache Storage is same-origin;
+this fires whichever worker is in control). `cleanupOutdatedCaches()` knows only about workbox's own precaches
+and would never have touched a hand-named one. Deleting an HTTP response destroys no work — the unsynced event
+log lives in Dexie (`db.events`) and is never touched by any of this.
+
+**Added: `public/offline.html`.** Hand-authored, committed, precached verbatim, served by the navigation route
+for any in-scope navigation the tablet cannot complete. It exists because removing `shell-v1` on its own took
+away the desk's ability to **open** offline, which is the product (BRIEF §5.F.1 — "clinic wifi in Bangladesh is
+unreliable"): `start_url` is `/panel/reception` in `display: standalone`, so a failed navigation there is a
+chromeless window showing the browser's network-error page — no address bar, no back button, nothing to retry
+with, and the receptionist's unsynced log sitting in Dexie behind a door she cannot open.
+
+Its rules, which are the whole reason it is safe to hand to whoever picks the tablet up:
+
+- **No data, of any kind.** Static markup only: no Inertia payload, no board, no `can` map, no `auth.user`,
+  no IndexedDB read, no credentialed fetch. Nothing in it names a person, a patient or a serial.
+- **Bilingual, both languages always visible** (Bangla first, English second) rather than chosen from
+  `navigator.language`. A precached file cannot ask the server who is holding the tablet; the front desk is
+  Bangla-first and whoever installed the app reads the English.
+- It says the desk needs one connection, that work already saved on the tablet is safe and uploads itself when
+  the line returns, and offers **Retry**.
+- Retry and the `online` event both run one unauthenticated `GET /api/ping` probe (4 s abort) and reload only
+  if it **answers** — any status, 200 or 401 or 429, proves the line is back. It never reloads on
+  `navigator.onLine` alone: that reports the wifi radio, not whether the router can reach the server, and
+  reloading on the radio loops this page against a dead uplink.
+- The reload is `location.reload()` on the **original** URL. The shell is a response to that navigation, not a
+  redirect, so the address the browser is holding is still the desk the user asked for.
+
+**What the desk therefore does offline**, in the four cases that matter:
+
+| Case | Before this wave | Now |
+|---|---|---|
+| Network drops in an already-open tab | keeps working out of Dexie | unchanged — keeps working out of Dexie |
+| Tab reload while offline | previous user's board, from `shell-v1` | the shell, then the real board on the first successful load |
+| Cold launch of the installed icon while offline | previous user's board | the shell |
+| Tablet rebooted before the line comes back | previous user's board | the shell |
+
+**Not restored, on purpose: cold boot straight into the board.** That needs the desk to prove *offline* who is
+standing at it, and the design's answer is §2.2's device PIN (`meta.actorPin`) — declared in
+`shared/offline/db.ts` and written nowhere. Until it exists, an offline boot may not be served a document that
+names somebody, and no amount of client-side care changes that: the leak is in handing the document over at all.
+
+### 11.2 Getting a new worker onto a tablet nobody reloads
+
+`registerType: 'prompt'` is right — the shell is never swapped mid-shift — but a prompt assumes somebody is
+watching, and a front desk is a kiosk: one page, opened in the morning, never closed, never reloaded. Two
+consequences, both handled in `pwa.ts`:
+
+1. **A tablet that never navigates never asks whether there is a new worker.** The browser re-checks `sw.js` on
+   navigation and at most once a day; a page that is never reloaded can sit on an old worker indefinitely. The
+   registration therefore polls `registration.update()` **hourly** (skipped while `navigator.onLine` is false).
+2. **Nobody clicks "Apply".** So the update applies itself once the desk is genuinely idle — `pendingEvents === 0`
+   *and* either the tab is hidden (screen off / backgrounded) or nobody has touched the glass for five minutes,
+   re-checked every 30 s. The manual button still exists and still wins; the automatic path only removes the
+   requirement that somebody be watching. It is never immediate: `updateSW(true)` reloads, and a reload through a
+   half-typed patient name is its own small outage. Dismissing the toast hides the toast — it does not veto the
+   automatic apply, because "not now" is an answer about a toast, not a decision to keep running the worker this
+   release exists to replace.
+
+`onOfflineReady` now means the narrower thing it can actually promise: **the desk will open offline and explain
+itself.** `pwa.ts` confirms `/offline.html` is really in the precache (`caches.match`, `ignoreSearch`) before it
+sets the flag, and warns instead of setting it if the glob ever stops matching. It is **not** a promise that a
+cold boot lands on the board — see §11.1. Anything rendered from that flag must say the narrower thing.
+
+For what an operator must do on tablets that are already installed, see OPERATIONS.md §10.
 
 ---
 

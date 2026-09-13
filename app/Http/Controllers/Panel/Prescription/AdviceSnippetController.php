@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Panel\Prescription;
 
+use App\Domain\Clinic\Services\DoctorScope;
 use App\Domain\Prescription\Actions\DeleteAdviceSnippet;
 use App\Domain\Prescription\Actions\SaveAdviceSnippet;
 use App\Domain\Prescription\Services\WriterPayloadBuilder;
@@ -17,9 +18,17 @@ use Illuminate\Http\Request;
 /** GET/POST/PUT/DELETE /panel/advice-snippets[/{snippet}] (PRESCRIPTION.md §4.7); GET ?q=&category= is the Ctrl+K palette read. */
 final class AdviceSnippetController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    /**
+     * Closed to a compounder — the clinic's advice library is the doctors' content, not their desk's — and open to
+     * everyone else exactly as it was. A pass that asked for `prescriptions.write || prescriptions.view.any` instead
+     * would have been right about the compounder and wrong about the receptionist, who has had this palette all
+     * along; DoctorScope is the question that separates the two.
+     */
+    public function index(Request $request, DoctorScope $scope): JsonResponse
     {
-        $doctorId = (int) ($request->user('web')->doctor()->value('id') ?? 0);
+        $user = $request->user('web');
+        abort_unless($user !== null && $scope->doctorIds($user) === null, 403);
+        $doctorId = (int) ($user->doctor()->value('id') ?? 0);
         $q = trim((string) $request->query('q', ''));
         $rows = AdviceSnippet::query()->active()->visibleTo($doctorId)
             ->when($request->filled('category'), fn ($b) => $b->where('category', (string) $request->query('category')))

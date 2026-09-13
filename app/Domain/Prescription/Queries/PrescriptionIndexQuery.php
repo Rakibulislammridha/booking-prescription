@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Prescription\Queries;
 
+use App\Domain\Clinic\Services\DoctorScope;
 use App\Domain\Patients\Contracts\PatientAccessResolver;
 use App\Domain\Patients\Services\PatientSearch;
 use App\Domain\Prescription\Data\PrescriptionIndexFilters;
@@ -23,6 +24,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * however long the page is. Row-level access is the Patients module's own rule (PatientAccessResolver, BRIEF §5.N):
  * a doctor without `prescriptions.view.any` sees the prescriptions of the patients they have treated and nobody
  * else's; everyone the resolver leaves unconstrained (admin, desk, the wider permission) sees the clinic's.
+ *
+ * A DoctorScope-restricted caller (a compounder) is filtered TWICE, and both are needed. The patient constraint
+ * answers "is this patient mine?", but a patient treated by two doctors is mine through one of them and the
+ * colleague's sheets for that same patient would ride along; `prescriptions.doctor_id` answers "is this SHEET
+ * mine?". Belt and braces on the list that PrescriptionPolicy::view guards one row at a time.
  */
 final class PrescriptionIndexQuery
 {
@@ -37,7 +43,7 @@ final class PrescriptionIndexQuery
 
     private const MOMENT = 'coalesce(prescriptions.issued_at, prescriptions.created_at)';
 
-    public function __construct(private readonly PatientAccessResolver $access) {}
+    public function __construct(private readonly PatientAccessResolver $access, private readonly DoctorScope $scope) {}
 
     /** @return LengthAwarePaginator<int, Prescription> */
     public function paginate(User $user, PrescriptionIndexFilters $filters): LengthAwarePaginator
@@ -52,20 +58,26 @@ final class PrescriptionIndexQuery
             ->orderByDesc('prescriptions.id');
 
         $this->constrainToAccessiblePatients($user, $query);
+        $doctorIds = $this->scope->doctorIds($user);
+        $query->when($doctorIds !== null, fn ($q) => $q->whereIn('prescriptions.doctor_id', $doctorIds ?? []));
         $this->applyFilters($query, $filters);
 
         return $query->paginate(self::PER_PAGE, ['*'], 'page', $filters->page)->withQueryString();
     }
 
     /**
-     * The doctor filter's choices. Every active doctor, deliberately: a restricted doctor's list already shows a
-     * colleague's name on a shared patient's row, so the dropdown hides nothing the rows do not.
+     * The doctor filter's choices. Every active doctor for an unrestricted caller, deliberately: a restricted
+     * doctor's list already shows a colleague's name on a shared patient's row, so the dropdown hides nothing the
+     * rows do not. That argument does NOT carry to a DoctorScope-restricted caller, whose rows name their own
+     * doctors only — so they get their own doctors, and a dropdown that cannot ask a question the list would refuse.
      *
+     * @param  list<int>|null  $doctorIds  DoctorScope: null = unrestricted, a list = only these doctors, [] = none
      * @return array<int, array{public_id: string, name: string, name_bn: string|null}>
      */
-    public static function doctorOptions(): array
+    public static function doctorOptions(?array $doctorIds = null): array
     {
-        return Doctor::query()->active()->orderBy('sort_order')->orderBy('name')->get(['public_id', 'name', 'name_bn'])
+        return Doctor::query()->active()->when($doctorIds !== null, fn ($q) => $q->whereIn('id', $doctorIds ?? []))
+            ->orderBy('sort_order')->orderBy('name')->get(['public_id', 'name', 'name_bn'])
             ->map(fn (Doctor $doctor): array => ['public_id' => $doctor->public_id, 'name' => $doctor->name, 'name_bn' => $doctor->name_bn])
             ->all();
     }

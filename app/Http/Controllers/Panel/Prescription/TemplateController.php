@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Panel\Prescription;
 
+use App\Domain\Clinic\Services\DoctorScope;
 use App\Domain\Prescription\Actions\ApplyTemplate;
 use App\Domain\Prescription\Actions\DeleteTemplate;
 use App\Domain\Prescription\Actions\SaveTemplate;
@@ -21,9 +22,17 @@ use Illuminate\Http\Request;
 /** /panel/prescription-templates CRUD + apply (PRESCRIPTION.md §3.6). */
 final class TemplateController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    /**
+     * The list form of PrescriptionTemplatePolicy::view, so it answers the same question that policy does — and only
+     * that one. An earlier pass gated it on `prescriptions.write || prescriptions.view.any`, which shut the
+     * compounder out and took the shared-template list from the receptionist with them; the rule is a DoctorScope
+     * one, not a prescribing one. `visibleTo` still decides WHICH rows anyone sees.
+     */
+    public function index(Request $request, DoctorScope $scope): JsonResponse
     {
-        $doctorId = (int) ($request->user('web')->doctor()->value('id') ?? 0);
+        $user = $request->user('web');
+        abort_unless($user !== null && $scope->doctorIds($user) === null, 403);
+        $doctorId = (int) ($user->doctor()->value('id') ?? 0);
         $rows = PrescriptionTemplate::query()->visibleTo($doctorId)->withCount('items')->orderBy('name')->get();
 
         return response()->json(['data' => $rows->map(fn (PrescriptionTemplate $t) => WriterPayloadBuilder::templateBrief($t))->values()->all()]);

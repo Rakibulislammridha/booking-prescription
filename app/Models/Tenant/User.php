@@ -12,8 +12,10 @@ use App\Models\Tenant\Concerns\AssertsTenantId;
 use App\Models\Tenant\Concerns\RequiresTenancy;
 use Carbon\CarbonImmutable;
 use Database\Factories\Tenant\UserFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -42,6 +44,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property-read Branch|null $defaultBranch
  * @property-read Doctor|null $doctor
  * @property-read Tenant $tenant
+ * @property-read Collection<int, Doctor> $assignedDoctors
  */
 final class User extends Authenticatable
 {
@@ -104,5 +107,18 @@ final class User extends Authenticatable
     public function doctor(): HasOne
     {
         return $this->hasOne(Doctor::class);
+    }
+
+    /**
+     * The doctors this user may act for as a compounder. Empty for everyone else — the relation is only consulted
+     * for a user holding the `compounder` role, through DoctorScope. Soft-deleted doctors fall out by themselves.
+     *
+     * @return BelongsToMany<Doctor, $this>
+     */
+    public function assignedDoctors(): BelongsToMany
+    {
+        return $this->belongsToMany(Doctor::class, 'doctor_compounder')
+            ->withPivot('assigned_by_user_id')
+            ->withTimestamps();
     }
 }

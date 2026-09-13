@@ -32,6 +32,13 @@ use Illuminate\Support\Collection;
  * row CallNext would take next (`next_serial`, CallNext::nextOf on the rows already loaded): the list stays legible
  * and the desk is still told, in so many words, who is being called. The device cache applies the same order and
  * the same rule (shared/offline/board.ts) so an offline desk reads the board the same way.
+ *
+ * `$doctorIds` is the caller's DoctorScope answer and the ONE place the compounder's boundary is applied to this
+ * document: null = every doctor at the branch (everyone who is not a compounder), a list = only those doctors, and
+ * an EMPTY list = no sessions at all (an unassigned compounder has no desk yet, not the whole clinic's). Filtering
+ * the session query is enough — the serials, patients, appointments, vitals and prescription handles below are all
+ * keyed off the sessions that survive it, so they narrow by construction, and the `orderBy('number')` the rows are
+ * listed in is untouched by construction too.
  */
 final class BoardBuilder
 {
@@ -43,13 +50,17 @@ final class BoardBuilder
         private readonly IssuedPrescriptionQuery $prescriptions,
     ) {}
 
-    /** @return array<string, mixed> */
-    public function build(Branch $branch, CarbonImmutable $date, bool $withSerials = true): array
+    /**
+     * @param  list<int>|null  $doctorIds  DoctorScope: null = unrestricted, a list = only these doctors, [] = none
+     * @return array<string, mixed>
+     */
+    public function build(Branch $branch, CarbonImmutable $date, bool $withSerials = true, ?array $doctorIds = null): array
     {
-        $this->materialise($branch, $date);
+        $this->materialise($branch, $date, $doctorIds);
 
         $sessions = SessionInstance::query()
             ->where('branch_id', $branch->id)
+            ->when($doctorIds !== null, fn ($q) => $q->whereIn('doctor_id', $doctorIds ?? []))
             ->whereDate('session_date', $date->toDateString())
             ->with(['doctor', 'nowServing'])
             ->when($withSerials, fn ($q) => $q->with(['serials' => fn ($s) => $s->orderBy('number')->orderBy('position')]))
@@ -132,11 +143,20 @@ final class BoardBuilder
         ];
     }
 
-    /** Every doctor with a template or an override at the branch gets the day materialised (idempotent, SERIAL_ENGINE §2). */
-    private function materialise(Branch $branch, CarbonImmutable $date): void
+    /**
+     * Every doctor with a template or an override at the branch gets the day materialised (idempotent,
+     * SERIAL_ENGINE §2) — but only within the caller's scope: a compounder opening the board must not spend their
+     * page load materialising twelve colleagues' days, and the sessions they would create are ones this caller can
+     * never see. Somebody unrestricted opens the same board and materialises the rest.
+     *
+     * @param  list<int>|null  $only
+     */
+    private function materialise(Branch $branch, CarbonImmutable $date, ?array $only = null): void
     {
-        $doctorIds = DoctorSchedule::query()->active()->where('branch_id', $branch->id)->distinct()->pluck('doctor_id')
-            ->merge(ScheduleOverride::query()->where('branch_id', $branch->id)->whereDate('override_date', $date->toDateString())->distinct()->pluck('doctor_id'))
+        $doctorIds = DoctorSchedule::query()->active()->where('branch_id', $branch->id)
+            ->when($only !== null, fn ($q) => $q->whereIn('doctor_id', $only ?? []))->distinct()->pluck('doctor_id')
+            ->merge(ScheduleOverride::query()->where('branch_id', $branch->id)->whereDate('override_date', $date->toDateString())
+                ->when($only !== null, fn ($q) => $q->whereIn('doctor_id', $only ?? []))->distinct()->pluck('doctor_id'))
             ->unique();
 
         foreach ($doctorIds as $doctorId) {

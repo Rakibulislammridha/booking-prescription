@@ -49,6 +49,7 @@ final class SetupPolicyMatrixTest extends TestCase
             'doctor sees the clinic but not the staff list' => ['doctor', $readable, ['/panel/clinic/staff']],
             'receptionist sees the clinic but not the staff list' => ['receptionist', $readable, ['/panel/clinic/staff']],
             'accountant sees the clinic but not the staff list' => ['accountant', $readable, ['/panel/clinic/staff']],
+            'compounder sees the clinic but not the staff list' => ['compounder', $readable, ['/panel/clinic/staff']],
         ];
     }
 

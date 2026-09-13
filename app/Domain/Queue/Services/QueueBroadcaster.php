@@ -29,8 +29,16 @@ use Illuminate\Broadcasting\Channel;
  * Every payload is a plain array (no Eloquent is serialised) and carries `version` = `session_instances.version`
  * so a client can discard a frame older than the state it already holds.
  *
- * The public queue channel never carries a patient identifier; the private channels carry a first name, an age and
- * a sex — nothing else (BRIEF §8, REALTIME.md §12).
+ * The public queue channel never carries a patient identifier. Of the private channels only the doctor's own channel
+ * and the branch display carry a patient card — a first name, an age and a sex, nothing else (BRIEF §8,
+ * REALTIME.md §3.1/§12).
+ *
+ * The reception channel used to receive that card too, and must not: it is one branch-wide channel every active
+ * staff user of the branch holds, so a compounder assigned to Dr A — whose board, lists and policies are scoped to
+ * Dr A by DoctorScope — was handed a live patient-by-patient feed of every other chamber over the socket, with no
+ * HTTP request and no policy anywhere in the path. A channel cannot be narrowed per subscriber (one payload, many
+ * listeners), so what must not leak is not broadcast: the desk's copy of `serial.called` is the public payload, and
+ * the desk reads names from its own board rows, which ARE doctor-scoped.
  */
 final class QueueBroadcaster
 {
@@ -42,19 +50,23 @@ final class QueueBroadcaster
         return [TenantChannel::queue($session)];
     }
 
-    /** @return array<int, Channel> */
-    public function privateChannels(SessionInstance $session): array
+    /**
+     * The two channels a patient card may ride on: the doctor's own screen and the branch's waiting-room display.
+     * The reception channel is deliberately NOT here — see the class docblock.
+     *
+     * @return array<int, Channel>
+     */
+    public function chamberChannels(SessionInstance $session): array
     {
         $session->loadMissing(['branch', 'doctor']);
 
-        return [
-            TenantChannel::reception($session->branch),
-            TenantChannel::doctor($session->doctor),
-            TenantChannel::display($session->branch),
-        ];
+        return [TenantChannel::doctor($session->doctor), TenantChannel::display($session->branch)];
     }
 
-    /** REALTIME.md §3.1 `serial.called` (public) + `serial.called` (private) + `call.next` (doctor & display only). */
+    /**
+     * REALTIME.md §3.1 `serial.called` on the queue channel (public payload) and on the three private channels, with
+     * the patient card on the doctor's and the display's copy only; then `call.next` on those same two.
+     */
     public function serialCalled(SessionInstance $session, Serial $serial, ?int $previousSerialId): void
     {
         $session->loadMissing(['branch', 'doctor']);
@@ -75,7 +87,9 @@ final class QueueBroadcaster
         $patient = $this->patientCard($serial);
 
         SerialCalled::dispatch($base, $this->publicChannels($session));
-        SerialCalledPrivate::dispatch([...$base, 'patient' => $patient], $this->privateChannels($session));
+        // The desk gets the call itself — it re-fetches the board on it — but not the card (class docblock).
+        SerialCalledPrivate::dispatch($base, [TenantChannel::reception($session->branch)]);
+        SerialCalledPrivate::dispatch([...$base, 'patient' => $patient], $this->chamberChannels($session));
 
         CallNext::dispatch([
             'v' => self::PAYLOAD_VERSION,
@@ -86,7 +100,7 @@ final class QueueBroadcaster
             'room' => $room,
             'speak' => CallAnnouncement::speak($session->session_code, $serial->number, $room),
             'version' => $session->version,
-        ], [TenantChannel::doctor($session->doctor), TenantChannel::display($session->branch)]);
+        ], $this->chamberChannels($session));
     }
 
     /** REALTIME.md §3.1 `serial.status_changed` on queue + reception. */
@@ -178,7 +192,7 @@ final class QueueBroadcaster
     }
 
     /**
-     * First name, age and sex — the only patient data a private channel carries (REALTIME.md §3.1).
+     * First name, age and sex — the only patient data the doctor and display channels carry (REALTIME.md §3.1).
      *
      * @return array{first_name: string|null, age: int|null, sex: string|null}
      */

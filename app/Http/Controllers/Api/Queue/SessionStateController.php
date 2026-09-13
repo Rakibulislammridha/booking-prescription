@@ -15,6 +15,15 @@ use Illuminate\Http\Response;
  * `GET /api/queue/sessions/{session}/state` (`api.queue.sessions.state`) — the same QueueState document and the same
  * ETag contract as the public `site.queue.state`, addressed by session public id. Used by the doctor screen and by
  * the waiting-room display, which know session ids but not always a doctor slug (REALTIME.md §4.1, §9.1).
+ *
+ * No authorize() here, deliberately — not an oversight, and not a place to add one without changing both endpoints:
+ * byte for byte this is what `site.queue.state` (LOCKED, REALTIME.md §5.2) hands any anonymous visitor who knows the
+ * doctor's public slug, and QueueStateBuilder puts codes, numbers, positions, statuses and ETAs in it and never a
+ * patient identifier (REALTIME.md §12). Authenticating the caller buys addressing by session id, nothing more. A
+ * policy check could not even be expressed: the route is `auth:sanctum,device`, and the display TV authenticates as
+ * a ReceptionDevice, which is not an Authorizable and would fail every Gate. If this document ever grows a field
+ * the public endpoint does not serve, that is the moment this route needs a rule of its own — and so does the
+ * public one.
  */
 final class SessionStateController extends Controller
 {

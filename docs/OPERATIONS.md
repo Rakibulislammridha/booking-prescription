@@ -17,6 +17,7 @@ options were checked against `php artisan help`; the SQL was run against the loc
 | Weekly | disk on the Docker volumes; `docker compose logs caddy | grep -i -E 'error|rate'`; Let's Encrypt renewals are automatic but a stuck one shows here |
 | Monthly | restore drill (`scripts/deploy/restore-drill.sh`, DEPLOYMENT §9.3); confirm the off-site mirror of `bp-backups` and the nightly `pg_dumpall` actually contain yesterday |
 | Per release | `scripts/deploy/deploy.sh` (DEPLOYMENT §10.2) |
+| Per release that touches the service worker | reception tablets do not update themselves the moment the server does — §10 |
 | After a DGDA bulletin | §5.1 catalog import |
 
 ---
@@ -64,8 +65,16 @@ docker compose exec app php artisan tinker --execute="
 app(App\Domain\SaaS\Actions\Subscriptions\ReactivateTenant::class)->handle(\$t, 'paid by bank transfer');"
 ```
 
-**After reactivating**, run `php artisan tenants:migrate --tenant=nurjahan`: the deploy-time `tenants:migrate`
-selects only servable tenants, so a clinic suspended across a release is behind on schema until you do.
+**After reactivating**, run `php artisan tenants:migrate --seed --tenant=nurjahan`: the deploy-time
+`tenants:migrate` selects only servable tenants, so a clinic suspended across a release is behind on schema until
+you do — and **`--seed` is not optional any more**. A release may add a *permission* as well as a table
+(`RolesAndPermissionsSeeder`, which `--seed` runs through `TenantDatabaseSeeder`, is idempotent and upserts by
+name), and a permission the tenant has never heard of is not an inert gap: Spatie's `Gate::before` swallows
+`PermissionDoesNotExist` and answers **false**, so the missing row reads as "denied" with nothing in the log. The
+live example is `serials.check-in`, which shipped with the compounder role and is the gate on every check-in POST:
+a tenant that came back from suspension with migrations but no seeder run has a front desk that can postpone a
+patient but cannot mark them arrived, and no error anywhere to say why. Run the seeder before handing the clinic
+back, and if a staff member reports a 403 on something they did yesterday, run it before looking anywhere else.
 
 Suspended tenants keep receiving nightly backups (`tenants:backup` covers every provisioned tenant); their
 scheduled work (`tenants:run …`) does not run because `tenants:run` iterates active tenants only.
@@ -351,3 +360,79 @@ These are documented decisions or recorded gaps, with their source. They are not
 9. **Payments in production require gateway credentials** — per clinic in the panel (encrypted rows) or the
    platform fallback (`config/billing.php`). With none, online payment is simply not offered; `BILLING_GATEWAY_DRIVER=log`
    must never be set in production (it would accept a checkout nobody charged).
+
+---
+
+## 10. Reception tablets (the desk PWA)
+
+The reception desk is an installed PWA ("Clinic Desk"), and a front desk runs it as a kiosk: one page, opened in
+the morning, never closed, never reloaded. That changes what "deployed" means — the server is new the moment
+`deploy.sh` finishes, and the tablet is not. Everything below is about the tablet.
+
+### 10.1 The release that removed the cached board (September 2026)
+
+The old service worker cached the **rendered, authenticated** reception board under a cache named `shell-v1`,
+keyed by URL alone. A worker cannot tell who is asking, so on a dead or slow network it served the previous
+user's board — names, fees, their `can` flags — to whoever picked the tablet up next. That cache and a second
+one (`api-patients`: names, mobiles, visit history) are gone, and are now deleted on sight. In their place, an
+unreachable navigation lands on a **data-free bilingual page** that says the desk needs one connection and that
+saved work is safe (OFFLINE.md §11.1).
+
+**Tell the front desk this, before they report it as a fault:** opening the desk with no connection now shows a
+teal "ডেস্ক এখন অফলাইন / The desk is offline" page with a Retry button. That is the new correct behaviour.
+Nothing has been lost — serials issued offline are still on the tablet and upload themselves when the line
+returns. The old behaviour (the board appearing offline from a cold start) is not coming back until the device
+PIN of OFFLINE.md §2.2 is built.
+
+### 10.2 What happens by itself
+
+Nothing here needs an operator on a tablet that is opened online at least once and then left alone:
+
+- The page **deletes `shell-v1` and `api-patients` the moment it loads**, whichever worker is in control.
+- The registration **polls for a new worker hourly** — a kiosked tablet never navigates, so nothing else asks.
+- The new worker **deletes both caches again as soon as it downloads**, while the old one is still in control.
+- The update **applies itself** once the desk is idle: no pending events, and either the screen is off/the tab is
+  backgrounded or nobody has touched the glass for five minutes. It reloads the page when it does.
+
+So the normal path is: leave the tablet on, online, through one tea break. Expect the swap within about an hour.
+
+### 10.3 Forcing it now, per tablet (~20 seconds)
+
+Worth doing on every tablet for this release rather than waiting, because the thing being replaced is the leak.
+
+1. **Check there is nothing to lose first.** The connection indicator in the desk header shows the pending-event
+   count. It must read zero (and the indicator green) before you do anything that reloads or closes the app.
+2. If the "Update ready — apply when the desk is idle" toast is showing, tap **Apply**. Done.
+3. Otherwise close the app completely — Android recents, swipe the Clinic Desk window away, and close any
+   ordinary browser tab on the same clinic host — wait five seconds, and reopen it. A waiting worker activates
+   only when every client of the old one is gone, which is why the app has to be *closed*, not just reloaded.
+4. Verify: `chrome://inspect` from a laptop on the same network, or Chrome DevTools remote debugging →
+   **Application → Service Workers** shows one activated worker and **Cache Storage** lists `workbox-precache-*`,
+   `static-v1`, `api-bootstrap`, `print-templates` — and **not** `shell-v1` or `api-patients`.
+
+### 10.4 A tablet that cannot be brought online
+
+It keeps running the old worker, and its `shell-v1` still holds whatever board was last loaded on it. There is
+no remote way to reach it — a service worker is only replaced by the browser that runs it. Treat it as a device,
+not a cache:
+
+- If the tablet is lost, stolen or being handed to another clinic: revoke it (`POST /api/reception/devices/{device}/revoke`,
+  or the button in the panel). That kills its token and its serial blocks (OFFLINE.md §4.5). The stale board on
+  its disk stops mattering the moment the device cannot authenticate.
+- **Do not "just clear site data" to be safe.** Clearing storage for the clinic host destroys the Dexie database:
+  the device token *and every unsynced serial, check-in and cash collection on that tablet*. Only clear after the
+  pending count has reached zero, and expect to re-register the device afterwards (OFFLINE.md §2.1).
+
+### 10.5 Verifying the deploy actually shipped the shell
+
+On the server, after `deploy.sh`:
+
+```bash
+# the shell is a real file and a precache entry, and it is the ONLY html in the precache
+test -f public/offline.html && curl -sf -o /dev/null -w '%{http_code}\n' https://<clinic-host>/offline.html   # 200
+grep -o '"url":"[^"]*\.html"' public/sw.js | sort -u                                                          # "url":"offline.html"
+```
+
+If `offline.html` is not in `public/sw.js`, the desk will not open offline: the glob in `vite.config.ts`
+(`injectManifest.globPatterns`) did not match, and the page's own check logs
+`[pwa] precache landed without /offline.html` in the browser console.

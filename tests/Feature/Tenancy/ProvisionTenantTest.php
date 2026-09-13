@@ -41,7 +41,7 @@ final class ProvisionTenantTest extends TestCase
         $this->assertTrue((bool) DB::scalar('select exists (select 1 from pg_namespace where nspname = ?)', [$tenant->schema_name]));
 
         Tenancy::run($tenant, function () use ($tenant): void {
-            $this->assertSame(4, RoleModel::query()->count());
+            $this->assertSame(count(Role::cases()), RoleModel::query()->count());
             $this->assertSame(count(Permission::cases()), DB::table('permissions')->count());
 
             $admin = User::query()->where('email', 'admin@prov.test')->firstOrFail();
@@ -90,7 +90,7 @@ final class ProvisionTenantTest extends TestCase
         $this->artisan('tenants:seed', ['--tenant' => ['test-a'], '--class' => 'RolesAndPermissionsSeeder'])->assertSuccessful();
 
         $this->asTenant('a');
-        $this->assertSame(4, RoleModel::query()->count());
+        $this->assertSame(count(Role::cases()), RoleModel::query()->count());
         $this->assertSame(count(Permission::cases()), DB::table('permissions')->count());
     }
 

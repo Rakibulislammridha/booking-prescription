@@ -108,6 +108,27 @@ final class ChannelAuthTest extends TestCase
         $this->authAs('private-'.TenantChannel::doctorName($this->tenantId(), $foreign->public_id))->assertForbidden();
     }
 
+    /**
+     * The compounder is the case the operator clause nearly let through: they hold no `queue.call-next` today, but
+     * they DO satisfy its other half (no doctors row), so the guard asserts DoctorScope in its own right rather
+     * than resting on the permission gap. Assigned or not, a live per-patient queue feed is not theirs.
+     */
+    public function test_doctor_channel_is_closed_to_a_compounder_even_for_their_own_doctor(): void
+    {
+        $branch = $this->mainBranch();
+        $assigned = $this->queueDoctor('dr-assigned');
+        $foreign = $this->queueDoctor('dr-not-assigned');
+
+        $compounder = $this->actingAsStaff(Role::Compounder, $branch);
+        $compounder->assignedDoctors()->sync([$assigned->id]);
+
+        $this->authAs('private-'.TenantChannel::doctorName($this->tenantId(), $foreign->public_id))->assertForbidden();
+        $this->authAs('private-'.TenantChannel::doctorName($this->tenantId(), $assigned->public_id))->assertForbidden();
+
+        // The branch channel they do need — it carries session codes and counts, no patient row.
+        $this->authAs('private-'.TenantChannel::receptionName($this->tenantId(), $branch->public_id))->assertOk();
+    }
+
     public function test_display_channel_allows_display_devices_and_denies_reception_devices(): void
     {
         $branch = $this->mainBranch();
@@ -128,6 +149,46 @@ final class ChannelAuthTest extends TestCase
         // a display device of another branch is denied
         $elsewhere = ReceptionDevice::factory()->display()->create(['branch_id' => Branch::factory()->create()->id]);
         $this->authAsDevice($elsewhere->createToken('tv', ReceptionDevice::ABILITIES)->plainTextToken, $channel)->assertForbidden();
+    }
+
+    /**
+     * The staff leg of the display channel was `$auth->is_active` alone: any active user of any branch could hold a
+     * feed that carries `call.next` and the private `serial.called` — first name, age, sex, vitals_taken and the
+     * doctor — for every chamber of a branch they have nothing to do with. It is now BranchAccess + DoctorScope.
+     */
+    public function test_display_channel_denies_staff_of_another_branch_and_any_doctor_scoped_user(): void
+    {
+        $branch = $this->mainBranch();
+        $other = Branch::factory()->create();
+        $assigned = $this->queueDoctor('dr-assigned');
+
+        $this->actingAsStaff(Role::Receptionist, $branch);
+        $this->authAs('private-'.TenantChannel::displayName($this->tenantId(), $branch->public_id))->assertOk();
+        $this->authAs('private-'.TenantChannel::displayName($this->tenantId(), $other->public_id))->assertForbidden();
+
+        // a hospital admin acts at every branch (BranchAccess) and is never DoctorScope-restricted
+        $this->asStaff(Role::HospitalAdmin, $branch);
+        $this->authAs('private-'.TenantChannel::displayName($this->tenantId(), $other->public_id))->assertOk();
+
+        // a compounder is scoped to their own doctor everywhere else; a whole-branch call feed is the one shape
+        // that cannot be scoped, so they do not get it at their own branch either
+        $compounder = $this->asStaff(Role::Compounder, $branch);
+        $compounder->assignedDoctors()->sync([$assigned->id]);
+        $this->authAs('private-'.TenantChannel::displayName($this->tenantId(), $branch->public_id))->assertForbidden();
+        // …and no other branch's either, so the rule reads "of any branch" rather than "of the one we tried".
+        $this->authAs('private-'.TenantChannel::displayName($this->tenantId(), $other->public_id))->assertForbidden();
+    }
+
+    /**
+     * actingAsStaff() again mid-test is not enough on the display channel: its guard list is ['device', 'web'] and
+     * the device leg is a Sanctum RequestGuard, which caches its resolved user for the life of the container — so
+     * the next request would still be authorised as the previous staff user (the same trap authAsDevice() notes).
+     */
+    private function asStaff(Role $role, Branch $branch): User
+    {
+        $this->app['auth']->forgetGuards();
+
+        return $this->actingAsStaff($role, $branch);
     }
 
     public function test_a_deactivated_staff_user_loses_every_private_channel(): void

@@ -54,15 +54,17 @@ type Props = PageProps<{
   channel: string | null;
   print_format: PrintTemplate['id'];
   settings: Record<string, unknown>;
-  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; register_device: boolean; revoke: boolean; record_vitals: boolean; print_prescription: boolean };
+  can: { issue: boolean; call_next: boolean; cancel: boolean; collect: boolean; register_device: boolean; record_vitals: boolean; search_patients: boolean; print_prescription: boolean; check_in: boolean; kiosk: boolean };
   actor_public_id: string | null;
+  /** DoctorScope's own answer for this viewer (BoardController::index): the board they were handed is narrowed. */
+  doctor_scoped: boolean;
 }>;
 
-export default function Board({ board: initial, tenant_public_id, channel, print_format, settings, can, actor_public_id }: Props) {
+export default function Board({ board: initial, tenant_public_id, channel, print_format, settings, can, actor_public_id, doctor_scoped }: Props) {
   const { t } = useTranslation();
   const locale = getLocale();
   const shared = useSharedProps();
-  const desk = useDesk(initial, { tenantPublicId: tenant_public_id, channel, actorPublicId: actor_public_id, settings });
+  const desk = useDesk(initial, { tenantPublicId: tenant_public_id, channel, actorPublicId: actor_public_id, doctorScoped: doctor_scoped, settings });
   const conflicts = useConflicts();
   const [booking, setBooking] = useState<{ session: BoardSession; channel: 'counter' | 'walkin' } | null>(null);
   const [collect, setCollect] = useState<{ session: BoardSession; serial: DeskSerial } | null>(null);
@@ -76,10 +78,29 @@ export default function Board({ board: initial, tenant_public_id, channel, print
   const [staffTemplates, setStaffTemplates] = useState<PrintTemplate[]>([]);
   const [slip, setSlip] = useState<{ data: SlipData; key: number }>({ data: { serialPublicId: '', displayCode: '', doctorName: '', doctorNameBn: null, sessionCode: '', sessionLabel: '', date: '', patientName: '', doctorSlug: '', origin: '', offline: false }, key: 0 });
   const isAdmin = shared.auth.user?.roles.includes('hospital_admin') ?? false;
+  // A compounder works this same board, narrowed server-side to the doctors assigned to them (DoctorScope). When
+  // the board is short, the reason belongs on the screen — otherwise an absent colleague reads as a cancelled
+  // session. The server says whether this viewer is narrowed; the page used to mirror DoctorScope's two clauses
+  // here ("has the compounder role and is not a hospital admin"), which was a copy of a boundary rule living in
+  // the client — and the same boolean now decides whether the desk may touch the device cache at all (useDesk),
+  // which is nothing a screen should be guessing at.
+  const isScoped = doctor_scoped;
+  // The names are taken from the board itself, which is already the filtered document — so this can only name the
+  // assigned doctors who HAVE a session here today. There is no `scope` prop to name the rest; when none of them
+  // does, the banner says that rather than naming nobody.
+  const scopeDoctors = useMemo(
+    () => [...new Map(desk.board.sessions.map((s) => [s.doctor.public_id, locale === 'bn' && s.doctor.name_bn ? s.doctor.name_bn : s.doctor.name])).values()],
+    [desk.board.sessions, locale],
+  );
   // Billing's own panel, mounted here rather than re-derived: the desk asks "does this patient owe anything?"
   // before it takes the next payment. It needs the server, so it is hidden while the desk is offline.
   const canSeeDues = shared.auth.user?.permissions.includes('billing.invoices.view') ?? false;
   const offline = desk.mode === 'offline';
+  // The right-hand column is the patient search and this device's leased blocks. A desk that has neither — the
+  // compounder, who may not look patients up and whose viewer never leases a block — gets the board full width
+  // instead of two thirds of the screen and a column of nothing.
+  const activeBlocks = desk.blocks.filter((b) => b.status === 'active');
+  const sidebar = can.search_patients || activeBlocks.length > 0;
   const templates = desk.templates.length > 0 ? desk.templates : staffTemplates;
   const template = templates.find((x) => x.id === print_format) ?? templates[0] ?? null;
   const labels = useMemo<SlipLabels>(() => ({ ahead: t('reception.slip.ahead'), eta: t('reception.slip.eta'), fee: t('reception.slip.fee'), paid: t('reception.payment.paid'), due: t('reception.payment.unpaid'), receipt: t('reception.slip.receipt'), offline: t('reception.slip.offline'), footer: t('reception.slip.footer') }), [t]);
@@ -191,11 +212,18 @@ export default function Board({ board: initial, tenant_public_id, channel, print
         <Button size="small" component={RouterLink} href={route('panel.reception.shift')} startIcon={<ReportIcon />}>{t('reception.shift.title')}</Button>
       </Stack>
 
+      {isScoped ? (
+        <Alert severity="info" data-testid="desk-scope">
+          {scopeDoctors.length === 0
+            ? t('reception.scope.none')
+            : t(scopeDoctors.length === 1 ? 'reception.scope.for_doctor' : 'reception.scope.for_doctors', { doctors: scopeDoctors.join(', ') })}
+        </Alert>
+      ) : null}
       {error ? <Alert severity="error" onClose={() => setError(null)}>{error}</Alert> : null}
       {!desk.registered && can.register_device ? <Alert severity="info">{t('reception.device.not_registered')}</Alert> : null}
 
       <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 8 }}>
+        <Grid size={{ xs: 12, md: sidebar ? 8 : 12 }}>
           <Stack spacing={2}>
             {desk.board.sessions.length === 0 ? <Typography color="text.secondary">{t('reception.board.empty')}</Typography> : null}
             {desk.board.sessions.map((s) => (
@@ -207,19 +235,27 @@ export default function Board({ board: initial, tenant_public_id, channel, print
             ))}
           </Stack>
         </Grid>
+        {sidebar ? (
         <Grid size={{ xs: 12, md: 4 }}>
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>{t('reception.search.title')}</Typography>
-            <PatientQuickSearch mode={desk.mode} cached={desk.cachedPatients} onPick={(hit: QuickSearchHit) => { setDuesPatient(hit.publicId); setToast(t('reception.search.picked', { name: hit.name })); }} />
-            {canSeeDues && !offline ? <Box sx={{ mt: 1.5 }}><Suspense fallback={null}><PatientDuesPanel patient={duesPatient} /></Suspense></Box> : null}
-          </Paper>
-          {desk.blocks.filter((b) => b.status === 'active').length > 0 ? (
+          {/* The whole card, not just the box: the dues panel's only input is a patient picked in this search, so
+              without it the panel is a card that can never say anything. A desk that may not look patients up
+              (the compounder: no `patients.view`, and PatientLookupController authorises exactly that) gets a
+              shorter column instead of a search that answers "no patients" to every query it swallows a 403 on. */}
+          {can.search_patients ? (
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>{t('reception.search.title')}</Typography>
+              <PatientQuickSearch mode={desk.mode} cached={desk.cachedPatients} onPick={(hit: QuickSearchHit) => { setDuesPatient(hit.publicId); setToast(t('reception.search.picked', { name: hit.name })); }} />
+              {canSeeDues && !offline ? <Box sx={{ mt: 1.5 }}><Suspense fallback={null}><PatientDuesPanel patient={duesPatient} /></Suspense></Box> : null}
+            </Paper>
+          ) : null}
+          {activeBlocks.length > 0 ? (
             <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
               <Typography variant="subtitle2">{t('reception.board.blocks_title')}</Typography>
-              {desk.blocks.filter((b) => b.status === 'active').map((b) => <Typography key={b.publicId} variant="body2">{b.sessionCode}: {formatBn(`${b.nextNumber}–${b.rangeEnd}`, locale)}</Typography>)}
+              {activeBlocks.map((b) => <Typography key={b.publicId} variant="body2">{b.sessionCode}: {formatBn(`${b.nextNumber}–${b.rangeEnd}`, locale)}</Typography>)}
             </Paper>
           ) : null}
         </Grid>
+        ) : null}
       </Grid>
 
       <Suspense fallback={null}>

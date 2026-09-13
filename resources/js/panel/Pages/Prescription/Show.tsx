@@ -39,13 +39,22 @@ import { route } from '@shared/routes';
 import type { PageProps } from '@shared/types/inertia';
 import type { IssuedPrescription, PrescriptionDraft, PrescriptionQueueLink, PrescriptionSnapshot, VisitRow } from '@shared/types/models';
 
-type Props = PageProps<{ prescription: IssuedPrescription | PrescriptionDraft; visit?: VisitRow; queue?: PrescriptionQueueLink | null }>;
+/**
+ * `can` is PrescriptionController::abilities() — the policy's own answer for THIS viewer, not a role read off the
+ * shared props. The page is reachable by more people than may act on it: `view` is granted by
+ * `prescriptions.vitals.record` so the desk can print the doctor's sheet (BRIEF §5.G.4), while Send is refused to
+ * anyone DoctorScope restricts and Amend / Void need `prescriptions.write`. Every action below is gated on its
+ * own flag, so nothing on this screen is a button that answers 403.
+ */
+type Can = { write: boolean; send: boolean; amend: boolean; void: boolean };
+
+type Props = PageProps<{ prescription: IssuedPrescription | PrescriptionDraft; visit?: VisitRow; queue?: PrescriptionQueueLink | null; can: Can }>;
 
 function isIssued(rx: IssuedPrescription | PrescriptionDraft): rx is IssuedPrescription {
   return 'snapshot' in rx && rx.status !== 'draft';
 }
 
-export default function Show({ prescription, visit, queue }: Props) {
+export default function Show({ prescription, visit, queue, can }: Props) {
   const { t } = useTranslation();
 
   if (!isIssued(prescription)) {
@@ -55,7 +64,10 @@ export default function Show({ prescription, visit, queue }: Props) {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {t('prescriptions.show.draft_hint')}
         </Typography>
-        {visit !== undefined ? (
+        {/* The writer is not a desk screen: a compounder or receptionist may legitimately open an unissued sheet
+            (they can read it) and there is nowhere for them to go from here — `can.write` is VisitPolicy::write,
+            exactly what WriterController authorises. */}
+        {visit !== undefined && can.write ? (
           <Button variant="contained" component={RouterLink} href={route('panel.prescription.writer', { visit: visit.id })}>
             {t('prescriptions.writer.title')}
           </Button>
@@ -64,12 +76,12 @@ export default function Show({ prescription, visit, queue }: Props) {
     );
   }
 
-  return <IssuedView prescription={prescription} queue={queue ?? null} />;
+  return <IssuedView prescription={prescription} queue={queue ?? null} can={can} />;
 }
 
 Show.layout = (page: ReactNode) => <PanelLayout title="prescriptions.show.title">{page}</PanelLayout>;
 
-function IssuedView({ prescription, queue }: { prescription: IssuedPrescription; queue: PrescriptionQueueLink | null }) {
+function IssuedView({ prescription, queue, can }: { prescription: IssuedPrescription; queue: PrescriptionQueueLink | null; can: Can }) {
   const { t } = useTranslation();
   const snapshot = prescription.snapshot as PrescriptionSnapshot;
   const [dialog, setDialog] = useState<'amend' | 'void' | 'send' | null>(null);
@@ -168,32 +180,42 @@ function IssuedView({ prescription, queue }: { prescription: IssuedPrescription;
         <Button size="small" startIcon={<LocalPharmacyIcon />} onClick={openPharmacy}>
           {t('prescriptions.show.pharmacy')}
         </Button>
-        <Button size="small" startIcon={<SendIcon />} onClick={() => setDialog('send')}>
-          {t('prescriptions.send.action')}
-        </Button>
+        {/* Print and the pharmacy copy are `view`, which everyone on this screen holds. Sending the sheet to the
+            patient is a different act — the clinic speaking in the doctor's name — and Amend / Void rewrite the
+            record, so each of the three waits for its own flag. Hidden rather than disabled: the shell's rule for
+            an ability a user does not have (PanelLayout's drawer) is that it is absent, not greyed. */}
+        {can.send ? (
+          <Button size="small" startIcon={<SendIcon />} onClick={() => setDialog('send')}>
+            {t('prescriptions.send.action')}
+          </Button>
+        ) : null}
         <Box sx={{ flexGrow: 1 }} />
-        <Button
-          size="small"
-          color="warning"
-          disabled={!prescription.is_latest || prescription.status === 'voided'}
-          onClick={() => {
-            setReason('');
-            setDialog('amend');
-          }}
-        >
-          {t('prescriptions.show.amend')}
-        </Button>
-        <Button
-          size="small"
-          color="error"
-          disabled={prescription.status === 'voided'}
-          onClick={() => {
-            setReason('');
-            setDialog('void');
-          }}
-        >
-          {t('prescriptions.show.void')}
-        </Button>
+        {can.amend ? (
+          <Button
+            size="small"
+            color="warning"
+            disabled={!prescription.is_latest || prescription.status === 'voided'}
+            onClick={() => {
+              setReason('');
+              setDialog('amend');
+            }}
+          >
+            {t('prescriptions.show.amend')}
+          </Button>
+        ) : null}
+        {can.void ? (
+          <Button
+            size="small"
+            color="error"
+            disabled={prescription.status === 'voided'}
+            onClick={() => {
+              setReason('');
+              setDialog('void');
+            }}
+          >
+            {t('prescriptions.show.void')}
+          </Button>
+        ) : null}
       </Stack>
 
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>

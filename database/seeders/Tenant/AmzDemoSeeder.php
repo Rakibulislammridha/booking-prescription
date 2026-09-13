@@ -64,6 +64,8 @@ final class AmzDemoSeeder extends Seeder
 
     public const DOCTOR_EMAIL = 'mostakim@amz.test';
 
+    public const COMPOUNDER_EMAIL = 'compounder@amz.test';
+
     public const BRANCH_CODE = 'AMZ';
 
     public const ADDRESS = 'CHA-80/3, Shadhinota Sarani, Progati Sarani Rd, Uttar Badda, Dhaka-1212';
@@ -93,11 +95,12 @@ final class AmzDemoSeeder extends Seeder
     {
         $branch = $this->branch();
         $doctor = $this->doctor($branch);
+        $compounder = $this->compounder($doctor, $branch);
         $this->pad($doctor);
         $this->schedules($doctor, $branch);
 
         $session = $this->todaysSession($doctor, $branch);
-        $visits = $this->patients($doctor, $branch, $session);
+        $visits = $this->patients($doctor, $branch, $session, $compounder);
 
         $this->prescription($doctor, $visits[0] ?? null);
     }
@@ -155,6 +158,28 @@ final class AmzDemoSeeder extends Seeder
         }
 
         return $doctor;
+    }
+
+    /**
+     * The assistant at Dr. Billah's chamber, as the product owner described the job: he takes the vitals, takes the
+     * fee, and marks who has turned up — and he cannot touch a serial number or see another doctor's list.
+     *
+     * Two things make that true and both are here, because either alone is a half-feature: the `compounder` role
+     * (the four permissions) and the `doctor_compounder` row (which doctor those four apply to). With only one
+     * doctor in this clinic the scope is invisible on screen, which is exactly why it is worth seeding — the
+     * account is restricted by construction, not by there being nothing else to see.
+     */
+    private function compounder(Doctor $doctor, Branch $branch): User
+    {
+        $user = User::query()->updateOrCreate(
+            ['email' => self::COMPOUNDER_EMAIL],
+            ['name' => 'Shafiqul Islam', 'mobile' => '+8801409961048', 'password' => Hash::make('password'), 'default_branch_id' => $branch->id, 'locale' => 'bn', 'is_active' => true, 'email_verified_at' => Clock::now()],
+        );
+        $user->syncRoles([Role::Compounder->value]);
+
+        $doctor->compounders()->syncWithoutDetaching([$user->id => ['assigned_by_user_id' => $doctor->user_id]]);
+
+        return $user;
     }
 
     /**
@@ -304,7 +329,7 @@ final class AmzDemoSeeder extends Seeder
      *
      * @return list<Visit>
      */
-    private function patients(Doctor $doctor, Branch $branch, ?SessionInstance $session): array
+    private function patients(Doctor $doctor, Branch $branch, ?SessionInstance $session, User $compounder): array
     {
         $actor = Actor::system();
         $visits = [];
@@ -354,6 +379,7 @@ final class AmzDemoSeeder extends Seeder
                 $row['vitals'] + [
                     'patient_id' => $patient->id,
                     'recorded_at' => $visit->started_at,
+                    'recorded_by_user_id' => $compounder->id,
                     'bmi' => Vital::computeBmi((float) $row['vitals']['weight_kg'], (float) $row['vitals']['height_cm']),
                 ],
             );

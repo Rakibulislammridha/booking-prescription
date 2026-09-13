@@ -11,6 +11,7 @@ import { i18n, initI18n } from '@shared/i18n';
 import { setZiggy } from '@shared/routes';
 import type { SharedProps } from '@shared/types/shared-props';
 import { SUPER_NAV, SUPER_NAV_SECTIONS } from '@panel/Components/Super/nav';
+import { useHttpNotice } from '@panel/hooks/shell/useHttpNotice';
 import { PanelLayout } from '../PanelLayout';
 
 initI18n('en');
@@ -213,11 +214,12 @@ describe('PanelLayout on the clinic panel', () => {
 
   it('renders the clinic NAV with its guards intact, and not one console entry or section header', () => {
     show(shared('panel', {
-      auth: { guard: 'web', user: { id: 2, name: 'Rahim', roles: ['hospital_admin'], permissions: ['serials.issue.counter', 'patients.view', 'clinic.settings.manage'], doctor_id: null }, impersonating: false },
+      auth: { guard: 'web', user: { id: 2, name: 'Rahim', roles: ['hospital_admin'], permissions: ['serials.check-in', 'patients.view', 'clinic.settings.manage'], doctor_id: null }, impersonating: false },
     }));
 
-    // Visible: the permission-free entries plus the three this user holds a permission for.
-    expect(linkNames()).toEqual(['Dashboard', 'Live queue', 'Patients', 'Prescriptions']);
+    // Visible: the two permission-free entries plus the one this user holds a permission for. Prescriptions is
+    // NOT here — check-in is not one of the three grants its list accepts (see its own section below).
+    expect(linkNames()).toEqual(['Dashboard', 'Live queue', 'Patients']);
     // Reception: permitted, but its route is not in this ziggy group — greyed out, never dropped (the clinic rule).
     const reception = within(nav()).getByText('Reception').closest('.MuiListItemButton-root');
     expect(reception).toHaveClass('Mui-disabled');
@@ -239,9 +241,9 @@ describe('PanelLayout on the clinic panel', () => {
     at('/panel/queue');
     show(shared('panel'));
 
-    expect(linkNames()).toEqual(['Dashboard', 'Live queue', 'Prescriptions']);
+    expect(linkNames()).toEqual(['Dashboard', 'Live queue']);
     expect(within(nav()).getByText('Live queue').closest('.MuiListItemButton-root')).toHaveClass('Mui-selected');
-    for (const label of TENANT_LABELS.filter((l) => !['Dashboard', 'Live queue', 'Prescriptions'].includes(l))) {
+    for (const label of TENANT_LABELS.filter((l) => !['Dashboard', 'Live queue'].includes(l))) {
       expect(within(nav()).queryByText(label)).toBeNull();
     }
     expect(nav().querySelectorAll('[data-testid^="super-nav-"]')).toHaveLength(0);
@@ -301,5 +303,220 @@ describe('PanelLayout — Today\'s session', () => {
     expect(within(nav()).getByText('Live queue')).toBeInTheDocument();
     expect(within(nav()).queryByText("Today's session")).toBeNull();
     expect(within(nav()).queryByTestId('today-session-badge')).toBeNull();
+  });
+});
+
+/**
+ * The desk entry, and the whole of its truth table in one place — because it has now been got wrong twice in
+ * opposite directions. A compounder works the SAME reception board as the receptionist, filtered server-side to
+ * the doctors assigned to them, so the drawer has to separate five roles and no single permission does it:
+ * `serials.issue.counter` (the original gate) misses the compounder, `billing.payments.collect` catches the
+ * accountant, and `serials.check-in` on its own catches the doctor, who has their own session page instead.
+ *
+ * The second try — `serials.check-in` + `doctor: false` — then dropped the entry for a hospital admin who is ALSO
+ * a doctors row: the owner of a single-doctor chamber, who runs the desk himself and is the likeliest person in
+ * this product to want the link. Nothing caught it because every hospital-admin fixture here had `doctor_id: null`.
+ * Hence the rule under test: issues at the counter, OR can mark a patient arrived and is not a doctor.
+ */
+describe('PanelLayout — the reception desk entry', () => {
+  beforeEach(() => { desktop(true); at('/panel'); });
+
+  const asRole = (role: string, permissions: string[], doctorId: number | null = null) => shared('panel', {
+    auth: { guard: 'web', user: { id: 5, name: 'Staff', roles: [role], permissions, doctor_id: doctorId }, impersonating: false },
+  });
+
+  // Exactly what RoleMatrix gives each role, trimmed to the permissions this entry can see.
+  const RECEPTIONIST = ['serials.issue.counter', 'serials.check-in', 'billing.payments.collect'];
+  const COMPOUNDER = ['prescriptions.vitals.record', 'billing.payments.collect', 'serials.check-in', 'billing.invoices.view'];
+  const DOCTOR = ['prescriptions.write', 'prescriptions.vitals.record', 'serials.check-in'];
+  const ACCOUNTANT = ['billing.payments.collect', 'billing.invoices.view', 'billing.reports.view'];
+  // A hospital admin holds every permission; these are the ones this entry reads.
+  const HOSPITAL_ADMIN = ['serials.issue.counter', 'serials.check-in', 'billing.payments.collect', 'prescriptions.vitals.record'];
+
+  // [who, role, permissions, doctors row, sees the desk]
+  const TRUTH: Array<[string, string, string[], number | null, boolean]> = [
+    ['a receptionist', 'receptionist', RECEPTIONIST, null, true],
+    ['a compounder', 'compounder', COMPOUNDER, null, true],
+    ['a hospital admin', 'hospital_admin', HOSPITAL_ADMIN, null, true],
+    ['a hospital admin who is also a doctor', 'hospital_admin', HOSPITAL_ADMIN, 9, true],
+    ['a plain doctor', 'doctor', DOCTOR, 7, false],
+    ['an accountant', 'accountant', ACCOUNTANT, null, false],
+  ];
+
+  it.each(TRUTH)('%s: sees the desk = %j', (who, role, permissions, doctorId, sees) => {
+    show(asRole(role, permissions, doctorId));
+
+    const entry = within(nav()).queryByText('Reception');
+    if (sees) expect(entry, who).not.toBeNull();
+    else expect(entry, who).toBeNull();
+  });
+
+  // The regression spelled out: the owner-doctor keeps BOTH the desk he works and the session page he consults
+  // from, and the queue entry is still the doctor's one — the `doctor` flag on the other entries is untouched.
+  it('gives the owner-doctor the desk AND Today\'s session, and no second queue entry', () => {
+    show(asRole('hospital_admin', [...HOSPITAL_ADMIN, 'prescriptions.write'], 9));
+
+    expect(within(nav()).getByText('Reception')).toBeInTheDocument();
+    expect(within(nav()).getByText("Today's session")).toBeInTheDocument();
+    expect(within(nav()).queryByText('Live queue')).toBeNull();
+  });
+
+  it('leaves the compounder without a Patients entry — they hold no patients.view', () => {
+    show(asRole('compounder', COMPOUNDER));
+
+    expect(within(nav()).queryByText('Patients')).toBeNull();
+    expect(within(nav()).getByText('Billing')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The same gate, once more with the route actually shipped. The section above reads the entry by its text, which a
+ * greyed-out "coming soon" entry also answers to — true here only because this ziggy group deliberately omits the
+ * desk. So this one adds `panel.reception.board` and reads the drawer as a list of LINKS: the desk either is or is
+ * not somewhere the user can go, and the doctor's "Today's session" is proved to be what stands in its place rather
+ * than merely proved to be somewhere else in the file.
+ */
+describe('PanelLayout — who can reach the desk once its route ships', () => {
+  beforeEach(() => { desktop(true); at('/panel'); });
+
+  const WITH_RECEPTION = ziggy({ ...PANEL_ROUTES, 'panel.reception.board': 'panel/reception' });
+
+  const asRole = (role: string, permissions: string[], doctorId: number | null = null) => shared('panel', {
+    auth: { guard: 'web', user: { id: 6, name: 'Staff', roles: [role], permissions, doctor_id: doctorId }, impersonating: false },
+    ziggy: WITH_RECEPTION,
+  });
+
+  // RoleMatrix, trimmed to the permissions any drawer entry reads.
+  const RECEPTIONIST = ['serials.issue.counter', 'serials.check-in', 'billing.payments.collect', 'patients.view'];
+  const COMPOUNDER = ['prescriptions.vitals.record', 'billing.payments.collect', 'serials.check-in', 'billing.invoices.view'];
+  const DOCTOR = ['prescriptions.write', 'prescriptions.vitals.record', 'serials.check-in'];
+  const ACCOUNTANT = ['billing.payments.collect', 'billing.invoices.view', 'billing.reports.view'];
+  const OWNER_DOCTOR = ['serials.issue.counter', 'serials.check-in', 'prescriptions.write', 'patients.view'];
+
+  it('takes the compounder to the desk — and gives them no Patients entry on the way', () => {
+    show(asRole('compounder', COMPOUNDER));
+
+    expect(linkNames()).toEqual(['Dashboard', 'Reception', 'Live queue', 'Prescriptions']);
+    expect(within(nav()).getByRole('link', { name: 'Reception' })).toHaveAttribute('href', '/panel/reception');
+    expect(within(nav()).queryByText('Patients')).toBeNull();
+  });
+
+  it('takes the receptionist to the same entry, so the compounder is on the desk and not beside it', () => {
+    show(asRole('receptionist', RECEPTIONIST));
+
+    expect(within(nav()).getByRole('link', { name: 'Reception' })).toHaveAttribute('href', '/panel/reception');
+  });
+
+  // …and out of the clinical list as well, which was a dead entry for this role from the day it shipped: the
+  // accountant holds no prescription grant, so `panel.prescriptions.index` has always answered 403.
+  it('keeps an accountant out entirely — not greyed out, absent', () => {
+    show(asRole('accountant', ACCOUNTANT));
+
+    expect(linkNames()).toEqual(['Dashboard', 'Live queue']);
+    expect(within(nav()).queryByText('Reception')).toBeNull();
+    expect(within(nav()).queryByText('Prescriptions')).toBeNull();
+  });
+
+  it("gives a doctor Today's session instead of the desk, though they hold the same permission", () => {
+    show(asRole('doctor', DOCTOR, 7));
+
+    expect(linkNames()).toEqual(['Dashboard', "Today's session", 'Prescriptions']);
+    expect(within(nav()).queryByText('Reception')).toBeNull();
+    expect(within(nav()).queryByText('Live queue')).toBeNull();
+  });
+
+  // The single-doctor chamber's owner: a doctors row AND the counter permission. He gets a working link to the
+  // desk he stands at, next to the session page he consults from — the case the check-in-only gate lost.
+  it('takes the owner-doctor to the desk as well as to his own session', () => {
+    show(asRole('hospital_admin', OWNER_DOCTOR, 9));
+
+    expect(linkNames()).toEqual(['Dashboard', 'Reception', "Today's session", 'Patients', 'Prescriptions']);
+    expect(within(nav()).getByRole('link', { name: 'Reception' })).toHaveAttribute('href', '/panel/reception');
+  });
+});
+
+/**
+ * The clinical list's entry. `PrescriptionPolicy::viewAny` opens `panel.prescriptions.index` to the holder of ANY
+ * of three grants — `prescriptions.view.any`, `.write`, `.vitals.record` — so no single `permission` on the entry
+ * could be right: each of the three would have taken the list away from a role that owns it. Carrying none at all
+ * was worse in both directions, and stayed wrong for two releases in a row:
+ *
+ *   • the ACCOUNTANT has had a dead entry since the list shipped (they hold no grant, so it has always 403'd);
+ *   • the COMPOUNDER now 403s too where they did not before, because viewAny gained DoctorScope's conjunct.
+ *
+ * The half this predicate cannot ask is that same conjunct: an unassigned compounder holds `vitals.record` and
+ * still has no list. They keep the entry here and meet the shell's refusal banner instead of a black modal.
+ */
+describe('PanelLayout — the prescriptions entry', () => {
+  beforeEach(() => { desktop(true); at('/panel'); });
+
+  const asRole = (role: string, permissions: string[], doctorId: number | null = null) => shared('panel', {
+    auth: { guard: 'web', user: { id: 7, name: 'Staff', roles: [role], permissions, doctor_id: doctorId }, impersonating: false },
+  });
+
+  // RoleMatrix, trimmed to the permissions the drawer reads.
+  const TRUTH: Array<[string, string, string[], number | null, boolean]> = [
+    ['a hospital admin (view.any)', 'hospital_admin', ['prescriptions.view.any', 'prescriptions.write', 'prescriptions.vitals.record', 'serials.check-in'], null, true],
+    ['a doctor (write)', 'doctor', ['prescriptions.write', 'prescriptions.vitals.record', 'serials.check-in'], 7, true],
+    ['a receptionist (vitals.record)', 'receptionist', ['serials.issue.counter', 'serials.check-in', 'prescriptions.vitals.record', 'patients.view'], null, true],
+    ['a compounder (vitals.record)', 'compounder', ['serials.check-in', 'prescriptions.vitals.record', 'billing.payments.collect', 'billing.invoices.view'], null, true],
+    ['an accountant (none of the three)', 'accountant', ['billing.payments.collect', 'billing.invoices.view', 'billing.reports.view', 'patients.view'], null, false],
+  ];
+
+  it.each(TRUTH)('%s: sees the clinical list = %j', (who, role, permissions, doctorId, sees) => {
+    show(asRole(role, permissions, doctorId));
+
+    const entry = within(nav()).queryByRole('link', { name: 'Prescriptions' });
+    if (sees) expect(entry, who).toHaveAttribute('href', '/panel/prescriptions');
+    else expect(entry, who).toBeNull();
+  });
+
+  // The desk's two roles keep the entry for the same reason they keep the desk: BRIEF §5.G.4 has the sheet
+  // printed and handed to the patient at the counter, and `vitals.record` is what grants `view` on it.
+  it('leaves the desk able to reach the sheet it has to print', () => {
+    show(asRole('compounder', ['serials.check-in', 'prescriptions.vitals.record']));
+
+    expect(linkNames()).toEqual(['Dashboard', 'Live queue', 'Prescriptions']);
+  });
+});
+
+/**
+ * The shell's refusal banner (panel/app.tsx registers the `httpException` handler that fills it). What is proved
+ * here is the rendering contract the handler depends on: 403 is a dismissible warning, 419 is an error carrying
+ * the only action that can fix it, and the page under the banner is still there — a refused visit never swapped
+ * it, which is exactly why the shell says "no" in place rather than redirecting.
+ */
+describe('PanelLayout — the refusal banner', () => {
+  beforeEach(() => { desktop(true); at('/panel'); useHttpNotice.setState({ kind: null }); });
+
+  it('says nothing at all when the server has refused nothing', () => {
+    show(shared('panel'));
+
+    expect(screen.queryByTestId('http-notice')).toBeNull();
+  });
+
+  it('turns a 403 into a dismissible sentence over the page the user is still on', () => {
+    show(shared('panel'));
+    act(() => { useHttpNotice.getState().show('forbidden'); });
+
+    const notice = screen.getByTestId('http-notice');
+    expect(notice).toHaveTextContent('You do not have permission to open that. Ask your hospital admin if you need it.');
+    expect(notice).toHaveClass('MuiAlert-colorWarning');
+    expect(screen.getByTestId('page')).toHaveTextContent('page body');
+    expect(within(notice).queryByRole('button', { name: 'Sign in again' })).toBeNull();
+
+    fireEvent.click(within(notice).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByTestId('http-notice')).toBeNull();
+  });
+
+  it('turns a 419 into an error with the one button that helps, and no Close to hide it with', () => {
+    show(shared('panel'));
+    act(() => { useHttpNotice.getState().show('session_expired'); });
+
+    const notice = screen.getByTestId('http-notice');
+    expect(notice).toHaveTextContent('You have been signed out. Sign in again to continue; anything already saved is safe.');
+    expect(notice).toHaveClass('MuiAlert-colorError');
+    expect(within(notice).getByRole('button', { name: 'Sign in again' })).toBeInTheDocument();
+    expect(within(notice).queryByRole('button', { name: 'Close' })).toBeNull();
   });
 });

@@ -29,6 +29,8 @@ final class PolicyTest extends TestCase
             Role::Receptionist->value => ['viewAny' => true, 'view' => true, 'create' => true, 'update' => true, 'merge' => false, 'export' => false, 'manageClinical' => true, 'uploadDocument' => true, 'recordConsent' => true],
             Role::Doctor->value => ['viewAny' => true, 'view' => true, 'create' => false, 'update' => false, 'merge' => false, 'export' => false, 'manageClinical' => true, 'uploadDocument' => true, 'recordConsent' => false],
             Role::Accountant->value => ['viewAny' => true, 'view' => true, 'create' => false, 'update' => false, 'merge' => false, 'export' => false, 'manageClinical' => false, 'uploadDocument' => false, 'recordConsent' => false],
+            // A compounder holds no patients.* permission at all: the screens are shut before row-level access is asked.
+            Role::Compounder->value => ['viewAny' => false, 'view' => false, 'create' => false, 'update' => false, 'merge' => false, 'export' => false, 'manageClinical' => false, 'uploadDocument' => false, 'recordConsent' => false],
         ];
 
         foreach ($matrix as $role => $abilities) {

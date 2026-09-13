@@ -129,7 +129,9 @@ The `init` role (one-shot service; `deploy.sh` runs it before touching `app`) do
 2. `php artisan catalog:migrate` — `catalog` database on the **`catalog_admin`** connection (`catalog.public.migrations`).
 3. `php artisan tenants:migrate --seed` — every servable tenant's schema (`tenant_<id>.migrations`) followed by
    `RolesAndPermissionsSeeder`, which upserts by natural key (CONVENTIONS §10: "runs on every deploy"). Selection is
-   trial/active/past_due; a suspended tenant is skipped until `tenants:migrate --tenant=<slug>` after reactivation.
+   trial/active/past_due; a suspended tenant is skipped until `tenants:migrate --seed --tenant=<slug>` after
+   reactivation — **`--seed` is not optional**, because a release adds *permissions* as well as tables and a
+   permission a tenant has never heard of reads as "denied" with nothing in the log (OPERATIONS §2.2).
    The command continues past a failing tenant and exits non-zero at the end, which fails the deploy.
 4. `php artisan tenants:sync-search-settings` — re-applies the `t{id}_patients` / `t{id}_custom_brands` index
    settings (idempotent PUT). `BP_INIT_SKIP_SEARCH=1` skips it (Meilisearch maintenance).

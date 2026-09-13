@@ -7,6 +7,7 @@ namespace App\Models\Tenant;
 use App\Domain\Clinic\Enums\Gender;
 use Database\Factories\Tenant\DoctorFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -35,6 +36,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property-read DoctorProfile|null $profile
  * @property-read DoctorPadSetting|null $padSetting
  * @property-read User|null $user
+ * @property-read Collection<int, User> $compounders
  */
 final class Doctor extends TenantModel
 {
@@ -98,6 +100,20 @@ final class Doctor extends TenantModel
     public function doctorSpecialties(): HasMany
     {
         return $this->hasMany(DoctorSpecialty::class);
+    }
+
+    /**
+     * The staff users assigned to work this doctor's desk (BRIEF: "a doctor can assign a compounder"). The pivot is
+     * the whole boundary — DoctorScope reads it for the signed-in user, not for the doctor, so a revoked row narrows
+     * that user on their very next request.
+     *
+     * @return BelongsToMany<User, $this>
+     */
+    public function compounders(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'doctor_compounder')
+            ->withPivot('assigned_by_user_id')
+            ->withTimestamps();
     }
 
     /** @return HasMany<DoctorLeave, $this> */

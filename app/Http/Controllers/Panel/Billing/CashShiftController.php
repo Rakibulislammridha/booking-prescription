@@ -9,6 +9,7 @@ use App\Domain\Billing\Actions\OpenCashShift;
 use App\Domain\Billing\Services\CurrentShift;
 use App\Domain\Billing\Services\ShiftReconciler;
 use App\Domain\Clinic\Services\ActiveBranch;
+use App\Domain\Clinic\Services\DoctorScope;
 use App\Domain\Shared\Actor;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Panel\Billing\CashShiftRequest;
@@ -21,10 +22,16 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
-/** Cash drawer: open, live expected-vs-collected, close with a counted amount (BRIEF §5.F). */
+/**
+ * Cash drawer: open, live expected-vs-collected, close with a counted amount (BRIEF §5.F).
+ *
+ * The "recent" list is the branch's last thirty drawers — every cashier's. A DoctorScope-restricted caller is not a
+ * supervisor of the branch's cash (CashShiftPolicy says as much for close), so they are shown their own drawers and
+ * nobody else's; opening and closing are already their-own-shift-only.
+ */
 final class CashShiftController extends Controller
 {
-    public function index(Request $request, CurrentShift $current, ShiftReconciler $reconciler, ActiveBranch $activeBranch): Response
+    public function index(Request $request, CurrentShift $current, ShiftReconciler $reconciler, ActiveBranch $activeBranch, DoctorScope $scope): Response
     {
         $this->authorize('viewAny', CashShift::class);
         /** @var User $user */
@@ -36,6 +43,7 @@ final class CashShiftController extends Controller
         $recent = CashShift::query()
             ->with(['user', 'branch'])
             ->when($branch !== null, fn ($q) => $q->where('branch_id', $branch->id))
+            ->when($scope->doctorIds($user) !== null, fn ($q) => $q->where('user_id', $user->id))
             ->orderByDesc('opened_at')
             ->limit(30)
             ->get();

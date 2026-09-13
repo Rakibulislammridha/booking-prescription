@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Reception\Services;
 
+use App\Domain\Clinic\Services\DoctorScope;
 use App\Domain\Clinic\Services\Settings;
 use App\Http\Resources\Reception\ReceptionDeviceResource;
 use App\Http\Resources\Serials\SerialBlockResource;
@@ -21,6 +22,10 @@ use Illuminate\Http\Request;
  * GET /api/reception/bootstrap — one round trip with everything the PWA caches (OFFLINE §5.1): today's and
  * tomorrow's sessions at the device's branch with serials and remaining, the device's active blocks, doctors with
  * fee tables, the tenant settings the desk needs, the actor and the reception channel name.
+ *
+ * Everything here is written straight into the device's Dexie cache, so the actor's DoctorScope has to be applied
+ * BEFORE it leaves the server — a row cached once outlives the request that fetched it, and an unscoped cache
+ * behind a scoped screen is still a leak. Both days and the doctor fee table narrow with the actor.
  */
 final class BootstrapBuilder
 {
@@ -28,6 +33,7 @@ final class BootstrapBuilder
         private readonly BoardBuilder $board,
         private readonly Settings $settings,
         private readonly PrintTemplates $templates,
+        private readonly DoctorScope $scope,
     ) {}
 
     /** @return array<string, mixed> */
@@ -38,7 +44,8 @@ final class BootstrapBuilder
         $today = $date ?? Clock::today();
         $tenant = Tenancy::current();
 
-        $days = [$this->board->build($branch, $today), $this->board->build($branch, $today->addDay())];
+        $doctorIds = $this->scope->doctorIds($actor);
+        $days = [$this->board->build($branch, $today, doctorIds: $doctorIds), $this->board->build($branch, $today->addDay(), doctorIds: $doctorIds)];
         $sessionIds = collect($days)->flatMap(fn (array $d) => array_column($d['sessions'], 'public_id'))->all();
         $ids = SessionInstance::query()->whereIn('public_id', $sessionIds)->pluck('id', 'public_id');
 
@@ -50,7 +57,8 @@ final class BootstrapBuilder
             ->orderBy('range_start')
             ->get();
 
-        $doctors = Doctor::query()->active()->with('profile')->orderBy('sort_order')->orderBy('name')->get();
+        $doctors = Doctor::query()->active()->when($doctorIds !== null, fn ($q) => $q->whereIn('id', $doctorIds ?? []))
+            ->with('profile')->orderBy('sort_order')->orderBy('name')->get();
 
         return [
             'server_time' => CarbonImmutable::now()->toIso8601String(),

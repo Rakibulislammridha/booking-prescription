@@ -8,6 +8,7 @@ use App\Domain\Clinic\Enums\Role;
 use App\Domain\Reception\Enums\ConflictResolution;
 use App\Domain\Reception\Enums\OfflineEventStatus;
 use App\Domain\Reception\Enums\OfflineEventType;
+use App\Domain\Reception\Exceptions\ActorNotPermitted;
 use App\Domain\Reception\Exceptions\ConflictNotFound;
 use App\Domain\Reception\Exceptions\ResolutionNotAllowed;
 use App\Domain\Reception\Exceptions\SyncBatchInvalid;
@@ -37,6 +38,10 @@ use Throwable;
  * verbatim; a `pending` row (a previous attempt died mid-flight) is processed again through idempotent handlers.
  * `depends_on` ordering yields `pending` / `dependency_unresolved` until the dependency is accepted. Handlers run
  * inside their own transaction; domain failures become `rejected`, anything else leaves the row `pending` for a retry.
+ *
+ * Authorisation is ReplayScope's, applied here — once per event, in front of the handler's transaction, for the
+ * batch path and the resolution path alike. It is the ONE place the replay pipeline asks whether the human behind
+ * the device may touch the row the event names; read that class for why it is one place and not six handlers.
  */
 final class SyncReplayer
 {
@@ -59,7 +64,7 @@ final class SyncReplayer
     /** Resolutions that need a Hospital Admin behind the device (OFFLINE §8.3 record_in_closed, §8.5 cash discard). */
     private const ADMIN_ONLY = ['record_in_closed', 'collect_cash:discard'];
 
-    public function __construct(private readonly Container $container) {}
+    public function __construct(private readonly Container $container, private readonly ReplayScope $scope) {}
 
     /**
      * @param  array<int, array<string, mixed>>  $events  wire events: client_event_id, sequence_no, type, client_occurred_at, depends_on?, session_id?, payload
@@ -223,6 +228,24 @@ final class SyncReplayer
             }
 
             $ctx->prime($dependency);
+        }
+
+        // The door, after the dependency gate so `local:` refs resolve to the rows the handler will act on, and
+        // before the transaction so a refusal writes nothing but its own outcome. Per event, never per batch: the
+        // desk's other queued work still lands (OFFLINE §7.1 — results are a list, not an all-or-nothing).
+        $refused = $this->scope->refuse($row, $ctx, $resolution);
+
+        if ($refused !== null) {
+            // A §7.4 DECISION the actor may not make is a 403 that changes nothing — the conflict card stays open
+            // for someone who can take it. Writing it off as `rejected` would let one out-of-scope click destroy
+            // another receptionist's card, which is the leak turned inside out.
+            if ($resolution !== null) {
+                throw new ActorNotPermitted('scope');
+            }
+
+            $this->persist($row, $refused, $ctx, null);
+
+            return $refused;
         }
 
         try {

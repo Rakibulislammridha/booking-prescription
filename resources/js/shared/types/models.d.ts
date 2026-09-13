@@ -188,6 +188,22 @@ export interface ClinicStaffUser {
   last_login_at: string | null;
 }
 
+/**
+ * One row of a doctor's compounder list (`doctor_compounder`). The pivot has no model, so the assignment's own two
+ * facts ride on the staff row: `assigned_at` is ISO-8601 Zulu, and `assigned_by` is null once that account is gone
+ * — the record outlives its author, which is the point of keeping one.
+ */
+export interface ClinicCompounder {
+  id: number;
+  public_id: string;
+  name: string;
+  email: string;
+  mobile: string | null;
+  is_active: boolean;
+  assigned_at: string | null;
+  assigned_by: string | null;
+}
+
 export interface DoctorSummary {
   public_id: string;
   slug: string;

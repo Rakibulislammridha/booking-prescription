@@ -16,6 +16,7 @@ use App\Http\Requests\Panel\Clinic\UpdateStaffUserRequest;
 use App\Http\Resources\Clinic\BranchResource;
 use App\Http\Resources\Clinic\UserResource;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\Role as RoleRecord;
 use App\Models\Tenant\User;
 use Illuminate\Contracts\Auth\PasswordBroker;
 use Illuminate\Database\Eloquent\Builder;
@@ -57,7 +58,7 @@ final class StaffUserController extends Controller
         return Inertia::render('Clinic/Staff/Index', [
             'users' => UserResource::collection($users)->response()->getData(true),
             'filters' => ['q' => $q, 'role' => $role, 'status' => $status],
-            'roles' => Role::values(),
+            'roles' => self::roleOptions(),
             'current_user_id' => $user->id,
             'can' => ['manage' => $user->can('create', User::class)],
         ]);
@@ -69,7 +70,7 @@ final class StaffUserController extends Controller
 
         return Inertia::render('Clinic/Staff/Create', [
             'branch_options' => BranchResource::collection(Branch::query()->active()->orderByDesc('is_main')->orderBy('name')->get())->resolve(),
-            'roles' => Role::values(),
+            'roles' => self::roleOptions(),
         ]);
     }
 
@@ -90,7 +91,7 @@ final class StaffUserController extends Controller
         return Inertia::render('Clinic/Staff/Edit', [
             'user' => (new UserResource($user))->resolve(),
             'branch_options' => BranchResource::collection(Branch::query()->active()->orderByDesc('is_main')->orderBy('name')->get())->resolve(),
-            'roles' => Role::values(),
+            'roles' => self::roleOptions(),
             'is_self' => $actor->id === $user->id,
         ]);
     }
@@ -124,6 +125,31 @@ final class StaffUserController extends Controller
         return $status === Password::RESET_LINK_SENT
             ? back()->with('flash.success', __('clinic.staff.flash.reset_sent', ['email' => $user->email]))
             : back()->with('flash.error', __($status));
+    }
+
+    /**
+     * The role picker offers the roles this CLINIC has, not the roles this RELEASE knows about.
+     *
+     * It shipped the enum, and the two are the same list only once RolesAndPermissionsSeeder has run in the
+     * tenant's schema. `tenants:migrate --seed` skips suspended tenants (OPERATIONS §2.2), so a clinic reactivated
+     * after a release that adds a role has the migrations and not the row: the newest role — today `compounder` —
+     * was offered on this form, and CreateStaffUser's syncRoles() then threw Spatie's RoleDoesNotExist as an
+     * unhandled 500, on the very screen an admin would open while repairing that tenant. SerialPolicy::checkIn
+     * carries a careful fallback for the same tenant; this screen had none.
+     *
+     * The intersection keeps enum order, which is the insertion order ClinicActionsTest pins the seeded rows to,
+     * and the guard is the staff one — a role row for another guard is not a role this form can assign. The
+     * renderable in bootstrap/app.php is the second line of defence, and covers every other way into a missing
+     * role or permission.
+     *
+     * @return array<int, string>
+     */
+    private static function roleOptions(): array
+    {
+        /** @var array<int, string> $seeded */
+        $seeded = RoleRecord::query()->where('guard_name', 'web')->pluck('name')->all();
+
+        return array_values(array_intersect(Role::values(), $seeded));
     }
 
     private static function dataFor(User $user, bool $isActive): StaffUserData

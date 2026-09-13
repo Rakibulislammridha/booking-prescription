@@ -1074,12 +1074,33 @@ staff account revokes every session it still holds.
 ### 6.2 Staff (`web`) — spatie/laravel-permission inside the tenant schema
 
 * `teams => false`; each tenant schema has its own `roles/permissions` tables, so no team id.
-* Roles (`App\Domain\Clinic\Enums\Role`, values snake_case): `hospital_admin`, `doctor`, `receptionist`
-  (a.k.a. Compounder), `accountant`. **Patient is not a Spatie role** — patients are a separate
-  guard/model. **Super Admin is central** (`SuperAdmin` model, `super` guard, no Spatie).
+* Roles (`App\Domain\Clinic\Enums\Role`, values snake_case): `hospital_admin`, `doctor`, `receptionist`,
+  `compounder`, `accountant`. **Patient is not a Spatie role** — patients are a separate
+  guard/model. **Super Admin is central** (`SuperAdmin` model, `super` guard, no Spatie). New cases are
+  **appended** to the enum: the seeder inserts roles in enum order and `ClinicActionsTest` asserts that order.
+* **`compounder` is a role in its own right, not a spelling of `receptionist`** — this document said they were the
+  same thing until the role shipped, and they are not. It holds exactly four permissions — `serials.check-in`,
+  `prescriptions.vitals.record`, `billing.payments.collect`, `billing.invoices.view` — and is defined as much by
+  what is absent: no `serials.issue.counter` / `.reorder` / `.transfer` / `.cancel` / `.split.adjust` /
+  `.capacity.extend` (BRIEF's "he can't be able to edit the serial number" is enforced by not holding the
+  permission, never by hiding a button), no `queue.call-next` (the doctor calls), no `prescriptions.write`, no
+  `patients.*`, no `reports.*`.
+* **Which doctors a compounder may act for is a separate question from what they may do**, and the `doctor_compounder`
+  pivot answers it (SCHEMA.md `doctor_compounder`; many-to-many, so one compounder may stand behind two doctors).
+  `App\Domain\Clinic\Services\DoctorScope::doctorIds(User): ?array` is the single place that reads it — `null`
+  means unrestricted (everyone who is not a compounder), a list means only those doctor ids, `[]` means nothing at
+  all, so an unassigned compounder signs in to an empty board rather than to everybody's. The assignment is made by
+  the doctor themselves or by a hospital admin on `panel.clinic.doctors.compounders.*`
+  (`DoctorPolicy::manageCompounders`, the `designPad` shape) and is read on every request, never cached, so
+  revoking one takes effect on the next click. DoctorScope is applied in the Serial / SessionInstance / Appointment
+  / Invoice / Prescription / PrescriptionTemplate / Visit policies and in `BoardBuilder`, `ShiftSummary`,
+  `BoardStateBuilder`, `PrescriptionIndexQuery`, `OutstandingDuesQuery` and `DefaultPatientAccessResolver`.
 * Permission names: `<module>.<resource>.<action>` — string-backed enum
   `App\Domain\Clinic\Enums\Permission` is the single source of truth, e.g.
-  `scheduling.schedules.manage`, `serials.issue.counter`, `serials.split.adjust` (Doctor and Super
+  `scheduling.schedules.manage`, `serials.issue.counter`, `serials.check-in` (mark a booked patient arrived,
+  no-show or reinstated — split out of the desk's role list so a compounder can work a doctor's desk without
+  holding any permission over a serial NUMBER; held by hospital admin, receptionist, doctor and compounder),
+  `serials.split.adjust` (Doctor and Super
   Admin only — the one spelling), `serials.reorder`,
   `queue.call-next` (also authorises the doctor-screen channel and the desk's call-next button),
   `queue.delay.broadcast`, `reception.devices.register`,
@@ -1092,10 +1113,14 @@ staff account revokes every session it still holds.
   `notifications.send.test` (anything that spends a credit from a management screen: the gateway test send and a
   log retry), `saas.settings.manage`. Actions are `view|create|update|delete|manage|<verb>`.
 * `Database\Seeders\Tenant\RolesAndPermissionsSeeder` creates every enum permission
-  (`firstOrCreate(['name' => ..., 'guard_name' => 'web'])`), the four roles, and syncs the role
+  (`firstOrCreate(['name' => ..., 'guard_name' => 'web'])`), every `Role` enum case, and syncs the role
   → permission matrix defined in `App\Domain\Clinic\Support\RoleMatrix::permissionsFor(Role)`.
   It runs in `ProvisionTenant` and in `tenants:seed --class=RolesAndPermissionsSeeder` on every
   deploy that adds a permission. Custom per-tenant roles are allowed (Hospital Admin UI).
+  **A tenant that misses that run is missing a permission, not just a screen**: `serials.check-in` is now the gate
+  on every check-in, and Spatie's `Gate::before` swallows `PermissionDoesNotExist` and simply answers false — so an
+  unseeded tenant 403s the desk with nothing in the log. `tenants:migrate --seed` skips suspended tenants, which is
+  the one way to end up there; OPERATIONS.md §2.2 says what to run after reactivating.
 * Authorisation in code: policies (`$this->authorize('write', $prescription)`) call
   `$user->can(Permission::PrescriptionsWrite->value)` and add row-level rules (a doctor sees only
   his own patients unless `prescriptions.view.any`). Route-level `permission:` middleware is used

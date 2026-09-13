@@ -81,12 +81,16 @@ final class VitalsDemoSeeder extends Seeder
     }
 
     /**
-     * The person the readings are attributed to: the demo's compounder, else any receptionist (the role that holds
-     * `prescriptions.vitals.record` at the desk). Null is survivable — the screens show "—" for the recorder.
+     * The person the readings are attributed to, in three tries: the demo clinic's compounder by email, then
+     * anyone holding the `compounder` role, then the front desk. The last leg is the one that stops this seeder
+     * writing null on a clinic seeded before the role existed — the readings still need a recorder, and a
+     * receptionist taking them is the arrangement that role used to stand in for. Null is survivable either way:
+     * the screens show "—" for the recorder.
      */
     private function compounder(): ?User
     {
         return User::query()->where('email', 'compounder@demo.test')->first()
+            ?? User::query()->whereHas('roles', fn ($q) => $q->where('name', Role::Compounder->value))->orderBy('id')->first()
             ?? User::query()->whereHas('roles', fn ($q) => $q->where('name', Role::Receptionist->value))->orderBy('id')->first();
     }
 

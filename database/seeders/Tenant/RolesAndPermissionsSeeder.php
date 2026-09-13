@@ -13,7 +13,7 @@ use Illuminate\Database\Seeder;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
- * Creates every Permission enum case, the four roles, and syncs the RoleMatrix. Idempotent; runs on every deploy
+ * Creates every Permission enum case, every Role enum case, and syncs the RoleMatrix. Idempotent; runs on every deploy
  * that adds a permission (ProvisionTenant and tenants:seed --class=RolesAndPermissionsSeeder).
  */
 final class RolesAndPermissionsSeeder extends Seeder

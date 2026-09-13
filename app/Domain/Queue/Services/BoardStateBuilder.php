@@ -14,6 +14,11 @@ use Carbon\CarbonImmutable;
 /**
  * The `board.updated` payload (REALTIME.md §3.1): one row per today's session at a branch with the counts, the
  * remaining pool numbers and the queue version. Codes only — the desk fetches patient rows from its own endpoints.
+ *
+ * `$doctorIds` is the caller's DoctorScope and applies to the READ paths only (panel.queue.today and its poll): a
+ * compounder's "today" is their doctors' chambers. The broadcast that shares this shape is one payload for every
+ * subscriber of a branch channel and stays unscoped by necessity — which is affordable precisely because the
+ * document carries no patient row.
  */
 final class BoardStateBuilder
 {
@@ -21,13 +26,17 @@ final class BoardStateBuilder
 
     public function __construct(private readonly CapacityService $capacity) {}
 
-    /** @return array<string, mixed> */
-    public function build(Branch $branch, ?CarbonImmutable $date = null): array
+    /**
+     * @param  list<int>|null  $doctorIds  DoctorScope: null = unrestricted, a list = only these doctors, [] = none
+     * @return array<string, mixed>
+     */
+    public function build(Branch $branch, ?CarbonImmutable $date = null, ?array $doctorIds = null): array
     {
         $date ??= Clock::today();
 
         $sessions = SessionInstance::query()->with('doctor')
             ->where('branch_id', $branch->id)
+            ->when($doctorIds !== null, fn ($q) => $q->whereIn('doctor_id', $doctorIds ?? []))
             ->whereDate('session_date', $date->toDateString())
             ->orderBy('planned_start_at')->orderBy('session_code')
             ->get();
@@ -65,14 +74,16 @@ final class BoardStateBuilder
     /**
      * Display tiles for a branch (REALTIME.md §9.1): the running/scheduled/paused sessions, newest state first.
      *
+     * @param  list<int>|null  $doctorIds  DoctorScope: null = unrestricted, a list = only these doctors, [] = none
      * @return array<int, array<string, mixed>>
      */
-    public function tiles(Branch $branch, ?CarbonImmutable $date = null): array
+    public function tiles(Branch $branch, ?CarbonImmutable $date = null, ?array $doctorIds = null): array
     {
         $date ??= Clock::today();
 
         return SessionInstance::query()->with('doctor')
             ->where('branch_id', $branch->id)
+            ->when($doctorIds !== null, fn ($q) => $q->whereIn('doctor_id', $doctorIds ?? []))
             ->whereDate('session_date', $date->toDateString())
             ->whereIn('status', [SessionStatus::Running->value, SessionStatus::Scheduled->value, SessionStatus::Paused->value])
             ->orderBy('planned_start_at')->orderBy('session_code')

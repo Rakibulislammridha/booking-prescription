@@ -22,6 +22,7 @@ use Inertia\Response;
  * GET /panel/prescriptions/{prescription} — a draft returns the PrescriptionDraft shape; an issued/amended/voided row
  * returns the frozen snapshot document + version chain (IssuedPrescriptionResource, catalog-free) plus `queue`,
  * the way back into today's session (the post-issue bar's "Call next patient" / "Back to today's session").
+ * Both shapes carry `can` — see abilities(): the page renders no action this viewer would be refused.
  * Inertia page `Prescription/Show` unless JSON is requested. Audit `view` once per session.
  */
 final class PrescriptionController extends Controller
@@ -29,6 +30,8 @@ final class PrescriptionController extends Controller
     public function show(Request $request, Prescription $prescription, DraftSerializer $serializer, PrescriptionAuditor $auditor): Response|JsonResponse
     {
         $this->authorize('view', $prescription);
+        /** @var User $user */
+        $user = $request->user('web');
         $key = "rx_viewed.{$prescription->id}";
 
         if (! $request->hasSession() || ! $request->session()->has($key)) {
@@ -36,11 +39,38 @@ final class PrescriptionController extends Controller
             $request->hasSession() && $request->session()->put($key, true);
         }
 
-        $props = $prescription->isDraft()
+        $props = ($prescription->isDraft()
             ? ['prescription' => $serializer->draft($prescription), 'visit' => $serializer->visit($prescription->visit->load(['serial', 'sessionInstance']))]
-            : ['prescription' => (new IssuedPrescriptionResource($prescription))->resolve($request), 'queue' => $this->queue($request, $prescription)];
+            : ['prescription' => (new IssuedPrescriptionResource($prescription))->resolve($request), 'queue' => $this->queue($request, $prescription)])
+            + ['can' => $this->abilities($user, $prescription)];
 
         return $request->query('format') === 'json' || $request->wantsJson() ? response()->json($props) : Inertia::render('Prescription/Show', $props);
+    }
+
+    /**
+     * What this viewer may DO with the sheet, asked of the policy rather than guessed from a role in the client.
+     * The page shipped none of this and offered Send / Amend / Void to whoever could open it — and `view` is
+     * deliberately the WIDE door (PrescriptionPolicy: `prescriptions.vitals.record` grants it, because BRIEF
+     * §5.G.4 has the sheet printed and handed over at the desk). So all three buttons were rendered to a
+     * compounder, whose Send is refused outright — a restricted user prints a sheet but never speaks to the
+     * patient in the doctor's name — and whose Amend / Void need `prescriptions.write`, which a RECEPTIONIST
+     * lacks too: this was never only a compounder bug.
+     *
+     * `write` is the draft branch's own button, the way back into the writer, and it asks VisitPolicy::write —
+     * the same ability WriterController itself authorises, so the page cannot offer a door the next request
+     * refuses. Every prescription has a visit (`prescriptions.visit_id` is NOT NULL), which is why it is asked
+     * without a guard here and why the draft branch above dereferences the relation just as bluntly.
+     *
+     * @return array{write: bool, send: bool, amend: bool, void: bool}
+     */
+    private function abilities(User $user, Prescription $prescription): array
+    {
+        return [
+            'write' => $user->can('write', $prescription->visit),
+            'send' => $user->can('send', $prescription),
+            'amend' => $user->can('amend', $prescription),
+            'void' => $user->can('void', $prescription),
+        ];
     }
 
     /**

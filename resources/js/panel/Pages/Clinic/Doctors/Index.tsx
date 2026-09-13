@@ -1,5 +1,5 @@
 // Clinic/Doctors/Index — the doctor roster. Server-side search and filters, because this is the list that grows
-// with the clinic. Each row links to the three things a doctor needs configured: profile, schedule, pad.
+// with the clinic. Each row links to the four things a doctor needs configured: profile, schedule, pad, compounders.
 import { useState, type ReactNode } from 'react';
 import { router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +20,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AddIcon from '@mui/icons-material/Add';
 import DescriptionIcon from '@mui/icons-material/Description';
+import GroupsIcon from '@mui/icons-material/Groups';
 import ScheduleIcon from '@mui/icons-material/CalendarMonth';
 import SearchIcon from '@mui/icons-material/Search';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
@@ -32,8 +33,20 @@ import { getLocale } from '@shared/locale';
 import type { PageProps } from '@shared/types/inertia';
 import type { ClinicDepartment, ClinicDoctor, ClinicSpecialty, Paginated } from '@shared/types/models';
 
+/**
+ * The two per-row abilities the server decides for us. `can.manage` is one flag for the whole page and cannot
+ * answer them: DoctorPolicy::designPad and ::manageCompounders both read "an admin administers every row, a doctor
+ * administers their OWN", and this roster is the only doctors screen a doctor without `clinic.doctors.manage` can
+ * open. The page used to mirror that policy in TypeScript for the compounders link and draw the Pad button with no
+ * gate at all, which handed every doctor a button to every colleague's pad and a 403 when they pressed it.
+ *
+ * They live here rather than on `ClinicDoctor` (shared/types/models.d.ts, which owns the server-shaped types) only
+ * because that block has not been touched for them yet — move them there when it next is.
+ */
+type RosterDoctor = ClinicDoctor & { can_design_pad: boolean; can_manage_compounders: boolean };
+
 type Props = PageProps<{
-  doctors: Paginated<ClinicDoctor>;
+  doctors: Paginated<RosterDoctor>;
   filters: { q: string; department: number | null; specialty: number | null; status: string };
   departments: ClinicDepartment[];
   specialties: ClinicSpecialty[];
@@ -138,9 +151,16 @@ export default function Index({ doctors, filters, departments, specialties, can 
                           {t('clinic.doctors.schedule')}
                         </Button>
                       ) : null}
-                      <Button size="small" startIcon={<DescriptionIcon />} component={RouterLink} href={route('panel.clinic.doctors.pad.edit', { doctor: doctor.public_id })}>
-                        {t('clinic.doctors.pad')}
-                      </Button>
+                      {doctor.can_design_pad ? (
+                        <Button size="small" startIcon={<DescriptionIcon />} component={RouterLink} href={route('panel.clinic.doctors.pad.edit', { doctor: doctor.public_id })}>
+                          {t('clinic.doctors.pad')}
+                        </Button>
+                      ) : null}
+                      {doctor.can_manage_compounders ? (
+                        <Button size="small" startIcon={<GroupsIcon />} component={RouterLink} href={route('panel.clinic.doctors.compounders.index', { doctor: doctor.public_id })}>
+                          {t('clinic.compounders.link')}
+                        </Button>
+                      ) : null}
                       {can.manage ? (
                         <Button size="small" component={RouterLink} href={route('panel.clinic.doctors.edit', { doctor: doctor.public_id })}>{t('common.actions.edit')}</Button>
                       ) : null}

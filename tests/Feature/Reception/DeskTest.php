@@ -40,7 +40,12 @@ final class DeskTest extends TestCase
             ->assertInertia(fn (AssertableInertia $p) => $p->component('Reception/Board')
                 ->where('board.date', $this->today()->toDateString())
                 ->has('board.sessions', 2)
-                ->where('can.issue', true)->where('can.call_next', true)->where('can.register_device', true)->where('can.revoke', false)
+                ->where('can.issue', true)->where('can.call_next', true)->where('can.register_device', true)
+                // `can.revoke` used to be asserted here; the board never read it (Reception/Devices has its own).
+                // These two are what the page now needs from the server: whether it may offer the patient search,
+                // and whether DoctorScope narrowed this viewer — the flag the desk uses to decide whether it may
+                // open the device cache at all, so an unscoped receptionist must be told `false` explicitly.
+                ->where('can.search_patients', true)->where('doctor_scoped', false)
                 ->where('print_format', '58')
                 ->has('channel')->has('settings'));
 

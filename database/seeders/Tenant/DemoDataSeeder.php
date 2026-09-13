@@ -22,6 +22,14 @@ use Illuminate\Support\Facades\Hash;
  * Bangla-first demo clinic (tenants:create --demo): branches, departments, specialties, doctors with profiles,
  * pad settings and specialties, staff users with roles, holidays. Schedules/patients are seeded by their modules.
  * Idempotent: upserts by natural keys.
+ *
+ * The logins it leaves behind, all with the password `password`:
+ *   rahman@demo.test            doctor       Dr. Md. Abdur Rahman (Medicine, main branch)
+ *   sultana@demo.test           doctor       Dr. Nasrin Sultana (Paediatrics)
+ *   reception@demo.test         receptionist the main branch's front desk
+ *   reception-mirpur@demo.test  receptionist the Mirpur desk
+ *   compounder@demo.test        compounder   assigned to Dr. Rahman only — sees his board and nobody else's
+ *   accounts@demo.test          accountant
  */
 final class DemoDataSeeder extends Seeder
 {
@@ -52,6 +60,8 @@ final class DemoDataSeeder extends Seeder
                 'user' => ['email' => 'sultana@demo.test', 'mobile' => '+8801711000012']],
         ];
 
+        $doctorRows = [];
+
         foreach ($doctors as $d) {
             $user = User::query()->updateOrCreate(
                 ['email' => $d['user']['email']],
@@ -70,18 +80,38 @@ final class DemoDataSeeder extends Seeder
             foreach ($d['specialties'] as $i => $slug) {
                 DoctorSpecialty::query()->updateOrCreate(['doctor_id' => $doctor->id, 'specialty_id' => $specialties[$slug]->id], ['is_primary' => $i === 0]);
             }
+
+            $doctorRows[$d['slug']] = $doctor;
         }
 
-        // The compounder is a Receptionist by role — that is the role RoleMatrix gives `prescriptions.vitals.record`
-        // — but a separate person, because BRIEF §5.G.2's handoff is only legible in the demo if the vitals were
-        // taken by someone other than the doctor and the front desk (VitalsDemoSeeder records as this user).
-        foreach ([['reception@demo.test', 'রিসেপশন ডেস্ক', Role::Receptionist, $main], ['reception-mirpur@demo.test', 'মিরপুর রিসেপশন', Role::Receptionist, $mirpur], ['compounder@demo.test', 'কম্পাউন্ডার', Role::Receptionist, $main], ['accounts@demo.test', 'হিসাব বিভাগ', Role::Accountant, $main]] as [$email, $name, $role, $branch]) {
+        // The compounder is a separate person from both the doctor and the front desk, because BRIEF §5.G.2's
+        // handoff is only legible in the demo if somebody else took the vitals (VitalsDemoSeeder records as this
+        // user). They now hold the role of their own job rather than borrowing the receptionist's: four
+        // permissions — vitals, fee, arrival, and an invoice they can read — and no way to touch a serial number.
+        //
+        // `syncRoles` REPLACES, so re-seeding an older demo tenant takes the receptionist role off
+        // compounder@demo.test — deliberately, since that account was only ever standing in for a role that did
+        // not exist yet, and leaving it with both would hide exactly the restriction this demo is meant to show.
+        // The desk is not left unstaffed by that: reception@demo.test keeps Receptionist at the main branch and
+        // reception-mirpur@demo.test at Mirpur, which is where the counter, the cash shift and the serial numbers
+        // live. All four sign in with `password`.
+        $staff = [];
+
+        foreach ([['reception@demo.test', 'রিসেপশন ডেস্ক', Role::Receptionist, $main], ['reception-mirpur@demo.test', 'মিরপুর রিসেপশন', Role::Receptionist, $mirpur], ['compounder@demo.test', 'কম্পাউন্ডার', Role::Compounder, $main], ['accounts@demo.test', 'হিসাব বিভাগ', Role::Accountant, $main]] as [$email, $name, $role, $branch]) {
             $user = User::query()->updateOrCreate(
                 ['email' => $email],
                 ['name' => $name, 'password' => Hash::make('password'), 'default_branch_id' => $branch->id, 'locale' => 'bn', 'is_active' => true, 'email_verified_at' => now()],
             );
             $user->syncRoles([$role->value]);
+            $staff[$email] = $user;
         }
+
+        // The assignment is the half of the feature a role cannot express: holding `compounder` restricts the
+        // account to nothing at all until a doctor puts them on their desk. One row, so the demo clinic shows the
+        // real shape — this compounder works Dr. Rahman's board and cannot see Dr. Sultana's at all. Assigned BY
+        // the doctor, which is who the screen says makes this decision.
+        $rahman = $doctorRows['dr-rahman'];
+        $rahman->compounders()->syncWithoutDetaching([$staff['compounder@demo.test']->id => ['assigned_by_user_id' => $rahman->user_id]]);
 
         // A clinic that already has visits (a demo tenant re-seeded, or `tenants:seed --class=DemoDataSeeder` on a
         // running one) gets its vitals history too; on a brand-new tenant there are no visits yet and this is a

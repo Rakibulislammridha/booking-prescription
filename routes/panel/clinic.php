@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Panel\Clinic\BranchController;
 use App\Http\Controllers\Panel\Clinic\DepartmentController;
+use App\Http\Controllers\Panel\Clinic\DoctorCompounderController;
 use App\Http\Controllers\Panel\Clinic\DoctorController;
 use App\Http\Controllers\Panel\Clinic\DoctorLeaveController;
 use App\Http\Controllers\Panel\Clinic\DoctorPhotoController;
@@ -65,6 +66,14 @@ Route::prefix('clinic')->name('clinic.')->group(function (): void {
         Route::post('/', [DoctorController::class, 'store'])->name('store');
         Route::get('{doctor:public_id}/edit', [DoctorController::class, 'edit'])->name('edit');
         Route::put('{doctor:public_id}', [DoctorController::class, 'update'])->name('update');
+
+        // Compounders (BRIEF: "a doctor can assign a compounder"). Gated by DoctorPolicy::manageCompounders — the
+        // doctor's own row, or clinic.doctors.manage — never by the is_active `viewAny` the doctor list uses.
+        Route::get('{doctor:public_id}/compounders', [DoctorCompounderController::class, 'index'])->name('compounders.index');
+        Route::post('{doctor:public_id}/compounders', [DoctorCompounderController::class, 'store'])->name('compounders.store');
+        // `{compounder}` is a nested custom-keyed binding, so Laravel scopes it through Doctor::compounders():
+        // a user who is not on THIS doctor's desk 404s before the controller runs.
+        Route::delete('{doctor:public_id}/compounders/{compounder:public_id}', [DoctorCompounderController::class, 'destroy'])->name('compounders.destroy');
 
         Route::post('{doctor:public_id}/photo', [DoctorPhotoController::class, 'store'])->name('photo.store');
         Route::get('{doctor:public_id}/photo', [DoctorPhotoController::class, 'show'])->name('photo.show');

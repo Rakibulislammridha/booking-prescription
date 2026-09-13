@@ -1227,6 +1227,32 @@ declare module 'ziggy-js' {
             "binding": "public_id"
         }
     ],
+    "panel.clinic.doctors.compounders.index": [
+        {
+            "name": "doctor",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "panel.clinic.doctors.compounders.store": [
+        {
+            "name": "doctor",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
+    "panel.clinic.doctors.compounders.destroy": [
+        {
+            "name": "doctor",
+            "required": true,
+            "binding": "public_id"
+        },
+        {
+            "name": "compounder",
+            "required": true,
+            "binding": "public_id"
+        }
+    ],
     "panel.clinic.doctors.photo.store": [
         {
             "name": "doctor",

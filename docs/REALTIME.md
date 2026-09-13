@@ -61,8 +61,8 @@ Octane workers ──(HTTP POST /apps/{id}/events, Reverb Pusher-protocol API)�
 |---|---|---|---|---|
 | Queue | public | `tenant.{tenantId}.queue.{sessionInstancePublicId}` | public queue page, token-slip QR visitors, display tiles | none |
 | Reception board | private | `tenant.{tenantId}.reception.{branchPublicId}` | desk PWA | staff user of that branch (`web` or `sanctum`) or a reception device of that branch (`device`) |
-| Doctor screen | private | `tenant.{tenantId}.doctor.{doctorPublicId}` | the doctor's panel | the doctor themself, or staff with permission `queue.call-next` at the doctor's branch |
-| Waiting-room display | private | `tenant.{tenantId}.display.{branchPublicId}` | TV pages | a `reception_devices` row with `kind = display` (Sanctum device token in `bearerToken`) or a staff user |
+| Doctor screen | private | `tenant.{tenantId}.doctor.{doctorPublicId}` | the doctor's panel | the doctor themself, or staff with permission `queue.call-next` who hold no `doctors` row — and never a user `DoctorScope` restricts, assigned to that doctor or not |
+| Waiting-room display | private | `tenant.{tenantId}.display.{branchPublicId}` | TV pages | a `reception_devices` row with `kind = display` at that branch (Sanctum device token in `bearerToken`), or a staff user of that branch (`BranchAccess`) whom `DoctorScope` does not restrict — the board preview of §9 |
 | Prescription writer | private | `tenant.{tenantId}.prescription.{prescriptionPublicId}` | the writer tab (PRESCRIPTION.md §7.5 `PdfReady`) | staff user allowed to view that prescription (`PrescriptionPolicy::view`); guard callback `App\Domain\Prescription\Services\PrescriptionChannelGuard` — owned by P, listed here so `routes/channels.php` has one inventory |
 
 Presence channels are not used (no member lists needed; presence would leak
@@ -135,12 +135,23 @@ this one is the wire event). Always import with the FQCN; the listener that brid
   "room": "Room 3" }
 ```
 
-Private channels (reception/doctor/display) additionally receive
-`"patient": { "first_name": "Rahima", "age": 54, "sex": "f" }` via
-`broadcastWith()` branching on the channel — implemented as **two** event
-classes sharing a trait: `SerialCalled` (public payload) and
-`SerialCalledPrivate` (private channels), dispatched together by the listener.
-The public queue channel never carries names.
+The **doctor and display channels only** additionally receive
+`"patient": { "first_name": "Rahima", "age": 54, "sex": "f" }` — implemented as
+**two** event classes sharing a base: `SerialCalled` (public payload, public
+channel) and `SerialCalledPrivate`, which `QueueBroadcaster::serialCalled()`
+dispatches twice — the card to `doctor` + `display`
+(`QueueBroadcaster::chamberChannels()`), and the bare public payload to
+`reception`. The public queue channel never carries names.
+
+**The reception channel gets no patient card**, and this used to say it did.
+The desk channel is one branch-wide channel every active staff user of the
+branch holds: with the card on it, a compounder assigned to Dr A — scoped to
+Dr A by `DoctorScope` in every board, list and policy — received a live
+patient-by-patient feed of every other chamber at the branch over the socket,
+with no HTTP request and no policy in the path. A channel cannot be narrowed
+per subscriber (one payload, many listeners), so the card is not sent: the
+desk re-fetches its board on `serial.called`, and those rows are doctor-scoped.
+Nothing on the desk ever read the block (`useDesk.ts`, `Queue/Today.tsx`).
 
 `serial.status_changed` — **`SerialStatusChanged`** (queued) on queue + reception:
 
@@ -693,7 +704,7 @@ Reverb local).
 `BroadcastingTest` (`Event::fake([...])` on the realtime events, then assert with `broadcastOn()`/`broadcastAs()`/`broadcastWith()`)
 
 - `serial_called_is_broadcast_now_on_queue_reception_doctor_display_with_public_payload_without_names`
-- `serial_called_private_carries_first_name_only_on_private_channels`
+- `serial_called_private_carries_first_name_only_on_private_channels` — and `…_the_reception_copy_carries_no_patient_card` (§3.1)
 - `queue_state_updated_is_queued_unique_until_processing_and_reads_snapshot_at_send_time`
 - `board_updated_is_coalesced_per_branch`
 - `call_next_goes_to_doctor_and_display_only`
@@ -706,6 +717,7 @@ Reverb local).
 - `reception_channel_allows_branch_staff_and_branch_devices_denies_other_branch_and_other_tenant`
 - `doctor_channel_allows_the_doctor_and_operators_denies_other_doctors`
 - `display_channel_allows_display_devices_denies_reception_devices`
+- `display_channel_denies_staff_of_another_branch_and_any_doctor_scoped_user` (§2 — the leg that was `is_active` alone)
 - `public_queue_channel_needs_no_auth`
 
 `ThreeAheadNotificationTest`

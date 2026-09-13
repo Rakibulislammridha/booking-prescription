@@ -8,7 +8,7 @@
 // Plus the third thing a compounder needs from the row: the prescription, printed at the desk (BRIEF §5.G.4) —
 // offered only when there is an issued one, and never offline (OFFLINE §6.2 keeps clinical output on the server).
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { SessionTile } from '../SessionTile';
 import type { BoardSession, DeskSerial } from '@shared/types/models';
 
@@ -33,7 +33,7 @@ const session = (serials: DeskSerial[], over: Partial<BoardSession> = {}): Board
   ...over,
 });
 
-const CAN = { issue: true, call_next: true, cancel: true, collect: true, record_vitals: true, print_prescription: true };
+const CAN = { issue: true, call_next: true, cancel: true, collect: true, record_vitals: true, print_prescription: true, check_in: true, kiosk: true };
 
 function mount(s: BoardSession, over: Partial<React.ComponentProps<typeof SessionTile>> = {}) {
   const onPrintPrescription = vi.fn();
@@ -213,5 +213,126 @@ describe('SessionTile rows awaiting a printout', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all (4)' }));
     expect(renderedCodes()).toEqual(['B-001', 'B-002', 'B-003', 'B-004']);
+  });
+});
+
+/**
+ * The compounder's tile. The product owner's rule — "he can't be able to edit the serial number" — is enforced by
+ * the permissions the role does not hold, so the tile's job is only to stop offering what those permissions would
+ * have bought. Two controls used to render for anyone who could open the board: the arrival tick and the kiosk QR
+ * (a public booking link, i.e. issuing serials by another name). Both now have a flag.
+ *
+ * `COMPOUNDER` is that role's real board flags, exactly as BoardController computes them from its four permissions.
+ */
+describe('SessionTile for a compounder', () => {
+  const COMPOUNDER = { issue: false, call_next: false, cancel: false, collect: true, record_vitals: true, print_prescription: true, check_in: true, kiosk: false };
+
+  const row = serial(1, {
+    status: 'booked',
+    appointment: { public_id: 'apt_1', type: 'new', channel: 'counter', status: 'confirmed', fee_paisa: 80_000, list_fee_paisa: 80_000, fee_rule: 'new', payment_status: 'unpaid', hold_expires_at: null },
+  });
+
+  it('offers the arrival tick, the fee and the vitals — and nothing that changes a serial', () => {
+    mount(session([row]), { can: COMPOUNDER });
+
+    expect(screen.getByRole('button', { name: 'Check in' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Collect fee' })).toBeEnabled();
+    for (const name of ['Call next', 'New booking', 'Issue walk-in', 'Kiosk QR', 'Cancel booking']) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+  });
+
+  it('hides the arrival tick from anyone without the check-in permission', () => {
+    mount(session([row]), { can: { ...COMPOUNDER, check_in: false } });
+
+    expect(screen.queryByRole('button', { name: 'Check in' })).toBeNull();
+  });
+
+  it('keeps the token slip, which asks the server for nothing', () => {
+    mount(session([row]), { can: COMPOUNDER });
+
+    expect(screen.getByRole('button', { name: 'Print token slip' })).toBeEnabled();
+  });
+});
+
+/**
+ * The compounder's desk, control by control. The product owner's rule is a permission rule — "he can't be able to
+ * edit the serial number" is the four permissions the role holds, not a hidden button — so what this section proves
+ * is the tile's half of the bargain: every control keys off its OWN flag, so a role that holds three permissions
+ * gets three controls and the seventh one does not ride in on the sixth's flag.
+ *
+ * `COMPOUNDER` is the real flag set BoardController computes from RoleMatrix's four permissions; `RECEPTIONIST` is
+ * the desk that holds the serial-number permissions too, so the two lists differ by exactly what the role bought.
+ */
+describe('SessionTile — one flag per control', () => {
+  const COMPOUNDER = { issue: false, call_next: false, cancel: false, collect: true, record_vitals: true, print_prescription: true, check_in: true, kiosk: false };
+  const RECEPTIONIST = { ...COMPOUNDER, issue: true, call_next: true, cancel: true, kiosk: true };
+
+  const unpaid: DeskSerial['appointment'] = { public_id: 'apt', type: 'new', channel: 'counter', status: 'confirmed', fee_paisa: 80_000, list_fee_paisa: 80_000, fee_rule: 'new', payment_status: 'unpaid', hold_expires_at: null };
+  // A row nobody has ticked in yet, and a row that is in the building — SerialPresenter sends a vitals answer only
+  // for a present patient (`canHaveVitals` = status->isPresent), so the two rows between them offer all three of
+  // the compounder's controls: the arrival tick on the first, the vitals on the second, the fee on both.
+  const waiting = serial(1, { status: 'booked', appointment: { ...unpaid, public_id: 'apt_1' } });
+  const arrived = serial(2, { status: 'checked_in', appointment: { ...unpaid, public_id: 'apt_2' }, vitals: { recorded: false, readings: 0, recorded_at: null, reviewed: false } });
+
+  /** Accessible names of the buttons in one serial row, in render order. Icon buttons are named by `aria-label`. */
+  const rowActions = (code: string): string[] => {
+    const row = screen.getAllByRole('row').find((tr) => (within(tr).getAllByRole('cell')[0]?.textContent ?? '').includes(code)) as HTMLElement;
+    return within(row).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim() ?? '');
+  };
+  const header = (name: string): HTMLElement | null => screen.queryByRole('button', { name });
+
+  it('gives a compounder the arrival tick, the fee and the vitals — and nothing else on the row', () => {
+    mount(session([waiting, arrived]), { can: COMPOUNDER });
+
+    expect(rowActions('B-001')).toEqual(['Check in', 'Collect fee', 'Print token slip']);
+    expect(rowActions('B-002')).toEqual(['Collect fee', 'Record vitals', 'Print token slip']);
+  });
+
+  it('gives a compounder none of the header actions that issue or move a serial', () => {
+    mount(session([waiting, arrived]), { can: COMPOUNDER });
+
+    for (const name of ['Call next', 'New booking', 'Issue walk-in', 'Kiosk QR']) expect(header(name), name).toBeNull();
+  });
+
+  it('gives the receptionist the same two rows plus exactly what their extra permissions bought', () => {
+    // The contrast is the point: same board, same rows, one different flag set. Cancel is the only row control the
+    // compounder loses, and the four header actions are the ones that issue or move a number.
+    mount(session([waiting, arrived]), { can: RECEPTIONIST });
+
+    expect(rowActions('B-001')).toEqual(['Check in', 'Collect fee', 'Print token slip', 'Cancel booking']);
+    expect(rowActions('B-002')).toEqual(['Collect fee', 'Record vitals', 'Print token slip', 'Cancel booking']);
+    for (const name of ['Call next', 'New booking', 'Issue walk-in', 'Kiosk QR']) expect(header(name), name).not.toBeNull();
+  });
+
+  // The regression that matters most: until `can.check_in` existed, this tick rendered for anyone who could open
+  // the board — which is why a compounder could not be given the board at all. It must move with its own flag and
+  // leave every other control on the row alone.
+  it('renders the arrival tick only when can.check_in is true, and moves nothing else', () => {
+    mount(session([waiting, arrived]), { can: { ...COMPOUNDER, check_in: true } });
+    expect(screen.getByRole('button', { name: 'Check in' })).toBeEnabled();
+    expect(rowActions('B-001')).toEqual(['Check in', 'Collect fee', 'Print token slip']);
+    cleanup();
+
+    mount(session([waiting, arrived]), { can: { ...COMPOUNDER, check_in: false } });
+    expect(screen.queryByRole('button', { name: 'Check in' })).toBeNull();
+    expect(rowActions('B-001')).toEqual(['Collect fee', 'Print token slip']);
+    expect(rowActions('B-002')).toEqual(['Collect fee', 'Record vitals', 'Print token slip']);
+  });
+
+  it('hands the row back to the board when the tick is pressed', () => {
+    const onCheckIn = vi.fn();
+    mount(session([waiting]), { can: COMPOUNDER, onCheckIn });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
+    expect(onCheckIn).toHaveBeenCalledWith(expect.objectContaining({ public_id: 'ses_1' }), expect.objectContaining({ public_id: 'ser_1' }));
+  });
+
+  // "Serials will be in an ordered list" holds on the compounder's board too — the filter narrows which sessions
+  // reach them, never how the rows inside one are ordered (BoardBuilder orderBy('number'), shared/offline byNumber).
+  it('keeps the compounder\'s rows in serial-number order however the server ordered the array', () => {
+    mount(session([serial(12, { position: 1_000_000 }), serial(3, { position: 2_000_000 }), serial(7, { position: 3_000_000 }), serial(1, { position: 9_000_000 })]), { can: COMPOUNDER });
+
+    expect(renderedCodes()).toEqual(['B-001', 'B-003', 'B-007', 'B-012']);
   });
 });

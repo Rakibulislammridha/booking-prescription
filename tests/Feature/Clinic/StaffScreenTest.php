@@ -35,7 +35,7 @@ final class StaffScreenTest extends TestCase
             ->has('users.data')
             ->has('users.meta.last_page')
             ->has('users.links.next')
-            ->has('roles', 4)
+            ->has('roles', 5)
             ->where('current_user_id', $admin->id)
             ->where('can.manage', true));
 
@@ -57,7 +57,7 @@ final class StaffScreenTest extends TestCase
         $branch = Branch::query()->where('is_main', true)->firstOrFail();
 
         $this->get('/panel/clinic/staff/create')->assertOk()->assertInertia(fn (AssertableInertia $p) => $p
-            ->component('Clinic/Staff/Create')->has('branch_options')->has('roles', 4));
+            ->component('Clinic/Staff/Create')->has('branch_options')->has('roles', 5));
 
         $this->post('/panel/clinic/staff', [
             'name' => 'নতুন রিসেপশনিস্ট', 'email' => 'desk2@test-a.test', 'mobile' => '+8801711111122',

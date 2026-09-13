@@ -22,6 +22,7 @@ import { documentLocale } from '@shared/locale';
 import { bootConnection } from '@shared/connection/boot';
 import type { SharedProps, Locale } from '@shared/types/shared-props';
 import '@shared/format/date'; // registers dayjs utc/timezone plugins + the bn locale for the pickers
+import { watchRefusals } from './lib/shell/refusals';
 import { theme } from './theme';
 import { registerPanelServiceWorker } from './pwa';
 
@@ -68,6 +69,9 @@ void createInertiaApp<SharedProps>({
     const shared = props.initialPage.props;
     bootShared(shared);
     syncSharedOnNavigate();
+    // One global handler turns a 403 / 419 into a sentence the shell can render instead of Inertia's black
+    // error modal (lib/shell/refusals.ts says why, and why nothing else is intercepted).
+    watchRefusals();
     bootConnection();
     registerPanelServiceWorker();
     createRoot(el).render(

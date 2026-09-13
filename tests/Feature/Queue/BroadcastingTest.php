@@ -91,12 +91,17 @@ final class BroadcastingTest extends TestCase
             return true;
         });
 
+        // Two private dispatches, not one: the card rides to the chamber and the display, never to the desk.
+        Event::assertDispatchedTimes(SerialCalledPrivate::class, 2);
+
         Event::assertDispatched(SerialCalledPrivate::class, function (SerialCalledPrivate $e) use ($tenant, $session, $doctor): bool {
-            $this->assertSame([
-                self::priv(TenantChannel::receptionName($tenant, $this->mainBranch()->public_id)),
+            if ($e->channelNames() !== [
                 self::priv(TenantChannel::doctorName($tenant, $doctor->public_id)),
                 self::priv(TenantChannel::displayName($tenant, $this->mainBranch()->public_id)),
-            ], $e->channelNames());
+            ]) {
+                return false;
+            }
+
             $this->assertSame('serial.called', $e->broadcastAs());
             $this->assertSame($session->public_id, $e->payload['session']);
             $this->assertSame('Rahima', $e->payload['patient']['first_name'], 'first name only, never the full name');
@@ -104,6 +109,41 @@ final class BroadcastingTest extends TestCase
 
             return true;
         });
+    }
+
+    /**
+     * The reception channel is branch-wide — every active staff user of the branch holds it, a compounder assigned
+     * to one doctor included — and it carried the patient card of every chamber until the dispatch was split. The
+     * desk needs the event (it re-fetches its own doctor-scoped board on it), never the card.
+     */
+    public function test_the_reception_copy_of_serial_called_carries_no_patient_card(): void
+    {
+        Event::fake(self::WIRE);
+
+        $doctor = $this->queueDoctor('dr-rahman', 'Room 3');
+        $session = $this->queueSession($doctor);
+        $serial = $this->issue($session, Patient::factory()->create(['name' => 'Rahima Begum'])->id);
+        $this->checkIn($serial);
+        $this->callNext($session->fresh());
+
+        $tenant = (string) Tenancy::current()?->public_id;
+        $reception = self::priv(TenantChannel::receptionName($tenant, $this->mainBranch()->public_id));
+
+        Event::assertDispatched(SerialCalledPrivate::class, function (SerialCalledPrivate $e) use ($reception, $session): bool {
+            if ($e->channelNames() !== [$reception]) {
+                return false;
+            }
+
+            $this->assertSame('serial.called', $e->broadcastAs());
+            $this->assertSame($session->public_id, $e->payload['session']);
+            $this->assertArrayNotHasKey('patient', $e->payload, 'the desk channel never carries a patient row');
+            $this->assertStringNotContainsString('Rahima', (string) json_encode($e->payload));
+
+            return true;
+        });
+
+        // …and no dispatch reaching the desk carries one, whichever way the broadcaster is rewritten later.
+        Event::assertNotDispatched(SerialCalledPrivate::class, fn (SerialCalledPrivate $e): bool => in_array($reception, $e->channelNames(), true) && array_key_exists('patient', $e->payload));
     }
 
     public function test_call_next_goes_to_the_doctor_and_display_channels_only_and_carries_the_spoken_lines(): void

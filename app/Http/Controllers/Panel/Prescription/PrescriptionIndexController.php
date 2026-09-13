@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Panel\Prescription;
 
+use App\Domain\Clinic\Services\DoctorScope;
 use App\Domain\Prescription\Enums\PrescriptionStatus;
 use App\Domain\Prescription\Queries\PrescriptionIndexQuery;
 use App\Http\Controllers\Controller;
@@ -21,7 +22,7 @@ use Inertia\Response;
  */
 final class PrescriptionIndexController extends Controller
 {
-    public function __invoke(IndexPrescriptionsRequest $request, PrescriptionIndexQuery $query): Response
+    public function __invoke(IndexPrescriptionsRequest $request, PrescriptionIndexQuery $query, DoctorScope $scope): Response
     {
         /** @var User $user */
         $user = $request->user('web');
@@ -30,7 +31,7 @@ final class PrescriptionIndexController extends Controller
         return Inertia::render('Prescription/Index', [
             'filters' => $filters->toArray(),
             'prescriptions' => PrescriptionRowResource::collection($query->paginate($user, $filters))->response()->getData(true),
-            'options' => ['doctors' => PrescriptionIndexQuery::doctorOptions(), 'statuses' => PrescriptionStatus::values()],
+            'options' => ['doctors' => PrescriptionIndexQuery::doctorOptions($scope->doctorIds($user)), 'statuses' => PrescriptionStatus::values()],
         ]);
     }
 }

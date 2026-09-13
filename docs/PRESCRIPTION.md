@@ -812,7 +812,7 @@ Quick-pick: doctor's own recent complaints (Redis zset, last 20).
   `checked_in` / `in_consultation` — the same rule that puts the button on the row), and `OpenVisitForVitals`
   refuses a non-present serial on its own (`prescriptions.serial_not_present`, 409), so no encounter — and no
   `visit_count` / `last_visit_at` bump — ever exists for a patient who has not arrived.
-- Compounder screen `POST /panel/visits/{visit}/vitals` (`VitalsController::store`, permission `prescriptions.vitals.record` — held by the `receptionist` (compounder) and `doctor` roles):
+- Compounder screen `POST /panel/visits/{visit}/vitals` (`VitalsController::store`, permission `prescriptions.vitals.record` — held by the `compounder`, `receptionist` and `doctor` roles; a `compounder` reaches only the visits of the doctors assigned to them in `doctor_compounder`, ARCHITECTURE §6.2):
   `{bp_systolic, bp_diastolic, pulse_bpm, temperature_f, spo2_percent, respiratory_rate, weight_kg, height_cm, blood_glucose_mgdl, notes}`;
   server sets `recorded_by_user_id`, `recorded_at`, computes `bmi`. Several rows per visit are allowed (re-check); the writer shows the latest.
 - **Temperature is °F for people, °C for the database.** `vitals.temperature_c` (SCHEMA §3.4) is the clinical canonical

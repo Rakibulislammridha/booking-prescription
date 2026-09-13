@@ -197,7 +197,7 @@ export default defineConfig({
       buildBase: '/',                        // registerSW() registers `${buildBase}${filename}` → must be /sw.js (verified in vite-plugin-pwa 1.3 dist/index.js); precache entries are globbed from `public` so they already carry the build/ prefix
       base: '/',
       scope: '/panel/',
-      registerType: 'prompt',
+      registerType: 'prompt',                // never 'autoUpdate': that reloads mid-shift. pwa.ts owns the prompt AND the unattended path — it applies the update itself once the desk is idle and the event log is empty, and polls for a new worker hourly (a kiosked tablet never navigates, so nothing else would ask)
       injectRegister: null,                  // registration is explicit in resources/js/panel/pwa.ts
       manifestFilename: 'panel.webmanifest',
       includeAssets: ['icons/*.png'],        // public/fonts is populated by scripts/sync-fonts.sh for print templates only; the desk's woff2 are hashed under build/assets
@@ -207,9 +207,16 @@ export default defineConfig({
         icons: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }],
       },
       // Precache every hashed asset: laravel-vite-plugin names both entries app-*.js and Rollup auto-names common chunks
-      // (boot-*.js) and page chunks, so a {panel,shared}-* glob would leave the desk unable to cold-boot offline.
-      // The panel pass runs second, so public/build/assets already holds the site pass's output too.
-      injectManifest: { globDirectory: 'public', globPatterns: ['build/assets/*.{js,css,woff2}', 'icons/*.{png,svg}'], maximumFileSizeToCacheInBytes: 4_000_000 },
+      // (boot-*.js) and page chunks, so a {panel,shared}-* glob would leave a desk that opened offline unable to load
+      // the route it lands on. The panel pass runs second, so public/build/assets already holds the site pass's output too.
+      //
+      // `offline.html` is the one non-hashed entry and the reason the installed app opens at all without a network
+      // (OFFLINE.md §11.1): a hand-written, data-free, bilingual page that sw.ts serves for any /panel/ navigation the
+      // tablet cannot complete. It is precached by name — NOT globbed as `*.html` — so that nothing else in public/
+      // can ever drift into the precache alongside it. No authenticated document is precached or cached anywhere:
+      // `navigateFallback` is still unused (it is a generateSW option and would be the wrong shape for an Inertia
+      // app besides); the fallback is an explicit navigation route in sw.ts, which never writes a /panel/ response.
+      injectManifest: { globDirectory: 'public', globPatterns: ['build/assets/*.{js,css,woff2}', 'icons/*.{png,svg}', 'offline.html'], maximumFileSizeToCacheInBytes: 4_000_000 },
       devOptions: { enabled: true, type: 'module' },
     }), copyPanelManifest()] : []),
     mergeSurfaceManifests(),

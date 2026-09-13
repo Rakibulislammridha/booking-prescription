@@ -1,5 +1,5 @@
-// Clinic/Doctors/Edit — the profile, the photo, this doctor's leave, and the two links out: the weekly schedule
-// editor (BRIEF §5.B, already built) and the pad designer.
+// Clinic/Doctors/Edit — the profile, the photo, this doctor's leave, and the three links out: the weekly schedule
+// editor (BRIEF §5.B, already built), the pad designer, and the compounders who work this doctor's desk.
 import { useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { router, useForm } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +21,7 @@ import Typography from '@mui/material/Typography';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/DeleteOutlined';
 import DescriptionIcon from '@mui/icons-material/Description';
+import GroupsIcon from '@mui/icons-material/Groups';
 import ScheduleIcon from '@mui/icons-material/CalendarMonth';
 import UploadIcon from '@mui/icons-material/UploadFile';
 import { PanelLayout } from '@panel/Layouts/PanelLayout';
@@ -41,7 +42,7 @@ type Props = PageProps<{
   genders: string[];
   /** Named `branch_options`, not `branches`: SharedProps already owns `branches` (the switcher list). */
   branch_options: ClinicBranch[];
-  can: { design_pad: boolean; schedule: boolean; manage_leave: boolean };
+  can: { design_pad: boolean; schedule: boolean; manage_leave: boolean; manage_compounders: boolean };
 }>;
 
 export default function Edit({ doctor, leaves, departments, specialties, users, genders, branch_options, can }: Props) {
@@ -120,6 +121,11 @@ export default function Edit({ doctor, leaves, departments, specialties, users, 
         {can.design_pad ? (
           <Button size="small" variant="outlined" startIcon={<DescriptionIcon />} component={RouterLink} href={route('panel.clinic.doctors.pad.edit', { doctor: doctor.public_id })}>
             {t('clinic.doctors.pad_link')}
+          </Button>
+        ) : null}
+        {can.manage_compounders ? (
+          <Button size="small" variant="outlined" startIcon={<GroupsIcon />} component={RouterLink} href={route('panel.clinic.doctors.compounders.index', { doctor: doctor.public_id })}>
+            {t('clinic.compounders.link')}
           </Button>
         ) : null}
       </Stack>

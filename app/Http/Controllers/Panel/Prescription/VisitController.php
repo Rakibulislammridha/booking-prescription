@@ -25,10 +25,18 @@ use Illuminate\Http\Request;
 /** Visit lifecycle JSON endpoints (names panel.prescription.visits.*). */
 final class VisitController extends Controller
 {
-    /** POST /panel/serials/{serial}/visit — open (idempotently) the visit for a called serial. */
+    /**
+     * POST /panel/serials/{serial}/visit — open (idempotently) the visit for a called serial.
+     *
+     * `startVisit`, not `view`: this WRITES (a visits row, the patient's visit_count) and hands back a writer URL,
+     * and `view` only ever asked "may you read this row" — so it would open an encounter on a patient who had not
+     * arrived yet. SerialPolicy::startVisit carries the presence rule recordVitals has always had, plus a reason to
+     * be in the chart. The second `view` below is still the visit's own gate: what the caller may OPEN and what they
+     * may then READ back are two questions, and this route answers both.
+     */
     public function start(Request $request, Serial $serial, StartVisit $start, DraftSerializer $serializer): JsonResponse
     {
-        $this->authorize('view', $serial);
+        $this->authorize('startVisit', $serial);
         $visit = $start->handle($serial, Actor::fromRequest($request), 'doctor_screen');
         $this->authorize('view', $visit);
 

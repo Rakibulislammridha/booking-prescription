@@ -63,6 +63,7 @@ import { loadEcho } from '@shared/realtime/echo';
 import { hasRoute, isRoute, route } from '@shared/routes';
 import { formatBn } from '@shared/format/number';
 import { useTodaySessionBadge } from '@panel/hooks/queue/useTodaySessionBadge';
+import { useHttpNotice } from '@panel/hooks/shell/useHttpNotice';
 import { usePwa } from '../pwa';
 import { RouterLink } from './RouterLink';
 
@@ -82,7 +83,29 @@ interface NavItem {
   feature?: string;       // SharedProps.features key; an add-on module's entry is hidden without the plan (BRIEF §5.M)
   doctor?: boolean;       // true: only a user with a doctors row sees it; false: hidden from such a user (one queue entry per user)
   badge?: 'today_session'; // the live count pill on the entry (useTodaySessionBadge, seeded by the `today_session` shared prop)
+  /**
+   * The last resort for an entry whose audience no `permission` + `doctor` pair describes: an extra AND over the
+   * user's own permission list and whether they have a doctors row. Two entries need one — `reception`, whose
+   * audience is five roles and no single permission, and `prescriptions`, whose door is an OR over three (see
+   * both, and PRESCRIPTION_GRANTS below, for why).
+   */
+  visible?: (user: { permissions: string[]; isDoctor: boolean }) => boolean;
 }
+
+/**
+ * The three grants PrescriptionPolicy::viewAny accepts, in its order: `view.any` (hospital admin), `write` (the
+ * doctor) and `vitals.record` (the receptionist and the compounder, who print BRIEF §5.G.4's sheet at the desk).
+ * Any ONE of them opens the list, which is why the entry cannot carry a single `permission`: whichever one was
+ * chosen would have taken the list away from two roles that own it. Ungated it was worse than wrong in both
+ * directions — a dead entry for the accountant ever since the list shipped, and, as of the Compounder wave, a
+ * 403 for a role that is otherwise meant to be on this screen.
+ *
+ * The policy ANDs one more conjunct this predicate cannot ask: DoctorScope's list must not be empty. So a
+ * compounder assigned to NO doctor still sees the entry and still meets a refusal on the list — legible now
+ * rather than a black modal (panel/app.tsx), and closable for good by a shared prop carrying the server's own
+ * answer, the way Reception/Board is handed `doctor_scoped` instead of re-deriving it.
+ */
+const PRESCRIPTION_GRANTS = ['prescriptions.view.any', 'prescriptions.write', 'prescriptions.vitals.record'];
 
 /**
  * The Setup group (BRIEF §5.A): the screens that configure the clinic itself. Each entry carries its own
@@ -102,7 +125,14 @@ const SETUP: NavItem[] = [
 
 const NAV: NavItem[] = [
   { key: 'dashboard', routeName: 'panel.dashboard', icon: <DashboardIcon />, pattern: 'panel.dashboard' },
-  { key: 'reception', routeName: 'panel.reception.board', icon: <DeskIcon />, pattern: 'panel.reception.*', permission: 'serials.issue.counter' },
+  // The desk is worked by a receptionist, a compounder and a hospital admin — INCLUDING one who is also a doctor,
+  // which in a single-doctor chamber (BRIEF §1) is the owner running his own front desk. No single permission
+  // separates those four from an accountant and a salaried doctor: `serials.issue.counter` misses the compounder,
+  // who may never touch a serial number, and `serials.check-in` on its own catches the doctor, who gets "Today's
+  // session" instead. Pairing `serials.check-in` with a flat `doctor: false` was the first fix and it was wrong in
+  // exactly one place — it took the desk away from the owner-doctor, the person most likely to be standing at it.
+  // So: anyone who issues at the counter, plus anyone who can mark a patient arrived and is not a doctor.
+  { key: 'reception', routeName: 'panel.reception.board', icon: <DeskIcon />, pattern: 'panel.reception.*', visible: ({ permissions, isDoctor }) => permissions.includes('serials.issue.counter') || (permissions.includes('serials.check-in') && !isDoctor) },
   // One queue entry per user. A doctor gets "Today's session" — their own session page (`panel.queue.doctor`, the
   // very page `panel.queue.index` would redirect them to) with the checked-in count on it; everyone else keeps
   // "Live queue", the branch overview. Two labels for one route family, never both in one drawer.
@@ -111,7 +141,7 @@ const NAV: NavItem[] = [
   { key: 'scheduling', routeName: 'panel.scheduling.index', icon: <ScheduleIcon />, pattern: 'panel.scheduling.*', permission: 'scheduling.schedules.manage' },
   { key: 'patients', routeName: 'panel.patients.index', icon: <PatientsIcon />, pattern: 'panel.patients.*', permission: 'patients.view' },
   // `panel.prescription*`: the list is `panel.prescriptions.index`, the writer / show / templates are `panel.prescription.*`.
-  { key: 'prescriptions', routeName: 'panel.prescriptions.index', icon: <PrescriptionIcon />, pattern: 'panel.prescription*' },
+  { key: 'prescriptions', routeName: 'panel.prescriptions.index', icon: <PrescriptionIcon />, pattern: 'panel.prescription*', visible: ({ permissions }) => PRESCRIPTION_GRANTS.some((grant) => permissions.includes(grant)) },
   { key: 'custom_brands', routeName: 'panel.catalog.custom-brands.index', icon: <CustomBrandsIcon />, pattern: 'panel.catalog.*', permission: 'catalog.custom-brands.manage' },
   { key: 'billing', routeName: 'panel.billing.index', icon: <BillingIcon />, pattern: 'panel.billing.*', permission: 'billing.invoices.view' },
   { key: 'notifications', routeName: 'panel.notifications.index', icon: <NotificationsIcon />, pattern: 'panel.notifications.*', permission: 'notifications.templates.manage' },
@@ -135,6 +165,9 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
   const [flashOpen, setFlashOpen] = useState(true);
   const [setupOpen, setSetupOpen] = useState(() => isRoute('panel.clinic.*'));
   const pwa = usePwa();
+  // The server's last refusal, put there by panel/app.tsx's httpException handler. Null almost always.
+  const notice = useHttpNotice((s) => s.kind);
+  const clearNotice = useHttpNotice((s) => s.clear);
   const pageTitle = title ? t(title) : undefined;
   const user = shared.auth.user;
   const isSuper = shared.surface === 'super';
@@ -143,7 +176,8 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
   const allowed = (item: NavItem): boolean =>
     (!item.permission || (user?.permissions.includes(item.permission) ?? false))
     && (!item.feature || shared.features[item.feature] === true)
-    && (item.doctor === undefined || item.doctor === isDoctor);
+    && (item.doctor === undefined || item.doctor === isDoctor)
+    && (item.visible === undefined || item.visible({ permissions: user?.permissions ?? [], isDoctor }));
   const nav = NAV.filter(allowed);
   // The "Today's session" count: seeded from the shared prop on every visit, kept live by Queue/Doctor's own
   // queue subscription while that page is open (useTodaySessionBadge).
@@ -315,6 +349,25 @@ export function PanelLayout({ title, children }: PanelLayoutProps) {
         </Box>
 
         <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, md: 3 } }}>
+          {/* A refusal belongs in the content column, not in the snackbar strip at the bottom: it is the answer to
+              the click the person just made, it must not race the server's flash for the same corner, it stays up
+              until they go somewhere that works, and 419 needs a button on it. */}
+          {notice !== null ? (
+            <Alert
+              severity={notice === 'forbidden' ? 'warning' : 'error'}
+              variant="outlined"
+              data-testid="http-notice"
+              sx={{ mb: 2 }}
+              onClose={notice === 'forbidden' ? clearNotice : undefined}
+              action={notice === 'session_expired' ? (
+                // A GET of this URL without a session redirects the guest to the login screen (redirectGuestsTo),
+                // so a plain reload is the whole of "sign in again" — and it is the person's own decision.
+                <Button color="inherit" size="small" onClick={() => window.location.reload()}>{t('common.actions.sign_in_again')}</Button>
+              ) : undefined}
+            >
+              {notice === 'forbidden' ? t('common.errors.forbidden') : t('common.errors.session_expired')}
+            </Alert>
+          ) : null}
           {children}
         </Box>
       </Box>

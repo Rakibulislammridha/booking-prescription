@@ -31,6 +31,9 @@ enum Permission: string
     case SerialsCancel = 'serials.cancel';
     case SerialsTransfer = 'serials.transfer';
     case SerialsCapacityExtend = 'serials.capacity.extend';
+    // Marking a booked patient arrived / no-show / reinstated. Split out of the old role list on SerialPolicy so a
+    // compounder can work the desk for their doctor without holding any of the serial-NUMBER permissions above.
+    case SerialsCheckIn = 'serials.check-in';
 
     // Queue
     case QueueCallNext = 'queue.call-next';

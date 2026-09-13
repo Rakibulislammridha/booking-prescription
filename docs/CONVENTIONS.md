@@ -723,7 +723,7 @@ When a sibling spec says it differently, this table wins and the spec is out of 
 | Enums | `App\Domain\<Module>\Enums\<Name>` (class names/values from SCHEMA.md Appendix A, e.g. `App\Domain\Serials\Enums\{SerialStatus,SerialPool,SerialSource,SerialPriority}`); never `App\Enums` |
 | Pennant | feature classes `App\Domain\SaaS\Features\*`; table `public.feature_flags`; scope = `Tenant` |
 | Guards | `web` (staff `users`), `patient` (`Patient` model, OTP — not a Spatie role), `super` (`SuperAdmin`), `device` (Sanctum, provider `reception_devices`), `sanctum` (bearer-or-session on `/api`) |
-| Roles | spatie roles (guard `web`, snake_case): `hospital_admin`, `doctor`, `receptionist` (= compounder), `accountant`; Patient is a guard, not a role; Super Admin is central (`super` guard), not a spatie role |
+| Roles | spatie roles (guard `web`, snake_case): `hospital_admin`, `doctor`, `receptionist`, `compounder`, `accountant`; **`compounder` is its own role, never a synonym for `receptionist`** (which is what this table used to say) — the doctors it may act for come from the `doctor_compounder` pivot, read through `App\Domain\Clinic\Services\DoctorScope` (ARCHITECTURE §6.2); new cases are appended to `App\Domain\Clinic\Enums\Role`; Patient is a guard, not a role; Super Admin is central (`super` guard), not a spatie role |
 | Permissions | `<module>.<resource>.<action>` from `App\Domain\Clinic\Enums\Permission`: `serials.split.adjust`, `queue.call-next`, `reception.devices.register`, `prescriptions.write` … (ARCHITECTURE §6.2) |
 | Actor DTO | `App\Domain\Shared\Actor` |
 | Domain exception | `App\Domain\Shared\Exceptions\DomainException` with `code()` (`<module>.<condition>`) and `status()` (422; 409 for conflicts) |

@@ -38,6 +38,12 @@ interface Props {
 export function StaffForm({ form, branches, roles, isSelf = false, isAdminSelf = false }: Props) {
   const { t } = useTranslation();
   const { data, errors } = form;
+  // Every other role is complete the moment the account is saved. A compounder is not: the role carries the four
+  // permissions but no doctor, so until someone opens Setup → Doctors → Compounders the new account signs in to a
+  // desk with nothing on it (DoctorScope answers "no doctors" and the board comes back empty). The generic
+  // "roles carry the permissions" line is therefore a lie for exactly this one choice, and an admin who read it
+  // would go looking for the bug in the wrong place — so the helper says what is still missing, and where.
+  const roleHelp = data.role === 'compounder' ? 'clinic.staff.fields.role_help_compounder' : 'clinic.staff.fields.role_help';
 
   return (
     <Stack spacing={2}>
@@ -74,7 +80,7 @@ export function StaffForm({ form, branches, roles, isSelf = false, isAdminSelf =
                 disabled={isAdminSelf}
                 onChange={(e) => form.setData('role', e.target.value)}
                 error={Boolean(errors.role)}
-                helperText={errors.role ?? (isAdminSelf ? t('clinic.staff.fields.role_self_locked') : t('clinic.staff.fields.role_help'))}
+                helperText={errors.role ?? (isAdminSelf ? t('clinic.staff.fields.role_self_locked') : t(roleHelp))}
               >
                 {roles.map((role) => <MenuItem key={role} value={role}>{t(`roles.${role}`)}</MenuItem>)}
               </TextField>

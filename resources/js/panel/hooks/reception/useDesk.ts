@@ -28,6 +28,7 @@ export interface DeskIssueInput { session: BoardSession; patientRef: string; pat
 export interface Desk {
   mode: ConnectionMode;
   board: Board;
+  /** Is the DEVICE path live for this viewer? A pointer alone is not enough — see `deviceAllowed` in useDesk(). */
   registered: boolean;
   device: ReceptionDevice | null;
   actorPublicId: string | null;
@@ -107,7 +108,12 @@ export function boardFromCache(sessions: CachedSession[], serials: CachedSerial[
   };
 }
 
-export function useDesk(initial: Board, options: { tenantPublicId: string | null; channel: string | null; actorPublicId: string | null; settings: Record<string, unknown> }): Desk {
+/**
+ * THE CACHE IS NEVER DELETED, only refused. `db.events` is the desk's unsynced work — check-ins and bookings taken
+ * while the clinic's wifi was down — so a cache that turns out to belong to somebody else is left exactly where it
+ * is (and keeps flushing, below); what changes is that nothing READS it onto the screen.
+ */
+export function useDesk(initial: Board, options: { tenantPublicId: string | null; channel: string | null; actorPublicId: string | null; doctorScoped: boolean; settings: Record<string, unknown> }): Desk {
   const mode = useConnection((s) => s.mode);
   const [board, setBoard] = useState<Board>(initial);
   const [pointer, setPointer] = useState<DevicePointer | null>(() => readPointer());
@@ -120,6 +126,18 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
   const syncRef = useRef<SyncEngine | null>(null);
   const authRef = useRef<DeviceAuth | null>(null);
   const actorRef = useRef<string | null>(options.actorPublicId);
+  // Does the Dexie cache on this device belong to the person in front of it? The database is keyed by (tenant,
+  // device) and the pointer to it lives in browser-wide localStorage, so every user of this browser profile shares
+  // one cache — it is NOT per-actor and can hold the previous shift's whole branch. Only the server may answer
+  // this: `true` is set when a device bootstrap (or a registration) comes back naming THIS viewer as the actor the
+  // device middleware authenticated. It is never inferred from what the cache already says about itself.
+  const ownsCacheRef = useRef(false);
+  // The device path — Dexie, the bootstrap, the block issuer, the sync engine, the device board — belongs to the
+  // registered reception tablet and to the receptionists AuthenticateReceptionDevice will accept as its actor. A
+  // DoctorScope-restricted viewer is not one of them: every device call 403s for them, and the hook used to answer
+  // that 403 by rendering the cache, so a compounder on a registered tablet saw the previous receptionist's whole
+  // branch — permanently, since each 5 s poll failed the same way. They stay on the scoped panel JSON instead.
+  const deviceAllowed = !options.doctorScoped && options.actorPublicId !== null;
   const settings = useMemo<DeskSettings>(() => ({
     defaultBlockSize: Number(options.settings['serial.default_block_size'] ?? 5),
     topupThreshold: Number(options.settings['serial.block_topup_threshold'] ?? 3),
@@ -128,10 +146,13 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
   }), [options.settings]);
 
   useEffect(() => { setBoard(initial); }, [initial]);
+  // The actor is the authenticated viewer of THIS page, always — a partial reload that changes the prop moves it.
+  useEffect(() => { actorRef.current = options.actorPublicId; }, [options.actorPublicId]);
 
+  /** The board out of Dexie — refused unless the server has told us this cache is this viewer's (ownsCacheRef). */
   const renderFromCache = useCallback(async (base: Board): Promise<void> => {
     const db = dbRef.current;
-    if (!db) return;
+    if (!db || !ownsCacheRef.current) return;
     const [sessions, serials, activeBlocks] = await Promise.all([db.sessions.where('date').equals(base.date).toArray(), db.serials.toArray(), db.blocks.toArray()]);
     setBlocks(activeBlocks);
     if (sessions.length > 0) setBoard(boardFromCache(sessions, serials, base));
@@ -143,6 +164,10 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
     if (!db || !auth) return;
     const payload: BootstrapPayload = await fetchBootstrap(auth);
     await applyBootstrap(db, payload);
+    // applyBootstrap has just rewritten the cache AND META_KEYS.actorUser from `payload.actor` — the actor the
+    // device middleware authenticated for this very request. That, and only that, is how a cache becomes this
+    // viewer's: a tablet handed from one receptionist to the next re-earns it here, online, against the server.
+    ownsCacheRef.current = payload.actor.public_id === actorRef.current;
     setTemplates(payload.print_templates);
     setDevice(payload.device as unknown as ReceptionDevice);
     const patients = await fetchRecentPatients(auth, 200).catch(() => []);
@@ -152,10 +177,14 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
     useConnection.getState().setSyncFacts({ activeBlock: activeBlockFacts(await db.blocks.toArray()) });
   }, [renderFromCache]);
 
-  // open the device database when a pointer exists; boot the sync engine
+  // open the device database when a pointer exists AND this viewer may use the device path; boot the sync engine
   useEffect(() => {
     let cancelled = false;
-    if (!pointer) { dbRef.current = null; logRef.current = null; issuerRef.current = null; syncRef.current?.stop(); syncRef.current = null; return undefined; }
+    if (!pointer || !deviceAllowed) {
+      dbRef.current = null; logRef.current = null; issuerRef.current = null; authRef.current = null; ownsCacheRef.current = false;
+      syncRef.current?.stop(); syncRef.current = null;
+      return undefined;
+    }
     const db = new ReceptionDB(pointer.tenantId, pointer.devicePublicId);
     const log = new EventLog(db, () => actorRef.current ?? '');
     dbRef.current = db;
@@ -169,7 +198,12 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
       if (cancelled) return;
       if (cachedDevice) setDevice(cachedDevice);
       if (cachedTemplates.length > 0) setTemplates(cachedTemplates);
-      if (!actorRef.current && cachedActor) actorRef.current = cachedActor.public_id;
+      // The line that used to stand here adopted the cache's own actor whenever the page had not named one
+      // (`if (!actorRef.current && cachedActor) actorRef.current = cachedActor.public_id`) — the desk taking the
+      // last user's identity from a store that any user of this browser profile can have written. The actor is the
+      // authenticated viewer or there is no device path at all (deviceAllowed), and a cache that names somebody
+      // else is not read until the server says otherwise. Nothing is cleared: the event log is somebody's work.
+      ownsCacheRef.current = cachedActor?.public_id === actorRef.current;
       if (token && actorRef.current) {
         authRef.current = { token, actorPublicId: actorRef.current, appVersion: APP_VERSION };
         const engine = new SyncEngine({
@@ -178,29 +212,52 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
           onBootstrapStale: () => { void loadBootstrap(); },
           onAccepted: async () => { await useConflicts.getState().refresh(db); await renderFromCache(board); },
         });
+        // Started whoever the cache belongs to: the pending events are the reason this database exists, and the
+        // person at the desk is an actor the device API accepts, so the previous shift's work drains here rather
+        // than waiting for its author to come back to this tablet. Uploading is not reading.
         syncRef.current = engine;
         engine.start();
         await useConflicts.getState().refresh(db);
         await renderFromCache(board);
         if (useConnection.getState().mode !== 'offline') await loadBootstrap().catch(() => undefined);
-        else await renderFromCache(board);
       }
     })();
     return () => { cancelled = true; syncRef.current?.stop(); syncRef.current = null; db.close(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pointer]);
+  }, [pointer, deviceAllowed]);
 
-  // refresh the board: device board when registered, else the panel JSON; offline → cache
+  /** Put a just-fetched board on screen. Only the DEVICE's own copy is written to the device's cache. */
+  const showBoard = useCallback(async (next: ServerBoard, fromDevice: boolean): Promise<void> => {
+    const db = dbRef.current;
+    if (fromDevice && db) {
+      await applyBoard(db, next);
+      // The cached view adds this device's unsynced rows to the server's — for the desk that owns them only.
+      if (ownsCacheRef.current) { await renderFromCache(next as unknown as Board); return; }
+    }
+    setBoard(next as unknown as Board);
+  }, [renderFromCache]);
+
+  // Refresh the board, in the order of how much the answer can be trusted: the device board (the registered
+  // tablet's own, and the only one that may be cached), then the panel JSON — which is DoctorScope-filtered
+  // server-side and is what a viewer the device refuses must see — and only then the local cache. The cache used
+  // to sit second, so a 403 from the device leg put a board on screen that the server would never have sent.
   const refresh = useCallback(async (): Promise<void> => {
-    const state = useConnection.getState().mode;
-    if (state === 'offline') { await renderFromCache(board); return; }
+    if (useConnection.getState().mode === 'offline') { await renderFromCache(board); return; }
+    const auth = authRef.current;
+    if (auth) {
+      try {
+        await showBoard(await fetchDeviceBoard(auth, board.date), true);
+        return;
+      } catch {
+        /* the device leg is unreachable or refuses this actor: the staff JSON below is the scoped, authorised one */
+      }
+    }
     try {
-      const next: ServerBoard = authRef.current ? await fetchDeviceBoard(authRef.current, board.date) : await fetchBoard(board.date);
-      if (dbRef.current) { await applyBoard(dbRef.current, next); await renderFromCache(next as unknown as Board); } else setBoard(next as unknown as Board);
+      await showBoard(await fetchBoard(board.date), false);
     } catch {
       await renderFromCache(board);
     }
-  }, [board, renderFromCache]);
+  }, [board, renderFromCache, showBoard]);
 
   // degraded: poll every 5 s; online: the reception channel pushes; offline: nothing to fetch
   useEffect(() => {
@@ -231,16 +288,20 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
     await db.setMeta(META_KEYS.actorUser, { public_id: actorPublicId });
     db.close();
     actorRef.current = actorPublicId;
+    // The registration was made by this viewer against the server, so the cache it just created is theirs.
+    ownsCacheRef.current = true;
     writePointer(next);
     setPointer(next);
   }, []);
 
+  // Forgets the POINTER to the database, never the database: the events in it may not have been sent yet.
   const forgetDevice = useCallback(async (): Promise<void> => {
     writePointer(null);
     setPointer(null);
     setDevice(null);
     setBlocks([]);
     authRef.current = null;
+    ownsCacheRef.current = false;
   }, []);
 
   const ensureBlocks = useCallback(async (session: BoardSession): Promise<void> => {
@@ -334,9 +395,11 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
 
   const flush = useCallback(async (): Promise<void> => { await syncRef.current?.flush(); }, []);
 
+  // The offline quick-search, and the same rule as the board: this device's cached people are read for the viewer
+  // the server named for this cache and for nobody else. Until then the search is empty rather than someone else's.
   const cachedPatients = useCallback(async (q: string) => {
     const db = dbRef.current;
-    if (!db || q.trim() === '') return [];
+    if (!db || !ownsCacheRef.current || q.trim() === '') return [];
     const term = q.trim().toLowerCase();
     const digits = term.replace(/\D/g, '');
     const rows = digits.length >= 4
@@ -346,7 +409,7 @@ export function useDesk(initial: Board, options: { tenantPublicId: string | null
   }, []);
 
   return {
-    mode, board, registered: pointer !== null, device, actorPublicId: actorRef.current, blocks, templates, settings,
+    mode, board, registered: pointer !== null && deviceAllowed, device, actorPublicId: actorRef.current, blocks, templates, settings,
     refresh, registerFromResponse, forgetDevice, ensureBlocks, issueOffline, checkInOffline, collectCashOffline, printed, voidLocal, resolve, flush, cachedPatients,
   };
 }

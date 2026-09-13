@@ -24,6 +24,7 @@ final class RoleMatrix
                 Permission::SerialsSplitAdjust,
                 Permission::SerialsReorder,
                 Permission::SerialsCapacityExtend,
+                Permission::SerialsCheckIn,
                 Permission::QueueCallNext,
                 Permission::QueueDelayBroadcast,
                 Permission::PrescriptionsWrite,
@@ -40,6 +41,7 @@ final class RoleMatrix
                 Permission::SerialsCancel,
                 Permission::SerialsTransfer,
                 Permission::SerialsCapacityExtend,
+                Permission::SerialsCheckIn,
                 Permission::QueueCallNext,
                 Permission::ReceptionDevicesRegister,
                 Permission::PrescriptionsVitalsRecord,
@@ -47,6 +49,18 @@ final class RoleMatrix
                 Permission::PatientsCreate,
                 Permission::PatientsUpdate,
                 Permission::BillingPaymentsCollect,
+                Permission::BillingInvoicesView,
+            ],
+            // The compounder is defined as much by what is ABSENT as by what is here. No SerialsIssueCounter /
+            // Reorder / Transfer / Cancel / SplitAdjust / CapacityExtend — "he can't be able to edit the serial
+            // number" is enforced by not holding the permission, never by hiding a button. No QueueCallNext (the
+            // doctor calls), no PrescriptionsWrite/ViewAny, no Patients* and no Reports*. Which DOCTOR's patients
+            // these four apply to is the orthogonal question DoctorScope answers.
+            Role::Compounder => [
+                Permission::SerialsCheckIn,
+                Permission::PrescriptionsVitalsRecord,
+                Permission::BillingPaymentsCollect,
+                // A fee they just collected has to stay legible at the desk; nothing here raises or refunds one.
                 Permission::BillingInvoicesView,
             ],
             Role::Accountant => [

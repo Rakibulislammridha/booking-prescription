@@ -133,6 +133,10 @@ final class DoctorController extends Controller
                 'design_pad' => $user->can('designPad', $doctor),
                 'schedule' => $user->can('scheduling.schedules.manage'),
                 'manage_leave' => $user->can('create', [DoctorLeave::class, $doctor->id]),
+                // Same ability the compounders screen authorises with. It reads as redundant here — `update` is
+                // already `clinic.doctors.manage`, which grants it — but the two rules are allowed to diverge, and
+                // a link that 403s is worse than a link that is absent.
+                'manage_compounders' => $user->can('manageCompounders', $doctor),
             ],
         ]);
     }

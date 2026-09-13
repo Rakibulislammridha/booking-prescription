@@ -11,6 +11,7 @@ use App\Http\Middleware\EnsureStaffIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SetActiveBranch;
 use App\Http\Middleware\TrustProxies;
+use App\Tenancy\Facades\Tenancy;
 use App\Tenancy\Http\Middleware\EnsureSessionBelongsToTenant;
 use App\Tenancy\Http\Middleware\EnsureTenantIsActive;
 use App\Tenancy\Http\Middleware\RequireCentral;
@@ -27,6 +28,8 @@ use Illuminate\Support\Facades\Route;
 use Laravel\Pennant\Middleware\EnsureFeaturesAreActive;
 use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
+use Spatie\Permission\Exceptions\PermissionDoesNotExist;
+use Spatie\Permission\Exceptions\RoleDoesNotExist;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
 use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
@@ -148,4 +151,25 @@ return Application::configure(basePath: dirname(__DIR__))
             ? response()->json(['message' => $e->getMessage(), 'code' => $e->code()], $e->status())   // 422 by default; 409 for conflicts
             : back()->withErrors(['domain' => $e->getMessage()])
         );
+
+        // A role or permission this RELEASE knows about that this TENANT's schema has never heard of. It means one
+        // thing and has one cure: the seeder did not run here. `tenants:migrate --seed` skips suspended tenants
+        // (DEPLOYMENT §3.3, OPERATIONS §2.2), so a clinic reactivated across a release is behind on rows, and the
+        // first staff account somebody creates with the new role blows up inside Spatie's syncRoles() — an
+        // unhandled 500 with a message about a guard name, on the screen an admin opened to repair that clinic.
+        // Naming the command turns it into a two-minute fix, and covers every future role and permission rather
+        // than the one screen that was patched today (Clinic\StaffUserController::roleOptions()).
+        //
+        // Deliberately untranslated: the whole content of the message is a shell command an operator types.
+        // Still reported — `render` replaces the response, not the log entry, so the trace survives for whoever
+        // has to know which tenant it was.
+        $exceptions->render(function (RoleDoesNotExist|PermissionDoesNotExist $e, Request $request) {
+            $slug = Tenancy::current()?->slug;
+            $message = 'This clinic is missing its roles and permissions. Run: php artisan tenants:migrate --seed'
+                .($slug === null ? '' : ' --tenant='.$slug);
+
+            return $request->expectsJson()
+                ? response()->json(['message' => $message, 'code' => 'tenancy.seeder_not_run'], 500)
+                : back()->withErrors(['domain' => $message]);
+        });
     })->create();
